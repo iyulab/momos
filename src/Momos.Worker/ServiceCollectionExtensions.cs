@@ -14,7 +14,9 @@ public static class ServiceCollectionExtensions
     {
         services
             .AddOptions<AnthropicLlmOptions>()
-            .Bind(configuration.GetSection(AnthropicLlmOptions.SectionName));
+            .Bind(configuration.GetSection(AnthropicLlmOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
 
         services.AddSingleton<IChatClientProvider, AnthropicChatClientProvider>();
         services.AddIronHiveAgentEngine();
