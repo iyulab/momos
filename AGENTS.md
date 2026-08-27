@@ -26,6 +26,7 @@
 | 반드시 논의 | 원칙 위반, 비목표 침범, Type-1 재결정, **Computer Use 권한/격리 설정 변경(예외 없음)** |
 
 ## 기술 원칙
+- 구현 스택은 .NET 단일 스택(Host/Worker 공통).
 - 에이전트/도구 오케스트레이션은 MCP(Model Context Protocol) 기반. 자체 프로토콜 발명 금지.
 - Momos는 타겟 리포에 어떤 파일도 요구하지 않고 작동한다(비침습성). 선언 정보는 Momos 자신(Projects 엔티티)에 있다.
 - 대부분의 액션은 API로 동작한다. UI(`momos-console`)는 그 API의 클라이언트일 뿐이다.
