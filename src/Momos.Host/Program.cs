@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Momos.Host.Data;
+using Momos.Host.Endpoints;
 using Momos.Worker;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +26,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.MapProjectEndpoints();
 
 app.Run();
 
