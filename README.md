@@ -15,7 +15,7 @@ CI/CD 파이프라인 안에서, 개별 프로젝트 개발자가 릴리스 전 
 
 ## 현재 상태
 
-초기 설계 단계. 아직 실행 가능한 첫 슬라이스(Walking Skeleton)가 없다.
+Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)이 존재하고 Worker의 에이전트 실행 루프 통합이 끝났다. Host의 프로젝트 등록·검사 신청/결과 API는 아직 없다 — 설계 초안이 검토 중이고, 구현은 그다음이다.
 
 ## 문서
 

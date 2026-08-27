@@ -33,8 +33,8 @@ public class AnthropicChatClientProviderTests
     public async Task GetChatClientAsync_WithValidConfig_ReturnsChatClient()
     {
         // No network call happens here — this only proves the IronHive.Core →
-        // ChatClientAdapter wiring (ADR-0006) assembles correctly. A live call
-        // needs a real API key (BLOCKED-ITEM, cycle-06 — see cycle log).
+        // ChatClientAdapter wiring assembles correctly. A live call needs a
+        // real API key, which this environment doesn't have.
         var provider = new AnthropicChatClientProvider(Options.Create(new AnthropicLlmOptions
         {
             ApiKey = "sk-ant-test",

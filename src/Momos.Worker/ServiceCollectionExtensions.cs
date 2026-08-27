@@ -1,6 +1,7 @@
 using IronHive.Agent.Context;
 using IronHive.Agent.Extensions;
 using IronHive.Agent.Loop;
+using IronHive.Agent.Mcp;
 using IronHive.Agent.Providers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,12 +22,21 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IChatClientProvider, AnthropicChatClientProvider>();
         services.AddIronHiveAgentEngine();
 
+        // Empty by default — connects only what an operator explicitly lists.
+        // Enabling a Computer Use tool and its permission posture is a
+        // separate, human decision this wiring does not make (see
+        // McpPluginStartupService).
+        services
+            .AddOptions<McpPluginsConfig>()
+            .Bind(configuration.GetSection(McpPluginStartupService.SectionName));
+        services.AddHostedService<McpPluginStartupService>();
+
         return services;
     }
 
     /// <summary>
-    /// Wires the provider-agnostic <c>ironhive-agent</c> plumbing (ADR-0006)
-    /// that <c>AddIronHiveAgent()</c> itself leaves to the consumer — tool
+    /// Wires the provider-agnostic <c>ironhive-agent</c> plumbing that
+    /// <c>AddIronHiveAgent()</c> itself leaves to the consumer — tool
     /// retrieval and chat-client resolution across the registered
     /// <see cref="IChatClientProvider"/>s. Callers must register at least one
     /// <see cref="IChatClientProvider"/> before calling this.

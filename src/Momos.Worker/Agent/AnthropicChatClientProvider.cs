@@ -9,7 +9,7 @@ namespace Momos.Worker.Agent;
 /// <summary>
 /// Bridges IronHive's own Anthropic message generator (<c>IronHive.Providers.Anthropic</c>)
 /// into <c>IronHive.Agent</c>'s <see cref="IChatClientProvider"/> extension point
-/// (ADR-0006) via <see cref="ChatClientAdapter"/> — the composition
+/// via <see cref="ChatClientAdapter"/> — the composition
 /// <c>IronHive.Agent</c> expects consumers to bring themselves, since it ships
 /// no provider implementations of its own.
 /// </summary>
@@ -48,8 +48,7 @@ public sealed class AnthropicChatClientProvider(IOptions<AnthropicLlmOptions> op
         Task.FromResult(IsAvailable);
 
     public Task<IReadOnlyList<AvailableModelInfo>> GetAvailableModelsAsync(CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException(
-            "Model listing is out of scope for the Walking Skeleton (cycle-06) — no caller needs it yet.");
+        throw new NotSupportedException("Model listing is not implemented — no caller needs it yet.");
 
     public ValueTask DisposeAsync()
     {

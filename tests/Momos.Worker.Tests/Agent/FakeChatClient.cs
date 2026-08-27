@@ -4,8 +4,8 @@ namespace Momos.Worker.Tests.Agent;
 
 /// <summary>
 /// Minimal <see cref="IChatClient"/> stub that echoes a fixed reply — lets the
-/// <c>IronHive.Agent</c> loop itself (ADR-0006) be exercised without a live
-/// LLM provider or network access.
+/// <c>IronHive.Agent</c> loop itself be exercised without a live LLM provider
+/// or network access.
 /// </summary>
 public sealed class FakeChatClient(string reply) : IChatClient
 {

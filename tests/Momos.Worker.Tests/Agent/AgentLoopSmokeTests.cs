@@ -6,9 +6,9 @@ using Momos.Worker;
 namespace Momos.Worker.Tests.Agent;
 
 /// <summary>
-/// Proves Momos's own agent wiring (<c>AddIronHiveAgentEngine</c>,
-/// ADR-0006) runs a full turn end-to-end, with a fake provider standing in
-/// for Anthropic — no network required.
+/// Proves Momos's own agent wiring (<c>AddIronHiveAgentEngine</c>) runs a
+/// full turn end-to-end, with a fake provider standing in for Anthropic —
+/// no network required.
 /// </summary>
 public class AgentLoopSmokeTests
 {

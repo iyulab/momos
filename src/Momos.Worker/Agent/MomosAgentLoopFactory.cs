@@ -7,8 +7,8 @@ using IronHive.Agent.Tracking;
 namespace Momos.Worker.Agent;
 
 /// <summary>
-/// Momos's implementation of <c>IronHive.Agent</c>'s <see cref="IAgentLoopFactory"/>
-/// (ADR-0006) — the library registers the surrounding collaborators
+/// Momos's implementation of <c>IronHive.Agent</c>'s <see cref="IAgentLoopFactory"/> —
+/// the library registers the surrounding collaborators
 /// (<see cref="IUsageTracker"/>, <see cref="ContextManager"/>,
 /// <see cref="IErrorRecoveryService"/>) via <c>AddIronHiveAgent()</c> but leaves
 /// the top-level factory and chat-client resolution to the consumer.
