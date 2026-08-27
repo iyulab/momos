@@ -41,12 +41,12 @@ public class GpuStackLlmOptionsBindingTests
     {
         var options = BindFrom(new Dictionary<string, string?>
         {
-            [$"{GpuStackLlmOptions.SectionName}:Endpoint"] = "http://gpustack.example.internal:10150",
+            [$"{GpuStackLlmOptions.SectionName}:Endpoint"] = "http://gpustack.example.internal:9443",
             [$"{GpuStackLlmOptions.SectionName}:ApiKey"] = "gpustack-test-key",
             [$"{GpuStackLlmOptions.SectionName}:Model"] = "qwen2.5-coder",
         });
 
-        Assert.Equal("http://gpustack.example.internal:10150", options.Value.Endpoint);
+        Assert.Equal("http://gpustack.example.internal:9443", options.Value.Endpoint);
         Assert.Equal("gpustack-test-key", options.Value.ApiKey);
         Assert.Equal("qwen2.5-coder", options.Value.Model);
     }

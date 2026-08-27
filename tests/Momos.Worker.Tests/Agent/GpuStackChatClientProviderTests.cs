@@ -7,7 +7,7 @@ public class GpuStackChatClientProviderTests
 {
     private static GpuStackLlmOptions ValidOptions() => new()
     {
-        Endpoint = "http://gpustack.example.internal:10150",
+        Endpoint = "http://gpustack.example.internal:9443",
         ApiKey = "gpustack-test-key",
         Model = "qwen2.5-coder",
     };
