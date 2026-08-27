@@ -33,7 +33,7 @@
 
 ## 문서 맵
 - `docs/constitution.md` — 전문
-- `docs/overview.md`, `docs/scope.md`, `docs/architecture.md`, `docs/concepts.md`, `docs/glossary.md`
+- `docs/overview.md`, `docs/scope.md`, `docs/architecture.md`, `docs/concepts.md`, `docs/glossary.md`, `docs/ux-principles.md`
 - `docs/threat-model.md` — Computer Use 위협 분류와 v1 대응 원칙
 - `docs/integration-contract.md`, `docs/extending.md` — 외부 통합
 - 비공개 작업 기록(결정 원장·백로그·ADR)은 이 리포 밖의 엄브렐러 워크스페이스에 있다. 이 리포만 클론했다면 접근할 필요 없는 내부 추적 자료다.

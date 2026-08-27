@@ -26,6 +26,7 @@ CI/CD 파이프라인 안에서, 개별 프로젝트 개발자가 릴리스 전 
 - [위협 모델](docs/threat-model.md) — Computer Use 위협 분류, 대응 원칙
 - [핵심 개념](docs/concepts.md)
 - [용어집](docs/glossary.md)
+- [UX 원칙](docs/ux-principles.md)
 - [통합 계약](docs/integration-contract.md) — 외부 시스템이 Momos를 호출하는 방법
 - [확장 지점](docs/extending.md)
 
