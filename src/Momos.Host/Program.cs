@@ -28,6 +28,7 @@ app.UseHttpsRedirection();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapProjectEndpoints();
 app.MapInspectionRequestEndpoints();
+app.MapInspectionReportEndpoints();
 
 app.Run();
 
