@@ -13,8 +13,8 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         // SQLite's default Guid-to-TEXT mapping uses an uppercase representation, which
-        // does not match Guid.ToString()'s lowercase output. Without this, any raw-SQL or
-        // cross-entity FK comparison built from a C# Guid's default string form silently
+        // does not match Guid.ToString()'s lowercase output. Without this, hand-written
+        // raw SQL that interpolates a C# Guid's default (lowercase) string form silently
         // fails to match the stored value. Force a single, consistent (lowercase) format.
         configurationBuilder.Properties<Guid>().HaveConversion<string>();
     }
@@ -37,6 +37,27 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
             .HasMany(r => r.Findings)
             .WithOne()
             .HasForeignKey(f => f.InspectionReportId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Restrict, not Cascade: inspection history is an audit trail and should not
+        // silently disappear through a project deletion. No DELETE endpoint exists yet;
+        // revisit this once one does and a real product decision endorses cascading it.
+        modelBuilder.Entity<InspectionRequest>()
+            .HasOne<Project>()
+            .WithMany()
+            .HasForeignKey(r => r.ProjectId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Required one-to-one: within a single DbContext/request lifetime, adding a second
+        // InspectionReport for the same InspectionRequest silently replaces the first
+        // (EF's relationship fixup deletes the orphaned dependent) rather than erroring. The
+        // real protection against a duplicate report is the DB-level unique index below,
+        // which two independent DbContext instances (e.g. two concurrent requests) will
+        // both genuinely hit.
+        modelBuilder.Entity<InspectionReport>()
+            .HasOne<InspectionRequest>()
+            .WithOne()
+            .HasForeignKey<InspectionReport>(r => r.InspectionRequestId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

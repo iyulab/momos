@@ -16,7 +16,7 @@ public sealed class MomosHostFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:MomosDb", $"Data Source={_dbPath}");
-        builder.UseSetting("Momos:Llm:GpuStack:Endpoint", "http://gpustack.example.invalid:10150");
+        builder.UseSetting("Momos:Llm:GpuStack:Endpoint", "http://gpustack.example.internal:9443");
         builder.UseSetting("Momos:Llm:GpuStack:ApiKey", "test-key");
         builder.UseSetting("Momos:Llm:GpuStack:Model", "test-model");
     }

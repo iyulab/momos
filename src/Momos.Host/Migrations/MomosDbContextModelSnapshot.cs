@@ -89,6 +89,8 @@ namespace Momos.Host.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ProjectId");
+
                     b.ToTable("InspectionRequests");
                 });
 
@@ -134,6 +136,24 @@ namespace Momos.Host.Migrations
                         .WithMany("Findings")
                         .HasForeignKey("InspectionReportId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Momos.Host.Domain.InspectionReport", b =>
+                {
+                    b.HasOne("Momos.Host.Domain.InspectionRequest", null)
+                        .WithOne()
+                        .HasForeignKey("Momos.Host.Domain.InspectionReport", "InspectionRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Momos.Host.Domain.InspectionRequest", b =>
+                {
+                    b.HasOne("Momos.Host.Domain.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

@@ -71,40 +71,68 @@ public sealed class MomosDbContextTests : IDisposable
     [Fact]
     public async Task RejectsASecondReportForTheSameInspectionRequest()
     {
-        var project = new Project { Name = "p", Purpose = "x", Vision = "x", Scope = "x" };
-        _db.Projects.Add(project);
-        var request = new InspectionRequest { ProjectId = project.Id };
-        _db.InspectionRequests.Add(request);
-        await _db.SaveChangesAsync();
+        // The two InspectionReport inserts must go through separate DbContext instances.
+        // In the same tracked context, EF's required-one-to-one fixup would treat the
+        // second Add as replacing the first (deleting it) rather than ever reaching the
+        // database — so this wouldn't hit the unique index at all. Two independent
+        // contexts is also the realistic production shape (two concurrent requests).
+        Guid requestId;
+        using (var seedDb = new MomosDbContext(new DbContextOptionsBuilder<MomosDbContext>().UseSqlite(_connection).Options))
+        {
+            var project = new Project { Name = "p", Purpose = "x", Vision = "x", Scope = "x" };
+            seedDb.Projects.Add(project);
+            var request = new InspectionRequest { ProjectId = project.Id };
+            seedDb.InspectionRequests.Add(request);
+            await seedDb.SaveChangesAsync();
+            requestId = request.Id;
+        }
 
-        _db.InspectionReports.Add(new InspectionReport { InspectionRequestId = request.Id });
-        await _db.SaveChangesAsync();
+        using (var firstReportDb = new MomosDbContext(new DbContextOptionsBuilder<MomosDbContext>().UseSqlite(_connection).Options))
+        {
+            firstReportDb.InspectionReports.Add(new InspectionReport { InspectionRequestId = requestId });
+            await firstReportDb.SaveChangesAsync();
+        }
 
-        _db.InspectionReports.Add(new InspectionReport { InspectionRequestId = request.Id });
-        await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
+        using (var secondReportDb = new MomosDbContext(new DbContextOptionsBuilder<MomosDbContext>().UseSqlite(_connection).Options))
+        {
+            secondReportDb.InspectionReports.Add(new InspectionReport { InspectionRequestId = requestId });
+            await Assert.ThrowsAsync<DbUpdateException>(() => secondReportDb.SaveChangesAsync());
+        }
     }
 
     [Fact]
     public async Task DeletingAReportCascadesToItsFindings()
     {
-        var project = new Project { Name = "p", Purpose = "x", Vision = "x", Scope = "x" };
-        _db.Projects.Add(project);
-        var request = new InspectionRequest { ProjectId = project.Id };
-        _db.InspectionRequests.Add(request);
-        var report = new InspectionReport { InspectionRequestId = request.Id };
-        report.Findings.Add(new Finding
+        // Seed through one context, then dispose it so the Finding is not in any
+        // change tracker below — this exercises the database-level ON DELETE CASCADE
+        // constraint itself, not EF's client-side cascade of a tracked graph.
+        Guid reportId;
+        using (var seedDb = new MomosDbContext(new DbContextOptionsBuilder<MomosDbContext>().UseSqlite(_connection).Options))
         {
-            InspectionReportId = report.Id,
-            Category = FindingCategory.FunctionalDefect,
-            Description = "desc",
-            Evidence = "evidence",
-        });
-        _db.InspectionReports.Add(report);
-        await _db.SaveChangesAsync();
+            var project = new Project { Name = "p", Purpose = "x", Vision = "x", Scope = "x" };
+            seedDb.Projects.Add(project);
+            var request = new InspectionRequest { ProjectId = project.Id };
+            seedDb.InspectionRequests.Add(request);
+            var report = new InspectionReport { InspectionRequestId = request.Id };
+            report.Findings.Add(new Finding
+            {
+                InspectionReportId = report.Id,
+                Category = FindingCategory.FunctionalDefect,
+                Description = "desc",
+                Evidence = "evidence",
+            });
+            seedDb.InspectionReports.Add(report);
+            await seedDb.SaveChangesAsync();
+            reportId = report.Id;
+        }
 
-        _db.InspectionReports.Remove(report);
-        await _db.SaveChangesAsync();
+        using (var deleteDb = new MomosDbContext(new DbContextOptionsBuilder<MomosDbContext>().UseSqlite(_connection).Options))
+        {
+            var report = await deleteDb.InspectionReports.SingleAsync(r => r.Id == reportId);
+            deleteDb.InspectionReports.Remove(report);
+            await deleteDb.SaveChangesAsync();
+        }
 
-        Assert.Empty(_db.Findings);
+        Assert.Empty(await _db.Findings.ToListAsync());
     }
 }
