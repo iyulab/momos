@@ -6,3 +6,6 @@ obj/
 *.received.*
 .worktrees/
 .superpowers/
+*.db
+*.db-shm
+*.db-wal
