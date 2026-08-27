@@ -15,7 +15,7 @@ CI/CD 파이프라인 안에서, 개별 프로젝트 개발자가 릴리스 전 
 
 ## 현재 상태
 
-Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)이 존재하고 Worker의 에이전트 실행 루프 통합이 끝났다. Host의 프로젝트 등록·검사 신청/결과 조회 API가 구현되어 있다: `POST /projects`, `GET /projects/{id}`, `POST /projects/{id}/inspection-requests`, `GET /inspection-requests/{id}`, `GET /inspection-requests/{id}/report`(자세한 내용은 [통합 계약](docs/integration-contract.md) 참고). 다만 신청서 제출 이후 Worker가 실제로 검사를 수행해 그 상태가 대기(`Pending`)를 벗어나는 흐름은 아직 이 API에 연결되지 않은 별도 증분이다.
+Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)이 존재하며, 둘은 별도 프로세스로 배포된다 — Worker가 Host를 poll해 대기 중인 검사 신청서를 가져와 실행하고 결과서를 제출한다. Host의 프로젝트 등록·검사 신청/결과 조회 API가 구현되어 있다: `POST /projects`, `GET /projects/{id}`, `POST /projects/{id}/inspection-requests`, `GET /inspection-requests/{id}`, `GET /inspection-requests/{id}/report`(자세한 내용은 [통합 계약](docs/integration-contract.md) 참고). 신청서는 제출 후 실제로 Worker에 의해 실행되어 완료(또는 실패) 상태로 전환된다 — 다만 검사 자체를 수행할 도구(정적/런타임 실행 티어)가 아직 연결되지 않아, 지금 결과서는 항상 지적 없이(findings 0건) 완료된다.
 
 ## 문서
 

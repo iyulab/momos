@@ -5,21 +5,14 @@ namespace Momos.Host.Tests;
 
 /// <summary>
 /// Boots the real <c>Momos.Host</c> pipeline (migrations included) against a
-/// throwaway SQLite file per factory instance, and against fake-but-valid
-/// GPUStack config so <c>ValidateOnStart()</c> doesn't block boot — no real
-/// LLM call happens in any endpoint test.
+/// throwaway SQLite file per factory instance.
 /// </summary>
 public sealed class MomosHostFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"momos-host-test-{Guid.NewGuid():N}.db");
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
+    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         builder.UseSetting("ConnectionStrings:MomosDb", $"Data Source={_dbPath}");
-        builder.UseSetting("Momos:Llm:GpuStack:Endpoint", "http://gpustack.example.internal:9443");
-        builder.UseSetting("Momos:Llm:GpuStack:ApiKey", "test-key");
-        builder.UseSetting("Momos:Llm:GpuStack:Model", "test-model");
-    }
 
     protected override void Dispose(bool disposing)
     {

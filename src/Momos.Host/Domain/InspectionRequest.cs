@@ -18,4 +18,5 @@ public sealed class InspectionRequest
     public string? Focus { get; set; }
     public DateTimeOffset SubmittedAt { get; init; } = DateTimeOffset.UtcNow;
     public InspectionRequestStatus Status { get; set; } = InspectionRequestStatus.Pending;
+    public string? FailureReason { get; set; }
 }

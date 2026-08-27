@@ -9,14 +9,16 @@ public sealed record InspectionRequestResponse(
     Guid ProjectId,
     string? Focus,
     DateTimeOffset SubmittedAt,
-    InspectionRequestStatus Status)
+    InspectionRequestStatus Status,
+    string? FailureReason)
 {
     public static InspectionRequestResponse FromEntity(InspectionRequest request) => new(
         request.Id,
         request.ProjectId,
         request.Focus,
         request.SubmittedAt,
-        request.Status);
+        request.Status,
+        request.FailureReason);
 }
 
 public sealed record FindingResponse(Guid Id, FindingCategory Category, string Description, string Evidence)
@@ -40,3 +42,12 @@ public sealed record InspectionReportResponse(
         report.CompletedAt,
         report.Findings.Select(FindingResponse.FromEntity).ToList());
 }
+
+/// <summary>One finding as submitted by a Worker completing an inspection run.</summary>
+public sealed record SubmitFindingRequest(FindingCategory Category, string Description, string Evidence);
+
+/// <summary>A Worker's completed-run submission for one <see cref="InspectionRequest"/>.</summary>
+public sealed record SubmitInspectionReportRequest(IReadOnlyList<SubmitFindingRequest> Findings);
+
+/// <summary>A Worker's failed-run report for one <see cref="InspectionRequest"/>.</summary>
+public sealed record FailInspectionRequestRequest(string Reason);

@@ -9,8 +9,4 @@
     </PackageReference>
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Momos.Worker\Momos.Worker.csproj" />
-  </ItemGroup>
-
 </Project>

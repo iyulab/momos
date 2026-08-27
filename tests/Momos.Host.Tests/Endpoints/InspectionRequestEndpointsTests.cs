@@ -54,4 +54,94 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    // The class fixture's SQLite DB is shared (and test order unspecified) across every
+    // [Fact] in this class — drain whatever other tests left Pending before asserting an
+    // empty-queue precondition, rather than requiring DB isolation this suite doesn't have.
+    private async Task DrainClaimQueueAsync()
+    {
+        while ((await _client.PostAsync("/inspection-requests/claim-next", content: null)).StatusCode == HttpStatusCode.OK)
+        {
+        }
+    }
+
+    [Fact]
+    public async Task ClaimNext_WithNoPendingRequests_Returns204()
+    {
+        await DrainClaimQueueAsync();
+
+        var response = await _client.PostAsync("/inspection-requests/claim-next", content: null);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ClaimNext_WithAPendingRequest_TransitionsItToRunningAndReturnsIt()
+    {
+        var projectId = await CreateProjectAsync();
+        var created = await (await _client.PostAsJsonAsync(
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null)))
+            .Content.ReadFromJsonAsync<InspectionRequestResponse>();
+
+        var response = await _client.PostAsync("/inspection-requests/claim-next", content: null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var claimed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>();
+        Assert.Equal(created!.Id, claimed!.Id);
+        Assert.Equal(InspectionRequestStatus.Running, claimed.Status);
+    }
+
+    [Fact]
+    public async Task ClaimNext_CalledTwiceWithOnlyOnePending_SecondCallReturns204()
+    {
+        await DrainClaimQueueAsync();
+        var projectId = await CreateProjectAsync();
+        await _client.PostAsJsonAsync($"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null));
+
+        var first = await _client.PostAsync("/inspection-requests/claim-next", content: null);
+        var second = await _client.PostAsync("/inspection-requests/claim-next", content: null);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task Fail_WithUnknownId_Returns404()
+    {
+        var response = await _client.PostAsJsonAsync(
+            $"/inspection-requests/{Guid.NewGuid()}/fail", new FailInspectionRequestRequest("boom"));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Fail_WhileStillPending_Returns409()
+    {
+        var projectId = await CreateProjectAsync();
+        var created = await (await _client.PostAsJsonAsync(
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null)))
+            .Content.ReadFromJsonAsync<InspectionRequestResponse>();
+
+        var response = await _client.PostAsJsonAsync(
+            $"/inspection-requests/{created!.Id}/fail", new FailInspectionRequestRequest("boom"));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Fail_AfterClaim_TransitionsToFailedWithReason()
+    {
+        var projectId = await CreateProjectAsync();
+        await _client.PostAsJsonAsync($"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null));
+        var claimed = await (await _client.PostAsync("/inspection-requests/claim-next", content: null))
+            .Content.ReadFromJsonAsync<InspectionRequestResponse>();
+
+        var response = await _client.PostAsJsonAsync(
+            $"/inspection-requests/{claimed!.Id}/fail", new FailInspectionRequestRequest("agent loop crashed"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var failed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>();
+        Assert.Equal(InspectionRequestStatus.Failed, failed!.Status);
+        Assert.Equal("agent loop crashed", failed.FailureReason);
+    }
 }

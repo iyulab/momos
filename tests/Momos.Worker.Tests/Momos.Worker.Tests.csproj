@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
@@ -17,7 +18,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Momos.Host reference is test-only, to drive the real Host API in-process
+         (WebApplicationFactory) for a wire-contract e2e check. The shipped
+         Momos.Worker has no reference to Momos.Host (ADR-0008 decision 1). -->
     <ProjectReference Include="..\..\src\Momos.Worker\Momos.Worker.csproj" />
+    <ProjectReference Include="..\..\src\Momos.Host\Momos.Host.csproj" />
   </ItemGroup>
 
 </Project>

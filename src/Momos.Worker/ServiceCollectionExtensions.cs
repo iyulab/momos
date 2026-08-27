@@ -5,7 +5,9 @@ using IronHive.Agent.Mcp;
 using IronHive.Agent.Providers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
+using Momos.Worker.Execution;
 
 namespace Momos.Worker;
 
@@ -30,6 +32,22 @@ public static class ServiceCollectionExtensions
             .AddOptions<McpPluginsConfig>()
             .Bind(configuration.GetSection(McpPluginStartupService.SectionName));
         services.AddHostedService<McpPluginStartupService>();
+
+        services
+            .AddOptions<HostClientOptions>()
+            .Bind(configuration.GetSection(HostClientOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services
+            .AddOptions<PullExecutionOptions>()
+            .Bind(configuration.GetSection(PullExecutionOptions.SectionName));
+
+        services.AddHttpClient<IHostApiClient, HostApiClient>((sp, client) =>
+        {
+            var hostOptions = sp.GetRequiredService<IOptions<HostClientOptions>>().Value;
+            client.BaseAddress = new Uri(hostOptions.BaseUrl);
+        });
+        services.AddHostedService<PullExecutionBackgroundService>();
 
         return services;
     }
