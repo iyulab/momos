@@ -7,11 +7,10 @@ namespace Momos.Worker.Tests.Agent;
 
 /// <summary>
 /// Proves <c>AddMomosWorker</c>'s <c>ValidateOnStart()</c> actually surfaces a
-/// missing Anthropic configuration at host boot, not only on the first agent-loop
-/// creation — the gap the earlier binding tests (no runtime `required`
-/// enforcement) left open.
+/// missing GPUStack configuration at host boot, not only on the first agent-loop
+/// creation.
 /// </summary>
-public class AnthropicLlmOptionsStartupValidationTests
+public class GpuStackLlmOptionsStartupValidationTests
 {
     [Fact]
     public async Task StartAsync_WithMissingConfig_ThrowsOptionsValidationException()

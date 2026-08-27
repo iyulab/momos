@@ -14,12 +14,12 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddMomosWorker(this IServiceCollection services, IConfiguration configuration)
     {
         services
-            .AddOptions<AnthropicLlmOptions>()
-            .Bind(configuration.GetSection(AnthropicLlmOptions.SectionName))
+            .AddOptions<GpuStackLlmOptions>()
+            .Bind(configuration.GetSection(GpuStackLlmOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        services.AddSingleton<IChatClientProvider, AnthropicChatClientProvider>();
+        services.AddSingleton<IChatClientProvider, GpuStackChatClientProvider>();
         services.AddIronHiveAgentEngine();
 
         // Empty by default — connects only what an operator explicitly lists.

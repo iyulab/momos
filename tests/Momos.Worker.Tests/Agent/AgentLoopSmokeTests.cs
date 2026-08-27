@@ -7,8 +7,8 @@ namespace Momos.Worker.Tests.Agent;
 
 /// <summary>
 /// Proves Momos's own agent wiring (<c>AddIronHiveAgentEngine</c>) runs a
-/// full turn end-to-end, with a fake provider standing in for Anthropic —
-/// no network required.
+/// full turn end-to-end, with a fake provider standing in for the real
+/// LLM backend — no network required.
 /// </summary>
 public class AgentLoopSmokeTests
 {
