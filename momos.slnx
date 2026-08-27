@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Momos.Host/Momos.Host.csproj" />
+    <Project Path="src/Momos.Worker/Momos.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Momos.Worker.Tests/Momos.Worker.Tests.csproj" />
+  </Folder>
+</Solution>

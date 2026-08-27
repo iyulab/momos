@@ -1,0 +1,6 @@
+@Momos.Host_HostAddress = http://localhost:5295
+
+GET {{Momos.Host_HostAddress}}/health
+Accept: application/json
+
+###
