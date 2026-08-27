@@ -62,8 +62,8 @@ public sealed class MomosDbContextTests : IDisposable
         _db.InspectionRequests.Add(request);
         await _db.SaveChangesAsync();
 
-        var raw = await _db.Database.SqlQueryRaw<string>(
-            $"SELECT Status FROM InspectionRequests WHERE Id = '{request.Id}'").ToListAsync();
+        var raw = await _db.Database.SqlQuery<string>(
+            $"SELECT Status FROM InspectionRequests WHERE Id = {request.Id.ToString()}").ToListAsync();
 
         Assert.Equal("Running", Assert.Single(raw));
     }
