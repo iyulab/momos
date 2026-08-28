@@ -28,9 +28,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IChatClientProvider, GpuStackChatClientProvider>();
 
         // ADR-0009 decisions 1·2·3(=B): code-beaker as an in-process execution sandbox.
-        // Only NativeProcessRuntime is registered — Worker doesn't check out the target
-        // repo or detect its language yet, so registering
-        // Docker/Node/Python runtimes now would add untestable, unreachable code (YAGNI).
+        // Only NativeProcessRuntime is registered — Worker doesn't detect a checked-out
+        // repo's language yet, so registering Docker/Node/Python runtimes now would add
+        // untestable, unreachable code (YAGNI).
         services.AddSingleton<ISessionStore, InMemorySessionStore>();
         services.AddSingleton<IExecutionRuntime, NativeProcessRuntime>();
         services.AddSingleton<ISessionManager, SessionManager>();
@@ -89,7 +89,9 @@ public static class ServiceCollectionExtensions
 
             return new ChatClientFactory(providers, providers.Values.First(), static client => client);
         });
-        services.AddSingleton<IAgentLoopFactory, MomosAgentLoopFactory>();
+        services.AddSingleton<MomosAgentLoopFactory>();
+        services.AddSingleton<IAgentLoopFactory>(sp => sp.GetRequiredService<MomosAgentLoopFactory>());
+        services.AddSingleton<ISessionAwareAgentLoopFactory>(sp => sp.GetRequiredService<MomosAgentLoopFactory>());
 
         return services;
     }

@@ -4,7 +4,11 @@ using Momos.Worker.Execution;
 namespace Momos.Worker.Tests.Execution;
 
 /// <summary>Records what <see cref="Momos.Worker.Execution.PullExecutionBackgroundService"/> submits, and signals when an outcome (report or failure) lands.</summary>
-internal sealed class FakeHostApiClient(IReadOnlyList<ClaimedInspectionRequest> claims, bool getProjectThrows = false, int claimNextThrowsForFirstNCalls = 0) : IHostApiClient
+internal sealed class FakeHostApiClient(
+    IReadOnlyList<ClaimedInspectionRequest> claims,
+    bool getProjectThrows = false,
+    int claimNextThrowsForFirstNCalls = 0,
+    string? repositoryUrl = null) : IHostApiClient
 {
     private int _claimIndex;
     private int _claimCallCount;
@@ -27,7 +31,7 @@ internal sealed class FakeHostApiClient(IReadOnlyList<ClaimedInspectionRequest> 
     public Task<ProjectInfo> GetProjectAsync(Guid projectId, CancellationToken cancellationToken) =>
         getProjectThrows
             ? throw new InvalidOperationException("boom")
-            : Task.FromResult(new ProjectInfo(projectId, "acme", null, null, "purpose", "vision", "scope"));
+            : Task.FromResult(new ProjectInfo(projectId, "acme", repositoryUrl, null, "purpose", "vision", "scope"));
 
     public Task SubmitReportAsync(Guid inspectionRequestId, IReadOnlyList<FindingPayload> findings, CancellationToken cancellationToken)
     {

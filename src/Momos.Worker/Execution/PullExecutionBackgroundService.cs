@@ -2,21 +2,23 @@ using IronHive.Agent.Loop;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Momos.Worker.Agent;
 
 namespace Momos.Worker.Execution;
 
 /// <summary>
-/// Polls Host for the next Pending inspection request (ADR-0008 pull protocol), runs
-/// the agent loop against it, and reports the outcome back. The agent loop now has a
-/// code-execution tool (ADR-0009 decision 3 = B), but nothing yet turns its command
-/// output into findings — Computer Use activation is also
-/// still a separate, undecided "반드시 논의" item (momos improvement protocol). It
-/// reports zero findings rather than fabricate one without evidence, per momos's
-/// 근거 기반 엄밀함 non-negotiable.
+/// Polls Host for the next Pending inspection request (ADR-0008 pull protocol), checks
+/// the target repo out into a fresh code-beaker session's workspace, runs the agent loop
+/// against it, and reports the outcome back. The agent loop has a code-execution tool
+/// (ADR-0009 decision 3 = B), but nothing yet turns its command output into findings —
+/// Computer Use activation is also still a separate, undecided "반드시 논의" item (momos
+/// improvement protocol). It reports zero findings rather than fabricate one without
+/// evidence, per momos's 근거 기반 엄밀함 non-negotiable.
 /// </summary>
 public sealed class PullExecutionBackgroundService(
     IHostApiClient hostApiClient,
-    IAgentLoopFactory agentLoopFactory,
+    ISessionAwareAgentLoopFactory agentLoopFactory,
+    IExecutionRuntimeProvider executionRuntimeProvider,
     IOptions<PullExecutionOptions> options,
     ILogger<PullExecutionBackgroundService> logger) : BackgroundService
 {
@@ -49,11 +51,30 @@ public sealed class PullExecutionBackgroundService(
 
     private async Task RunInspectionAsync(ClaimedInspectionRequest request, CancellationToken cancellationToken)
     {
-        IAgentLoop? agentLoop = null;
+        ExecutionSessionHandle? session = null;
         try
         {
             var project = await hostApiClient.GetProjectAsync(request.ProjectId, cancellationToken);
-            agentLoop = await agentLoopFactory.CreateAsync(cancellationToken);
+
+            // Opened here, not by the agent-loop factory (ISessionAwareAgentLoopFactory)
+            // — the repo has to be checked out into the session's workspace before the
+            // agent's first turn, so the session must exist first (ADR-0009 decision 2:
+            // one session per inspection request).
+            session = await executionRuntimeProvider.CreateSessionAsync(new ExecutionSessionRequest("native"), cancellationToken);
+
+            if (!string.IsNullOrEmpty(project.RepositoryUrl))
+            {
+                var clone = await executionRuntimeProvider.ExecuteAsync(
+                    session, new ExecutionCommand("git", ["clone", project.RepositoryUrl, "."]), cancellationToken);
+                if (!clone.Success)
+                {
+                    throw new InvalidOperationException($"Failed to check out {project.RepositoryUrl}: {clone.Error}");
+                }
+            }
+            // No RepositoryUrl declared — an honest "nothing to check out" case, not a
+            // failure (D-25 non-invasiveness: momos never assumes a repo it wasn't told about).
+
+            var agentLoop = await agentLoopFactory.CreateAsync(new AgentLoopFactoryOptions(), session, cancellationToken);
             await agentLoop.RunAsync(BuildPrompt(project, request.Focus), cancellationToken);
 
             await hostApiClient.SubmitReportAsync(request.Id, [], cancellationToken);
@@ -65,12 +86,12 @@ public sealed class PullExecutionBackgroundService(
         }
         finally
         {
-            // Closes the code-beaker session MomosAgentLoopFactory opened for this
-            // request (ADR-0009 decision 2) regardless of outcome. IAgentLoop itself
-            // has no disposal contract — see SessionScopedAgentLoop.
-            if (agentLoop is IAsyncDisposable disposableAgentLoop)
+            // CancellationToken.None, not `cancellationToken`: this runs during shutdown
+            // cancellation too, and the token that triggered the cleanup must not also
+            // be able to abort it and leak the session.
+            if (session is not null)
             {
-                await disposableAgentLoop.DisposeAsync();
+                await executionRuntimeProvider.CloseSessionAsync(session, CancellationToken.None);
             }
         }
     }
