@@ -57,7 +57,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
             claimed.Id, [new FindingPayload(Category: 0, Description: "d", Evidence: "e")], CancellationToken.None);
 
         var afterResponse = await httpClient.GetAsync($"/inspection-requests/{claimed.Id}");
-        var after = await afterResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>();
+        var after = await afterResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Completed, after!.Status);
     }
 
@@ -75,7 +75,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         await _client.SubmitFailureAsync(claimed!.Id, "agent loop crashed", CancellationToken.None);
 
         var afterResponse = await httpClient.GetAsync($"/inspection-requests/{claimed.Id}");
-        var after = await afterResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>();
+        var after = await afterResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Failed, after!.Status);
         Assert.Equal("agent loop crashed", after.FailureReason);
     }

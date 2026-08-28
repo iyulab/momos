@@ -27,14 +27,14 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
         var postResponse = await _client.PostAsJsonAsync(
             $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest("focus on login flow"));
         Assert.Equal(HttpStatusCode.Created, postResponse.StatusCode);
-        var created = await postResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>();
+        var created = await postResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.NotNull(created);
         Assert.Equal(projectId, created.ProjectId);
         Assert.Equal(InspectionRequestStatus.Pending, created.Status);
 
         var getResponse = await _client.GetAsync($"/inspection-requests/{created.Id}");
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
-        var fetched = await getResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>();
+        var fetched = await getResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(created.Id, fetched!.Id);
     }
 
@@ -81,12 +81,12 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
         var projectId = await CreateProjectAsync();
         var created = await (await _client.PostAsJsonAsync(
             $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null)))
-            .Content.ReadFromJsonAsync<InspectionRequestResponse>();
+            .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         var response = await _client.PostAsync("/inspection-requests/claim-next", content: null);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var claimed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>();
+        var claimed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(created!.Id, claimed!.Id);
         Assert.Equal(InspectionRequestStatus.Running, claimed.Status);
     }
@@ -120,7 +120,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
         var projectId = await CreateProjectAsync();
         var created = await (await _client.PostAsJsonAsync(
             $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null)))
-            .Content.ReadFromJsonAsync<InspectionRequestResponse>();
+            .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         var response = await _client.PostAsJsonAsync(
             $"/inspection-requests/{created!.Id}/fail", new FailInspectionRequestRequest("boom"));
@@ -135,13 +135,13 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
         var projectId = await CreateProjectAsync();
         await _client.PostAsJsonAsync($"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null));
         var claimed = await (await _client.PostAsync("/inspection-requests/claim-next", content: null))
-            .Content.ReadFromJsonAsync<InspectionRequestResponse>();
+            .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         var response = await _client.PostAsJsonAsync(
             $"/inspection-requests/{claimed!.Id}/fail", new FailInspectionRequestRequest("agent loop crashed"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var failed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>();
+        var failed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(InspectionRequestStatus.Failed, failed!.Status);
         Assert.Equal("agent loop crashed", failed.FailureReason);
     }

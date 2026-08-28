@@ -1,10 +1,11 @@
 namespace Momos.Worker.Execution;
 
 /// <summary>
-/// Mirrors <c>Momos.Host.Domain.InspectionRequestStatus</c>'s wire shape (default
-/// System.Text.Json enum serialization is integer-based, matching what the Host
-/// endpoints actually emit). Kept as a local copy rather than a shared reference —
-/// Worker and Host are separate deployables by design (ADR-0008 decision 1).
+/// Mirrors <c>Momos.Host.Domain.InspectionRequestStatus</c>'s wire shape (named
+/// values, via <see cref="System.Text.Json.Serialization.JsonStringEnumConverter"/>
+/// on both sides — see <c>HostApiClient.JsonOptions</c>). Kept as a local copy
+/// rather than a shared reference — Worker and Host are separate deployables by
+/// design (ADR-0008 decision 1).
 /// </summary>
 public enum InspectionRequestStatus
 {
