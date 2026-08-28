@@ -12,7 +12,7 @@ public static class InspectionReportEndpoints
         app.MapGet("/inspection-requests/{id:guid}/report", async (Guid id, MomosDbContext db, CancellationToken cancellationToken) =>
         {
             var report = await db.InspectionReports
-                .Include(r => r.Findings)
+                .Include(r => r.Findings.OrderBy(f => f.Order))
                 .FirstOrDefaultAsync(r => r.InspectionRequestId == id, cancellationToken);
 
             return report is null
@@ -40,14 +40,16 @@ public static class InspectionReportEndpoints
             }
 
             var report = new InspectionReport { InspectionRequestId = id };
-            foreach (var finding in request.Findings)
+            for (var order = 0; order < request.Findings.Count; order++)
             {
+                var finding = request.Findings[order];
                 report.Findings.Add(new Finding
                 {
                     InspectionReportId = report.Id,
                     Category = finding.Category,
                     Description = finding.Description,
                     Evidence = finding.Evidence,
+                    Order = order,
                 });
             }
 

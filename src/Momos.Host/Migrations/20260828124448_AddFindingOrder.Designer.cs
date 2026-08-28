@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Momos.Host.Data;
 
@@ -10,9 +11,11 @@ using Momos.Host.Data;
 namespace Momos.Host.Migrations
 {
     [DbContext(typeof(MomosDbContext))]
-    partial class MomosDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828124448_AddFindingOrder")]
+    partial class AddFindingOrder
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");

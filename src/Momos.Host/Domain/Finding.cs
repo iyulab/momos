@@ -18,4 +18,11 @@ public sealed class Finding
     public FindingCategory Category { get; set; }
     public required string Description { get; set; }
     public required string Evidence { get; set; }
+
+    /// <summary>
+    /// Position within the report as submitted by the Worker (0-based). Findings are
+    /// returned ordered by this field — SQLite/EF give no ordering guarantee for an
+    /// unordered <c>Include</c>, and a report can now legitimately carry more than one.
+    /// </summary>
+    public int Order { get; set; }
 }
