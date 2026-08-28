@@ -14,7 +14,12 @@ namespace Momos.Worker.Agent;
 /// </summary>
 public interface ISessionAwareAgentLoopFactory : IAgentLoopFactory
 {
-    Task<IAgentLoop> CreateAsync(
+    /// <summary>
+    /// Builds a loop against a session the caller owns, plus the <see cref="FindingSink"/>
+    /// the loop's <see cref="FindingReportingTools"/> tool reports into — read it after
+    /// <see cref="IAgentLoop.RunAsync(string,System.Threading.CancellationToken)"/> completes.
+    /// </summary>
+    Task<(IAgentLoop Loop, FindingSink Findings)> CreateAsync(
         AgentLoopFactoryOptions options,
         ExecutionSessionHandle session,
         CancellationToken cancellationToken = default);

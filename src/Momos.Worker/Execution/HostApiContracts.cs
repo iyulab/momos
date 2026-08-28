@@ -31,7 +31,18 @@ public sealed record ProjectInfo(
     string Vision,
     string Scope);
 
-public sealed record FindingPayload(int Category, string Description, string Evidence);
+/// <summary>
+/// Mirrors <c>Momos.Host.Domain.FindingCategory</c>'s wire shape — see
+/// <see cref="InspectionRequestStatus"/> for why this is a local copy rather than a
+/// shared reference.
+/// </summary>
+public enum FindingCategory
+{
+    FunctionalDefect,
+    UxConsistency,
+}
+
+public sealed record FindingPayload(FindingCategory Category, string Description, string Evidence);
 
 public sealed record SubmitReportRequest(IReadOnlyList<FindingPayload> Findings);
 

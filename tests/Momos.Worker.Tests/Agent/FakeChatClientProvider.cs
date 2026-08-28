@@ -3,8 +3,24 @@ using Microsoft.Extensions.AI;
 
 namespace Momos.Worker.Tests.Agent;
 
-public sealed class FakeChatClientProvider(string reply) : IChatClientProvider
+public sealed class FakeChatClientProvider : IChatClientProvider
 {
+    private readonly Func<FakeChatClient> _clientFactory;
+
+    public FakeChatClientProvider(string reply) : this(() => new FakeChatClient(reply))
+    {
+    }
+
+    public FakeChatClientProvider(IEnumerable<ChatResponse> responsesBeforeFinal, ChatResponse finalResponse)
+        : this(() => new FakeChatClient(responsesBeforeFinal, finalResponse))
+    {
+    }
+
+    private FakeChatClientProvider(Func<FakeChatClient> clientFactory)
+    {
+        _clientFactory = clientFactory;
+    }
+
     /// <summary>The most recently created client — lets a test inspect what the agent
     /// loop actually sent it (e.g. <see cref="FakeChatClient.LastOptions"/>) after a run.</summary>
     public FakeChatClient? LastClient { get; private set; }
@@ -15,7 +31,7 @@ public sealed class FakeChatClientProvider(string reply) : IChatClientProvider
 
     public Task<IChatClient> GetChatClientAsync(string? modelOverride = null, CancellationToken cancellationToken = default)
     {
-        LastClient = new FakeChatClient(reply);
+        LastClient = _clientFactory();
         return Task.FromResult<IChatClient>(LastClient);
     }
 

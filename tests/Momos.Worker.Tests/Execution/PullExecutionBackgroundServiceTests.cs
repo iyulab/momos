@@ -1,5 +1,6 @@
 using IronHive.Agent.Extensions;
 using IronHive.Agent.Providers;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -11,10 +12,13 @@ namespace Momos.Worker.Tests.Execution;
 
 public sealed class PullExecutionBackgroundServiceTests
 {
-    private static (ISessionAwareAgentLoopFactory Factory, FakeExecutionRuntimeProvider ExecutionProvider) BuildFakeAgentLoopFactory(string reply)
+    private static (ISessionAwareAgentLoopFactory Factory, FakeExecutionRuntimeProvider ExecutionProvider) BuildFakeAgentLoopFactory(string reply) =>
+        BuildFakeAgentLoopFactory(new FakeChatClientProvider(reply));
+
+    private static (ISessionAwareAgentLoopFactory Factory, FakeExecutionRuntimeProvider ExecutionProvider) BuildFakeAgentLoopFactory(IChatClientProvider chatClientProvider)
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IChatClientProvider>(new FakeChatClientProvider(reply));
+        services.AddSingleton(chatClientProvider);
         var executionProvider = new FakeExecutionRuntimeProvider();
         services.AddSingleton<IExecutionRuntimeProvider>(executionProvider);
         services.AddIronHiveAgentEngine();
@@ -170,6 +174,42 @@ public sealed class PullExecutionBackgroundServiceTests
         // The session opened for the clone attempt still closes even though the
         // agent loop itself never ran.
         Assert.Single(executionProvider.ClosedSessions);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenTheAgentReportsAFinding_SubmitsItInTheReport()
+    {
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)]);
+        var toolCall = new FunctionCallContent(
+            "call-1",
+            nameof(FindingReportingTools.ReportFinding),
+            new Dictionary<string, object?>
+            {
+                ["category"] = FindingCategory.FunctionalDefect,
+                ["description"] = "App crashes on startup",
+                ["evidence"] = "$ dotnet run\nUnhandled exception: NullReferenceException",
+            });
+        var chatClientProvider = new FakeChatClientProvider(
+            responsesBeforeFinal: [new ChatResponse(new ChatMessage(ChatRole.Assistant, [toolCall]))],
+            finalResponse: new ChatResponse(new ChatMessage(ChatRole.Assistant, "reported the crash")));
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory(chatClientProvider);
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        var report = Assert.Single(hostClient.SubmittedReports);
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal(FindingCategory.FunctionalDefect, finding.Category);
+        Assert.Equal("App crashes on startup", finding.Description);
+        Assert.Contains("NullReferenceException", finding.Evidence);
     }
 
     [Fact]

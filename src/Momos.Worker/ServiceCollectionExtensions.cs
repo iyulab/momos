@@ -7,6 +7,7 @@ using IronHive.Agent.Extensions;
 using IronHive.Agent.Loop;
 using IronHive.Agent.Mcp;
 using IronHive.Agent.Providers;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -87,7 +88,13 @@ public static class ServiceCollectionExtensions
                     $"No {nameof(IChatClientProvider)} is registered — register at least one before resolving {nameof(IChatClientFactory)}.");
             }
 
-            return new ChatClientFactory(providers, providers.Values.First(), static client => client);
+            // Without UseFunctionInvocation, AgentLoop.RunAsync only extracts a requested
+            // FunctionCallContent into an unexecuted ToolCallResult — nothing ever calls
+            // the AITool or reports its result back to the model. This decorator is what
+            // actually runs CodeExecutionTools/FindingReportingTools and feeds their
+            // results back for the next turn.
+            return new ChatClientFactory(providers, providers.Values.First(),
+                client => client.AsBuilder().UseFunctionInvocation().Build(sp));
         });
         services.AddSingleton<MomosAgentLoopFactory>();
         services.AddSingleton<IAgentLoopFactory>(sp => sp.GetRequiredService<MomosAgentLoopFactory>());

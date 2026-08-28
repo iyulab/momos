@@ -9,11 +9,11 @@ namespace Momos.Worker.Execution;
 /// <summary>
 /// Polls Host for the next Pending inspection request (ADR-0008 pull protocol), checks
 /// the target repo out into a fresh code-beaker session's workspace, runs the agent loop
-/// against it, and reports the outcome back. The agent loop has a code-execution tool
-/// (ADR-0009 decision 3 = B), but nothing yet turns its command output into findings —
-/// Computer Use activation is also still a separate, undecided "반드시 논의" item (momos
-/// improvement protocol). It reports zero findings rather than fabricate one without
-/// evidence, per momos's 근거 기반 엄밀함 non-negotiable.
+/// against it, and reports the outcome back. The agent loop has a code-execution tool and
+/// a finding-reporting tool (ADR-0009 decision 3 = B) — the agent decides what, if
+/// anything, to report; an inspection that finds nothing submits zero findings rather than
+/// fabricate one, per momos's 근거 기반 엄밀함 non-negotiable. Computer Use activation is
+/// still a separate, undecided "반드시 논의" item (momos improvement protocol).
 /// </summary>
 public sealed class PullExecutionBackgroundService(
     IHostApiClient hostApiClient,
@@ -77,10 +77,10 @@ public sealed class PullExecutionBackgroundService(
             // No RepositoryUrl declared — an honest "nothing to check out" case, not a
             // failure (D-25 non-invasiveness: momos never assumes a repo it wasn't told about).
 
-            var agentLoop = await agentLoopFactory.CreateAsync(new AgentLoopFactoryOptions(), session, cancellationToken);
+            var (agentLoop, findings) = await agentLoopFactory.CreateAsync(new AgentLoopFactoryOptions(), session, cancellationToken);
             await agentLoop.RunAsync(BuildPrompt(project, request.Focus), cancellationToken);
 
-            await hostApiClient.SubmitReportAsync(request.Id, [], cancellationToken);
+            await hostApiClient.SubmitReportAsync(request.Id, findings.Findings, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -106,5 +106,11 @@ public sealed class PullExecutionBackgroundService(
         Vision: {project.Vision}
         Scope: {project.Scope}
         {(focus is null ? string.Empty : $"Focus for this run: {focus}")}
+
+        Use RunCommand to explore and exercise the checked-out project (build it, run its
+        tests, start it, poke at its behavior — whatever fits its Purpose and Scope). When
+        you actually reproduce a functional defect or UX inconsistency, call ReportFinding
+        with the command output that shows it. If nothing turns up, say so and finish
+        without calling ReportFinding — do not report a finding you did not reproduce.
         """;
 }

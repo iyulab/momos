@@ -15,9 +15,15 @@ namespace Momos.Worker.Agent;
 /// <see cref="IErrorRecoveryService"/>) via <c>AddIronHiveAgent()</c> but leaves
 /// the top-level factory and chat-client resolution to the consumer.
 ///
-/// Also composes the code-execution tool (ADR-0009 decision 3 = B) — every loop this
-/// factory builds gets a native <see cref="AIFunctionFactory.Create(System.Delegate)"/>-wrapped
-/// tool bound to a code-beaker session (ADR-0009 decision 2: one per inspection request).
+/// Also composes the code-execution and finding-reporting tools (ADR-0009 decision 3 = B)
+/// — every loop this factory builds gets two native
+/// <see cref="AIFunctionFactory.Create(System.Delegate)"/>-wrapped tools: one bound to a
+/// code-beaker session (ADR-0009 decision 2: one per inspection request), one accumulating
+/// into a <see cref="FindingSink"/> the caller reads back after the run. Actual tool
+/// invocation depends on the chat client resolved by <c>chatClientFactory</c> being wrapped
+/// with <c>UseFunctionInvocation()</c> (see
+/// <see cref="Momos.Worker.ServiceCollectionExtensions.AddIronHiveAgentEngine"/>) —
+/// <c>IAgentLoop.RunAsync</c> itself never invokes a requested tool call.
 /// <see cref="PullExecutionBackgroundService"/> needs the session to exist before the
 /// loop does (to check out the target repo into its workspace first), so it creates and
 /// owns that session itself and calls the <see cref="ISessionAwareAgentLoopFactory"/>
@@ -44,15 +50,15 @@ public sealed class MomosAgentLoopFactory(
         // ISessionAwareAgentLoopFactory) — this factory owns this session's lifetime.
         var session = await executionRuntimeProvider.CreateSessionAsync(
             new ExecutionSessionRequest("native"), cancellationToken);
-        var agentLoop = await BuildAgentLoopAsync(options, session, cancellationToken);
+        var (agentLoop, _) = await BuildAgentLoopAsync(options, session, cancellationToken);
         return new SessionScopedAgentLoop(agentLoop, executionRuntimeProvider, session);
     }
 
-    public Task<IAgentLoop> CreateAsync(
+    public Task<(IAgentLoop Loop, FindingSink Findings)> CreateAsync(
         AgentLoopFactoryOptions options, ExecutionSessionHandle session, CancellationToken cancellationToken = default) =>
         BuildAgentLoopAsync(options, session, cancellationToken);
 
-    private async Task<IAgentLoop> BuildAgentLoopAsync(
+    private async Task<(IAgentLoop Loop, FindingSink Findings)> BuildAgentLoopAsync(
         AgentLoopFactoryOptions options, ExecutionSessionHandle session, CancellationToken cancellationToken)
     {
         var chatClient = string.IsNullOrEmpty(options.Provider)
@@ -61,6 +67,9 @@ public sealed class MomosAgentLoopFactory(
 
         var codeExecutionTool = AIFunctionFactory.Create(
             new CodeExecutionTools(executionRuntimeProvider, session).RunCommand);
+        var findings = new FindingSink();
+        var reportFindingTool = AIFunctionFactory.Create(
+            new FindingReportingTools(findings).ReportFinding);
 
         var agentOptions = new AgentOptions
         {
@@ -68,15 +77,16 @@ public sealed class MomosAgentLoopFactory(
             ModelId = options.Model,
             Temperature = options.Temperature,
             MaxTokens = options.MaxTokens,
-            Tools = [codeExecutionTool],
+            Tools = [codeExecutionTool, reportFindingTool],
             // Momos's tool retriever (KeywordToolRetriever) scores tools against the
             // prompt's keywords and drops anything under its relevance threshold —
-            // a filter meant for large, discoverable tool sets. The code-execution tool
-            // isn't optional or query-dependent: every inspection needs it, so it must
-            // always survive retrieval regardless of what the prompt happens to say.
-            ToolRetrievalOptions = new ToolRetrievalOptions { AlwaysInclude = [codeExecutionTool.Name] },
+            // a filter meant for large, discoverable tool sets. Neither tool is optional
+            // or query-dependent: every inspection needs both, so they must always survive
+            // retrieval regardless of what the prompt happens to say.
+            ToolRetrievalOptions = new ToolRetrievalOptions { AlwaysInclude = [codeExecutionTool.Name, reportFindingTool.Name] },
         };
 
-        return new AgentLoop(chatClient, agentOptions, usageTracker, contextManager, errorRecovery, toolRetriever);
+        var agentLoop = new AgentLoop(chatClient, agentOptions, usageTracker, contextManager, errorRecovery, toolRetriever);
+        return (agentLoop, findings);
     }
 }
