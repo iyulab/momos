@@ -12,6 +12,8 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="CodeBeaker.Commands" />
+    <PackageReference Include="CodeBeaker.Core" />
   </ItemGroup>
 
   <ItemGroup>
