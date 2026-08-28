@@ -120,7 +120,7 @@ public sealed class PullExecutionBackgroundServiceTests
 
         var (_, command) = executionProvider.LastExecuted!.Value;
         Assert.Equal("git", command.Name);
-        Assert.Equal(["clone", "https://example.invalid/acme/repo.git", "."], command.Args);
+        Assert.Equal(["clone", "--", "https://example.invalid/acme/repo.git", "."], command.Args);
         Assert.Single(hostClient.SubmittedReports);
     }
 

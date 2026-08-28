@@ -58,7 +58,7 @@ public class ServiceCollectionExtensionsTests
             try
             {
                 var result = await executionRuntimeProvider.ExecuteAsync(
-                    session, new ExecutionCommand("git", ["clone", sourceRepo.FullName, "."]));
+                    session, new ExecutionCommand("git", ["clone", "--", sourceRepo.FullName, "."]));
 
                 Assert.True(result.Success, result.Error);
             }

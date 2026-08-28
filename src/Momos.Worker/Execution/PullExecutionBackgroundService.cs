@@ -64,8 +64,11 @@ public sealed class PullExecutionBackgroundService(
 
             if (!string.IsNullOrEmpty(project.RepositoryUrl))
             {
+                // "--" pins the following token as a positional argument so a
+                // RepositoryUrl value that happens to start with "-" (e.g.
+                // "--upload-pack=...") cannot be smuggled in as a git flag.
                 var clone = await executionRuntimeProvider.ExecuteAsync(
-                    session, new ExecutionCommand("git", ["clone", project.RepositoryUrl, "."]), cancellationToken);
+                    session, new ExecutionCommand("git", ["clone", "--", project.RepositoryUrl, "."]), cancellationToken);
                 if (!clone.Success)
                 {
                     throw new InvalidOperationException($"Failed to check out {project.RepositoryUrl}: {clone.Error}");
