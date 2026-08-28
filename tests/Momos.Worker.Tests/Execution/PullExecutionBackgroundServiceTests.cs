@@ -2,6 +2,7 @@ using IronHive.Agent.Extensions;
 using IronHive.Agent.Providers;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
@@ -19,6 +20,7 @@ public sealed class PullExecutionBackgroundServiceTests
     {
         var services = new ServiceCollection();
         services.AddSingleton(chatClientProvider);
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
         var executionProvider = new FakeExecutionRuntimeProvider();
         services.AddSingleton<IExecutionRuntimeProvider>(executionProvider);
         services.AddIronHiveAgentEngine();

@@ -55,6 +55,9 @@ public sealed class PullExecutionBackgroundService(
         try
         {
             var project = await hostApiClient.GetProjectAsync(request.ProjectId, cancellationToken);
+            logger.LogInformation(
+                "Starting inspection for request {RequestId}, project {ProjectName} ({ProjectId})",
+                request.Id, project.Name, request.ProjectId);
 
             // Opened here, not by the agent-loop factory (ISessionAwareAgentLoopFactory)
             // — the repo has to be checked out into the session's workspace before the
@@ -80,6 +83,9 @@ public sealed class PullExecutionBackgroundService(
             var (agentLoop, findings) = await agentLoopFactory.CreateAsync(new AgentLoopFactoryOptions(), session, cancellationToken);
             await agentLoop.RunAsync(BuildPrompt(project, request.Focus), cancellationToken);
 
+            logger.LogInformation(
+                "Inspection for request {RequestId} completed with {FindingCount} finding(s)",
+                request.Id, findings.Findings.Count);
             await hostApiClient.SubmitReportAsync(request.Id, findings.Findings, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

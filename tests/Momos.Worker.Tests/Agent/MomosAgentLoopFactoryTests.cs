@@ -2,6 +2,8 @@ using IronHive.Agent.Loop;
 using IronHive.Agent.Providers;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Momos.Worker.Execution;
 using Momos.Worker.Tests.Execution;
 
@@ -18,6 +20,7 @@ public class MomosAgentLoopFactoryTests
     {
         var services = new ServiceCollection();
         services.AddSingleton<IChatClientProvider>(new FakeChatClientProvider(reply));
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
         var executionProvider = new FakeExecutionRuntimeProvider();
         services.AddSingleton<IExecutionRuntimeProvider>(executionProvider);
         services.AddIronHiveAgentEngine();
@@ -84,6 +87,7 @@ public class MomosAgentLoopFactoryTests
         var services = new ServiceCollection();
         var chatClientProvider = new FakeChatClientProvider("hi");
         services.AddSingleton<IChatClientProvider>(chatClientProvider);
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
         services.AddSingleton<IExecutionRuntimeProvider>(new FakeExecutionRuntimeProvider());
         services.AddIronHiveAgentEngine();
         var factory = services.BuildServiceProvider().GetRequiredService<IAgentLoopFactory>();
@@ -120,6 +124,7 @@ public class MomosAgentLoopFactoryTests
             finalResponse: new ChatResponse(new ChatMessage(ChatRole.Assistant, "no issues found")));
         var services = new ServiceCollection();
         services.AddSingleton<IChatClientProvider>(chatClientProvider);
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
         var executionProvider = new FakeExecutionRuntimeProvider
         {
             NextResult = new ExecutionCommandResult(true, "build succeeded", null, 100),

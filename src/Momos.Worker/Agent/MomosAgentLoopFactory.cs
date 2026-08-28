@@ -4,6 +4,7 @@ using IronHive.Agent.Loop;
 using IronHive.Agent.Providers;
 using IronHive.Agent.Tracking;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Momos.Worker.Execution;
 
 namespace Momos.Worker.Agent;
@@ -36,7 +37,8 @@ public sealed class MomosAgentLoopFactory(
     ContextManager contextManager,
     IErrorRecoveryService errorRecovery,
     IToolRetriever toolRetriever,
-    IExecutionRuntimeProvider executionRuntimeProvider) : ISessionAwareAgentLoopFactory
+    IExecutionRuntimeProvider executionRuntimeProvider,
+    ILoggerFactory loggerFactory) : ISessionAwareAgentLoopFactory
 {
     public Task<IAgentLoop> CreateAsync(CancellationToken cancellationToken = default) =>
         CreateAsync(new AgentLoopFactoryOptions(), cancellationToken);
@@ -66,7 +68,7 @@ public sealed class MomosAgentLoopFactory(
             : await chatClientFactory.CreateAsync(options.Provider, options.Model, cancellationToken);
 
         var codeExecutionTool = AIFunctionFactory.Create(
-            new CodeExecutionTools(executionRuntimeProvider, session).RunCommand);
+            new CodeExecutionTools(executionRuntimeProvider, session, loggerFactory.CreateLogger<CodeExecutionTools>()).RunCommand);
         var findings = new FindingSink();
         var reportFindingTool = AIFunctionFactory.Create(
             new FindingReportingTools(findings).ReportFinding);
