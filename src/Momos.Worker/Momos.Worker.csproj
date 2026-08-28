@@ -14,6 +14,7 @@
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <PackageReference Include="CodeBeaker.Commands" />
     <PackageReference Include="CodeBeaker.Core" />
+    <PackageReference Include="CodeBeaker.Runtimes" />
   </ItemGroup>
 
   <ItemGroup>

@@ -9,11 +9,10 @@ namespace Momos.Worker.Execution;
 /// (ADR-0009 decision 1) — a thin wrapper, not a reimplementation: sandboxing, resource
 /// limits, and command execution all stay code-beaker's responsibility.
 ///
-/// Not wired into <c>Momos.Worker</c>'s own DI container. Decision 3 (ADR-0009) puts tool
-/// invocation in a separate MCP server process per inspection request — code-beaker's
-/// <c>InMemorySessionStore</c> is process-local, so a session this class creates must live
-/// in that MCP server process, not here. This class is library code the MCP server
-/// (once it exists) composes <see cref="ISessionManager"/> around.
+/// Wired directly into <c>Momos.Worker</c>'s own DI container (<c>AddMomosWorker</c>) —
+/// decision 3 (ADR-0009) resolved to B (native in-process tool registration, not a
+/// separate MCP server process), so code-beaker's process-local <c>InMemorySessionStore</c>
+/// living in the same process as the sessions it tracks is exactly what this needs.
 /// </summary>
 public sealed class CodeBeakerExecutionRuntimeProvider(ISessionManager sessionManager) : IExecutionRuntimeProvider
 {

@@ -7,11 +7,12 @@ namespace Momos.Worker.Execution;
 
 /// <summary>
 /// Polls Host for the next Pending inspection request (ADR-0008 pull protocol), runs
-/// the agent loop against it, and reports the outcome back. No execution tool is wired
-/// into the agent yet — Computer Use activation is a separate, undecided "반드시 논의"
-/// item (momos improvement protocol) and static-tier tooling is B-12 — so a run that
-/// reaches the LLM has nothing concrete to inspect. It reports zero findings rather
-/// than fabricate one without evidence, per momos's 근거 기반 엄밀함 non-negotiable.
+/// the agent loop against it, and reports the outcome back. The agent loop now has a
+/// code-execution tool (ADR-0009 decision 3 = B), but nothing yet turns its command
+/// output into findings — Computer Use activation is also
+/// still a separate, undecided "반드시 논의" item (momos improvement protocol). It
+/// reports zero findings rather than fabricate one without evidence, per momos's
+/// 근거 기반 엄밀함 non-negotiable.
 /// </summary>
 public sealed class PullExecutionBackgroundService(
     IHostApiClient hostApiClient,
@@ -48,10 +49,11 @@ public sealed class PullExecutionBackgroundService(
 
     private async Task RunInspectionAsync(ClaimedInspectionRequest request, CancellationToken cancellationToken)
     {
+        IAgentLoop? agentLoop = null;
         try
         {
             var project = await hostApiClient.GetProjectAsync(request.ProjectId, cancellationToken);
-            var agentLoop = await agentLoopFactory.CreateAsync(cancellationToken);
+            agentLoop = await agentLoopFactory.CreateAsync(cancellationToken);
             await agentLoop.RunAsync(BuildPrompt(project, request.Focus), cancellationToken);
 
             await hostApiClient.SubmitReportAsync(request.Id, [], cancellationToken);
@@ -60,6 +62,16 @@ public sealed class PullExecutionBackgroundService(
         {
             logger.LogError(ex, "Inspection run failed for request {RequestId}", request.Id);
             await hostApiClient.SubmitFailureAsync(request.Id, ex.Message, cancellationToken);
+        }
+        finally
+        {
+            // Closes the code-beaker session MomosAgentLoopFactory opened for this
+            // request (ADR-0009 decision 2) regardless of outcome. IAgentLoop itself
+            // has no disposal contract — see SessionScopedAgentLoop.
+            if (agentLoop is IAsyncDisposable disposableAgentLoop)
+            {
+                await disposableAgentLoop.DisposeAsync();
+            }
         }
     }
 

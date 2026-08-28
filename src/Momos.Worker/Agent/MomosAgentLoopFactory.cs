@@ -3,6 +3,8 @@ using IronHive.Agent.ErrorRecovery;
 using IronHive.Agent.Loop;
 using IronHive.Agent.Providers;
 using IronHive.Agent.Tracking;
+using Microsoft.Extensions.AI;
+using Momos.Worker.Execution;
 
 namespace Momos.Worker.Agent;
 
@@ -12,13 +14,20 @@ namespace Momos.Worker.Agent;
 /// (<see cref="IUsageTracker"/>, <see cref="ContextManager"/>,
 /// <see cref="IErrorRecoveryService"/>) via <c>AddIronHiveAgent()</c> but leaves
 /// the top-level factory and chat-client resolution to the consumer.
+///
+/// Also composes the code-execution tool (ADR-0009 decision 3 = B): this factory is
+/// invoked exactly once per inspection request (<see cref="PullExecutionBackgroundService"/>),
+/// so it doubles as the natural place to open the one code-beaker session ADR-0009
+/// decision 2 calls for per request, and to hand the agent loop a native
+/// <see cref="AIFunctionFactory.Create(System.Delegate)"/>-wrapped tool bound to it.
 /// </summary>
 public sealed class MomosAgentLoopFactory(
     IChatClientFactory chatClientFactory,
     IUsageTracker usageTracker,
     ContextManager contextManager,
     IErrorRecoveryService errorRecovery,
-    IToolRetriever toolRetriever) : IAgentLoopFactory
+    IToolRetriever toolRetriever,
+    IExecutionRuntimeProvider executionRuntimeProvider) : IAgentLoopFactory
 {
     public Task<IAgentLoop> CreateAsync(CancellationToken cancellationToken = default) =>
         CreateAsync(new AgentLoopFactoryOptions(), cancellationToken);
@@ -29,14 +38,32 @@ public sealed class MomosAgentLoopFactory(
             ? await chatClientFactory.CreateAsync(options.Model, cancellationToken)
             : await chatClientFactory.CreateAsync(options.Provider, options.Model, cancellationToken);
 
+        // "native" is a placeholder until Worker checks out the target repo and can
+        // detect its language — ADR-0009's "잠금 효과" note
+        // anticipated this gap; NativeProcessRuntime's catch-all environment covers it
+        // for now without inventing a repo-detection result we can't yet observe.
+        var session = await executionRuntimeProvider.CreateSessionAsync(
+            new ExecutionSessionRequest("native"), cancellationToken);
+
+        var codeExecutionTool = AIFunctionFactory.Create(
+            new CodeExecutionTools(executionRuntimeProvider, session).RunCommand);
+
         var agentOptions = new AgentOptions
         {
             SystemPrompt = options.SystemPrompt,
             ModelId = options.Model,
             Temperature = options.Temperature,
             MaxTokens = options.MaxTokens,
+            Tools = [codeExecutionTool],
+            // Momos's tool retriever (KeywordToolRetriever) scores tools against the
+            // prompt's keywords and drops anything under its relevance threshold —
+            // a filter meant for large, discoverable tool sets. The code-execution tool
+            // isn't optional or query-dependent: every inspection needs it, so it must
+            // always survive retrieval regardless of what the prompt happens to say.
+            ToolRetrievalOptions = new ToolRetrievalOptions { AlwaysInclude = [codeExecutionTool.Name] },
         };
 
-        return new AgentLoop(chatClient, agentOptions, usageTracker, contextManager, errorRecovery, toolRetriever);
+        var agentLoop = new AgentLoop(chatClient, agentOptions, usageTracker, contextManager, errorRecovery, toolRetriever);
+        return new SessionScopedAgentLoop(agentLoop, executionRuntimeProvider, session);
     }
 }

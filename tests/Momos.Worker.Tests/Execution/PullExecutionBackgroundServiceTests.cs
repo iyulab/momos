@@ -11,12 +11,15 @@ namespace Momos.Worker.Tests.Execution;
 
 public sealed class PullExecutionBackgroundServiceTests
 {
-    private static IAgentLoopFactory BuildFakeAgentLoopFactory(string reply)
+    private static (IAgentLoopFactory Factory, FakeExecutionRuntimeProvider ExecutionProvider) BuildFakeAgentLoopFactory(string reply)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IChatClientProvider>(new FakeChatClientProvider(reply));
+        var executionProvider = new FakeExecutionRuntimeProvider();
+        services.AddSingleton<IExecutionRuntimeProvider>(executionProvider);
         services.AddIronHiveAgentEngine();
-        return services.BuildServiceProvider().GetRequiredService<IAgentLoopFactory>();
+        var provider = services.BuildServiceProvider();
+        return (provider.GetRequiredService<IAgentLoopFactory>(), executionProvider);
     }
 
     [Fact]
@@ -26,9 +29,10 @@ public sealed class PullExecutionBackgroundServiceTests
         [
             new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), "focus", DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null),
         ]);
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("looked around, nothing conclusive");
         var service = new PullExecutionBackgroundService(
             hostClient,
-            BuildFakeAgentLoopFactory("looked around, nothing conclusive"),
+            agentLoopFactory,
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -39,6 +43,9 @@ public sealed class PullExecutionBackgroundServiceTests
         var report = Assert.Single(hostClient.SubmittedReports);
         Assert.Empty(report.Findings);
         Assert.Empty(hostClient.SubmittedFailures);
+        // ADR-0009 decision 2: the session MomosAgentLoopFactory opened for this
+        // request must close once the run is done, success or not.
+        Assert.Single(executionProvider.ClosedSessions);
     }
 
     [Fact]
@@ -48,9 +55,10 @@ public sealed class PullExecutionBackgroundServiceTests
         var hostClient = new FakeHostApiClient(
             [new ClaimedInspectionRequest(requestId, Guid.NewGuid(), null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
             getProjectThrows: true);
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("unused");
         var service = new PullExecutionBackgroundService(
             hostClient,
-            BuildFakeAgentLoopFactory("unused"),
+            agentLoopFactory,
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -62,6 +70,9 @@ public sealed class PullExecutionBackgroundServiceTests
         var failure = Assert.Single(hostClient.SubmittedFailures);
         Assert.Equal(requestId, failure.Id);
         Assert.Equal("boom", failure.Reason);
+        // GetProjectAsync threw before CreateAsync ever ran — no session was opened
+        // to close, and RunInspectionAsync's finally block must not choke on that.
+        Assert.Empty(executionProvider.ClosedSessions);
     }
 
     [Fact]
@@ -72,7 +83,7 @@ public sealed class PullExecutionBackgroundServiceTests
             claimNextThrowsForFirstNCalls: 2);
         var service = new PullExecutionBackgroundService(
             hostClient,
-            BuildFakeAgentLoopFactory("looked around, nothing conclusive"),
+            BuildFakeAgentLoopFactory("looked around, nothing conclusive").Factory,
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -91,7 +102,7 @@ public sealed class PullExecutionBackgroundServiceTests
         var hostClient = new FakeHostApiClient([]);
         var service = new PullExecutionBackgroundService(
             hostClient,
-            BuildFakeAgentLoopFactory("unused"),
+            BuildFakeAgentLoopFactory("unused").Factory,
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 

@@ -9,11 +9,17 @@ namespace Momos.Worker.Tests.Agent;
 /// </summary>
 public sealed class FakeChatClient(string reply) : IChatClient
 {
+    /// <summary>The <see cref="ChatOptions"/> passed on the most recent call — lets tests
+    /// verify a tool survived whatever the agent loop's <c>IToolRetriever</c> does to it
+    /// before it would reach a real LLM.</summary>
+    public ChatOptions? LastOptions { get; private set; }
+
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        LastOptions = options;
         var response = new ChatResponse(new ChatMessage(ChatRole.Assistant, reply));
         return Task.FromResult(response);
     }

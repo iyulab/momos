@@ -2,6 +2,8 @@ using IronHive.Agent.Loop;
 using IronHive.Agent.Providers;
 using Microsoft.Extensions.DependencyInjection;
 using Momos.Worker;
+using Momos.Worker.Execution;
+using Momos.Worker.Tests.Execution;
 
 namespace Momos.Worker.Tests.Agent;
 
@@ -17,6 +19,7 @@ public class AgentLoopSmokeTests
     {
         var services = new ServiceCollection();
         services.AddSingleton<IChatClientProvider>(new FakeChatClientProvider("hello from momos"));
+        services.AddSingleton<IExecutionRuntimeProvider>(new FakeExecutionRuntimeProvider());
         services.AddIronHiveAgentEngine();
         await using var provider = services.BuildServiceProvider();
 
