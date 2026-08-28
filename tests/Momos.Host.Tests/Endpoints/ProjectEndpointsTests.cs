@@ -33,6 +33,8 @@ public sealed class ProjectEndpointsTests : IClassFixture<MomosHostFactory>
         var response = await _client.GetAsync($"/projects/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        // A RFC 7807 body (not an empty one) so clients can parse every error the same way.
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
 
     [Fact]

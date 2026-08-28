@@ -9,12 +9,12 @@ public static class InspectionRequestEndpoints
 {
     public static IEndpointRouteBuilder MapInspectionRequestEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/projects/{projectId:guid}/inspection-requests", async (Guid projectId, CreateInspectionRequestRequest request, MomosDbContext db) =>
+        app.MapPost("/projects/{projectId:guid}/inspection-requests", async (Guid projectId, CreateInspectionRequestRequest request, MomosDbContext db, CancellationToken cancellationToken) =>
         {
-            var projectExists = await db.Projects.AnyAsync(p => p.Id == projectId);
+            var projectExists = await db.Projects.AnyAsync(p => p.Id == projectId, cancellationToken);
             if (!projectExists)
             {
-                return Results.NotFound();
+                return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Project not found.");
             }
 
             var inspectionRequest = new InspectionRequest
@@ -24,19 +24,25 @@ public static class InspectionRequestEndpoints
             };
 
             db.InspectionRequests.Add(inspectionRequest);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(cancellationToken);
 
             var response = InspectionRequestResponse.FromEntity(inspectionRequest);
             return Results.Created($"/inspection-requests/{inspectionRequest.Id}", response);
-        });
+        })
+            .WithName("CreateInspectionRequest")
+            .Produces<InspectionRequestResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
-        app.MapGet("/inspection-requests/{id:guid}", async (Guid id, MomosDbContext db) =>
+        app.MapGet("/inspection-requests/{id:guid}", async (Guid id, MomosDbContext db, CancellationToken cancellationToken) =>
         {
-            var inspectionRequest = await db.InspectionRequests.FindAsync(id);
+            var inspectionRequest = await db.InspectionRequests.FindAsync([id], cancellationToken);
             return inspectionRequest is null
-                ? Results.NotFound()
+                ? Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Inspection request not found.")
                 : Results.Ok(InspectionRequestResponse.FromEntity(inspectionRequest));
-        });
+        })
+            .WithName("GetInspectionRequest")
+            .Produces<InspectionRequestResponse>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         app.MapPost("/inspection-requests/claim-next", async (MomosDbContext db, CancellationToken cancellationToken) =>
         {
@@ -76,27 +82,37 @@ public static class InspectionRequestEndpoints
                 var inspectionRequest = await db.InspectionRequests.FindAsync([candidateId], cancellationToken);
                 return Results.Ok(InspectionRequestResponse.FromEntity(inspectionRequest!));
             }
-        });
+        })
+            .WithName("ClaimNextInspectionRequest")
+            .Produces<InspectionRequestResponse>()
+            .Produces(StatusCodes.Status204NoContent);
 
-        app.MapPost("/inspection-requests/{id:guid}/fail", async (Guid id, FailInspectionRequestRequest request, MomosDbContext db) =>
+        app.MapPost("/inspection-requests/{id:guid}/fail", async (Guid id, FailInspectionRequestRequest request, MomosDbContext db, CancellationToken cancellationToken) =>
         {
-            var inspectionRequest = await db.InspectionRequests.FindAsync(id);
+            var inspectionRequest = await db.InspectionRequests.FindAsync([id], cancellationToken);
             if (inspectionRequest is null)
             {
-                return Results.NotFound();
+                return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Inspection request not found.");
             }
 
             if (inspectionRequest.Status != InspectionRequestStatus.Running)
             {
-                return Results.Conflict($"Cannot fail an inspection request in status '{inspectionRequest.Status}'.");
+                return Results.Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Invalid status transition.",
+                    detail: $"Cannot fail an inspection request in status '{inspectionRequest.Status}'.");
             }
 
             inspectionRequest.Status = InspectionRequestStatus.Failed;
             inspectionRequest.FailureReason = request.Reason;
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(InspectionRequestResponse.FromEntity(inspectionRequest));
-        });
+        })
+            .WithName("FailInspectionRequest")
+            .Produces<InspectionRequestResponse>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return app;
     }

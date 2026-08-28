@@ -5,6 +5,7 @@ using Momos.Host.Endpoints;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
 builder.Services.AddDbContext<MomosDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("MomosDb")
         ?? throw new InvalidOperationException("ConnectionStrings:MomosDb is required.")));

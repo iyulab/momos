@@ -126,6 +126,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
             $"/inspection-requests/{created!.Id}/fail", new FailInspectionRequestRequest("boom"));
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
 
     [Fact]
