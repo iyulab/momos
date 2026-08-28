@@ -17,9 +17,6 @@ public sealed class CodeExecutionTools(
     ExecutionSessionHandle session,
     ILogger<CodeExecutionTools> logger)
 {
-    /// <summary>Info-level log cap per command — enough to judge what happened without flooding the log.</summary>
-    private const int LogPreviewLength = 500;
-
     [Description("Run a shell command inside the sandboxed inspection workspace and return its output.")]
     public async Task<string> RunCommand(
         [Description("The command or executable name, e.g. \"dotnet\" or \"ls\".")] string command,
@@ -36,22 +33,19 @@ public sealed class CodeExecutionTools(
             new ExecutionCommand(command, args ?? [], workingDirectory),
             cancellationToken);
 
+        // Deliberately no output/error preview here — the inspected target is untrusted
+        // and its command output can carry secrets (.env contents, credentials) that must
+        // not land in the Worker's own logs. The audit trail this log line provides is
+        // "what ran and whether it succeeded"; "what it showed" is a separate concern
+        // that belongs to a finding's Evidence field (ReportFinding), which the agent
+        // populates deliberately from output it decided was relevant — not everything
+        // that scrolled past.
         logger.LogInformation(
-            "RunCommand result: {Command} success={Success} ({DurationMs}ms) — {Preview}",
-            command, result.Success, result.DurationMs, Truncate(result.Success ? result.Output : result.Error));
+            "RunCommand result: {Command} success={Success} ({DurationMs}ms)",
+            command, result.Success, result.DurationMs);
 
         return result.Success
             ? result.Output ?? string.Empty
             : $"Command failed after {result.DurationMs}ms: {result.Error}";
-    }
-
-    private static string Truncate(string? text)
-    {
-        if (string.IsNullOrEmpty(text))
-        {
-            return "(empty)";
-        }
-
-        return text.Length <= LogPreviewLength ? text : text[..LogPreviewLength] + "…";
     }
 }

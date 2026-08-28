@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Momos.Worker.Execution;
 
@@ -6,6 +7,53 @@ namespace Momos.Worker.Tests.Execution;
 
 public class CodeExecutionToolsTests
 {
+    /// <summary>Captures each formatted log message so a test can assert on what did (or did not) reach the log.</summary>
+    private sealed class RecordingLogger : ILogger<CodeExecutionTools>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
+    }
+
+    [Fact]
+    public async Task RunCommand_Success_DoesNotLogCommandOutput()
+    {
+        // HD-05: the inspected target is untrusted and its output can carry secrets
+        // (.env contents, credentials) — the Worker's own log must never carry a preview
+        // of it. "What ran" stays auditable; "what it showed" is the agent's call via
+        // ReportFinding's Evidence field, not something every RunCommand call broadcasts.
+        var provider = new FakeExecutionRuntimeProvider
+        {
+            NextResult = new ExecutionCommandResult(true, "SECRET_API_KEY=sk-abcdef123456", null, 42),
+        };
+        var logger = new RecordingLogger();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), logger);
+
+        await tools.RunCommand("cat", [".env"]);
+
+        Assert.All(logger.Messages, message => Assert.DoesNotContain("SECRET_API_KEY", message));
+        Assert.Contains(logger.Messages, message => message.Contains("cat") && message.Contains("success=True"));
+    }
+
+    [Fact]
+    public async Task RunCommand_Failure_DoesNotLogCommandError()
+    {
+        var provider = new FakeExecutionRuntimeProvider
+        {
+            NextResult = new ExecutionCommandResult(false, null, "printenv: SECRET_TOKEN=xyz", 5),
+        };
+        var logger = new RecordingLogger();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), logger);
+
+        await tools.RunCommand("printenv");
+
+        Assert.All(logger.Messages, message => Assert.DoesNotContain("SECRET_TOKEN", message));
+    }
+
     [Fact]
     public async Task RunCommand_Success_ReturnsOutput()
     {

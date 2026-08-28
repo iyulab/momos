@@ -26,7 +26,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var project = await projectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
 
         var requestResponse = await _client.PostAsJsonAsync(
-            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null));
+            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
         var inspectionRequest = await requestResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         var response = await _client.GetAsync($"/inspection-requests/{inspectionRequest!.Id}/report");
@@ -42,7 +42,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var project = await projectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
 
         var requestResponse = await _client.PostAsJsonAsync(
-            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null));
+            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
         var inspectionRequest = await requestResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         // Seed directly through the DbContext (bypassing the Running-status precondition
@@ -78,7 +78,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var project = await projectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
 
         var requestResponse = await _client.PostAsJsonAsync(
-            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null));
+            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
         var inspectionRequest = await requestResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         // Insert deliberately out of intended order — SQLite/EF give no ordering
@@ -130,7 +130,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
             "/projects", new CreateProjectRequest("acme", null, null, "purpose", "vision", "scope"));
         var project = await projectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
         await _client.PostAsJsonAsync(
-            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null));
+            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
         var claimed = await (await _client.PostAsync("/inspection-requests/claim-next", content: null))
             .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
@@ -166,7 +166,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
             "/projects", new CreateProjectRequest("acme", null, null, "purpose", "vision", "scope"));
         var project = await projectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
         var requestResponse = await _client.PostAsJsonAsync(
-            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null));
+            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
         var inspectionRequest = await requestResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         var response = await _client.PostAsJsonAsync(
@@ -182,7 +182,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
             "/projects", new CreateProjectRequest("acme", null, null, "purpose", "vision", "scope"));
         var project = await projectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
         await _client.PostAsJsonAsync(
-            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null));
+            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
         var claimed = await (await _client.PostAsync("/inspection-requests/claim-next", content: null))
             .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 

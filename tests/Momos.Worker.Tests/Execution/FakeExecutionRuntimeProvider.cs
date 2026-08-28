@@ -7,6 +7,7 @@ public sealed class FakeExecutionRuntimeProvider : IExecutionRuntimeProvider
 {
     public List<ExecutionSessionRequest> CreatedSessions { get; } = [];
     public List<ExecutionSessionHandle> ClosedSessions { get; } = [];
+    public List<(ExecutionSessionHandle Session, ExecutionCommand Command)> ExecutedCommands { get; } = [];
     public (ExecutionSessionHandle Session, ExecutionCommand Command)? LastExecuted { get; private set; }
     public ExecutionCommandResult NextResult { get; set; } = new(true, "ok", null, 1);
 
@@ -21,6 +22,7 @@ public sealed class FakeExecutionRuntimeProvider : IExecutionRuntimeProvider
         ExecutionSessionHandle session, ExecutionCommand command, CancellationToken cancellationToken = default)
     {
         LastExecuted = (session, command);
+        ExecutedCommands.Add((session, command));
         return Task.FromResult(NextResult);
     }
 

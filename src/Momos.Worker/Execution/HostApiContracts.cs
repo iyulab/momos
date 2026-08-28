@@ -19,6 +19,7 @@ public sealed record ClaimedInspectionRequest(
     Guid Id,
     Guid ProjectId,
     string? Focus,
+    string? CommitRef,
     DateTimeOffset SubmittedAt,
     InspectionRequestStatus Status,
     string? FailureReason);

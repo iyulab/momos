@@ -11,16 +11,28 @@ public static class InspectionRequestEndpoints
     {
         app.MapPost("/projects/{projectId:guid}/inspection-requests", async (Guid projectId, CreateInspectionRequestRequest request, MomosDbContext db, CancellationToken cancellationToken) =>
         {
-            var projectExists = await db.Projects.AnyAsync(p => p.Id == projectId, cancellationToken);
-            if (!projectExists)
+            var project = await db.Projects.FindAsync([projectId], cancellationToken);
+            if (project is null)
             {
                 return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Project not found.");
+            }
+
+            if (!string.IsNullOrEmpty(request.CommitRef) && string.IsNullOrEmpty(project.RepositoryUrl))
+            {
+                // A CommitRef only means something once the Worker clones RepositoryUrl and
+                // checks it out (PullExecutionBackgroundService) — without a RepositoryUrl
+                // there's nothing to check the ref out of, so this is a caller mistake to
+                // reject now rather than a value to silently ignore at run time.
+                return Results.Problem(
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "CommitRef requires the project to have a RepositoryUrl.");
             }
 
             var inspectionRequest = new InspectionRequest
             {
                 ProjectId = projectId,
                 Focus = request.Focus,
+                CommitRef = request.CommitRef,
             };
 
             db.InspectionRequests.Add(inspectionRequest);
@@ -31,7 +43,8 @@ public static class InspectionRequestEndpoints
         })
             .WithName("CreateInspectionRequest")
             .Produces<InspectionRequestResponse>(StatusCodes.Status201Created)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
 
         app.MapGet("/inspection-requests/{id:guid}", async (Guid id, MomosDbContext db, CancellationToken cancellationToken) =>
         {

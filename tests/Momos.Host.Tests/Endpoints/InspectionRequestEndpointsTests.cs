@@ -11,9 +11,9 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
 
     public InspectionRequestEndpointsTests(MomosHostFactory factory) => _client = factory.CreateClient();
 
-    private async Task<Guid> CreateProjectAsync()
+    private async Task<Guid> CreateProjectAsync(string? repositoryUrl = null)
     {
-        var create = new CreateProjectRequest("acme", null, null, "purpose", "vision", "scope");
+        var create = new CreateProjectRequest("acme", repositoryUrl, null, "purpose", "vision", "scope");
         var response = await _client.PostAsJsonAsync("/projects", create);
         var project = await response.Content.ReadFromJsonAsync<ProjectResponse>();
         return project!.Id;
@@ -25,7 +25,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
         var projectId = await CreateProjectAsync();
 
         var postResponse = await _client.PostAsJsonAsync(
-            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest("focus on login flow"));
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest("focus on login flow", null));
         Assert.Equal(HttpStatusCode.Created, postResponse.StatusCode);
         var created = await postResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.NotNull(created);
@@ -39,10 +39,37 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
     }
 
     [Fact]
+    public async Task PostWithCommitRef_RoundTripsIt()
+    {
+        var projectId = await CreateProjectAsync(repositoryUrl: "https://example.invalid/acme/repo.git");
+
+        var postResponse = await _client.PostAsJsonAsync(
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, "abc123^"));
+
+        var created = await postResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
+        Assert.Equal("abc123^", created!.CommitRef);
+
+        var fetched = await (await _client.GetAsync($"/inspection-requests/{created.Id}"))
+            .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
+        Assert.Equal("abc123^", fetched!.CommitRef);
+    }
+
+    [Fact]
+    public async Task PostWithCommitRefButNoRepositoryUrl_Returns400()
+    {
+        var projectId = await CreateProjectAsync();
+
+        var response = await _client.PostAsJsonAsync(
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, "abc123^"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Post_WithUnknownProjectId_Returns404()
     {
         var response = await _client.PostAsJsonAsync(
-            $"/projects/{Guid.NewGuid()}/inspection-requests", new CreateInspectionRequestRequest(null));
+            $"/projects/{Guid.NewGuid()}/inspection-requests", new CreateInspectionRequestRequest(null, null));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -80,7 +107,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
     {
         var projectId = await CreateProjectAsync();
         var created = await (await _client.PostAsJsonAsync(
-            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null)))
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null)))
             .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         var response = await _client.PostAsync("/inspection-requests/claim-next", content: null);
@@ -96,7 +123,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
     {
         await DrainClaimQueueAsync();
         var projectId = await CreateProjectAsync();
-        await _client.PostAsJsonAsync($"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null));
+        await _client.PostAsJsonAsync($"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null));
 
         var first = await _client.PostAsync("/inspection-requests/claim-next", content: null);
         var second = await _client.PostAsync("/inspection-requests/claim-next", content: null);
@@ -119,7 +146,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
     {
         var projectId = await CreateProjectAsync();
         var created = await (await _client.PostAsJsonAsync(
-            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null)))
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null)))
             .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         var response = await _client.PostAsJsonAsync(
@@ -133,7 +160,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
     public async Task Fail_AfterClaim_TransitionsToFailedWithReason()
     {
         var projectId = await CreateProjectAsync();
-        await _client.PostAsJsonAsync($"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null));
+        await _client.PostAsJsonAsync($"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null));
         var claimed = await (await _client.PostAsync("/inspection-requests/claim-next", content: null))
             .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 

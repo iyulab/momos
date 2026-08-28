@@ -33,7 +33,7 @@ public sealed class PullExecutionBackgroundServiceTests
     {
         var hostClient = new FakeHostApiClient(
         [
-            new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), "focus", DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null),
+            new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), "focus", null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null),
         ]);
         var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("looked around, nothing conclusive");
         var service = new PullExecutionBackgroundService(
@@ -60,7 +60,7 @@ public sealed class PullExecutionBackgroundServiceTests
     {
         var requestId = Guid.NewGuid();
         var hostClient = new FakeHostApiClient(
-            [new ClaimedInspectionRequest(requestId, Guid.NewGuid(), null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
+            [new ClaimedInspectionRequest(requestId, Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
             getProjectThrows: true);
         var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("unused");
         var service = new PullExecutionBackgroundService(
@@ -87,7 +87,7 @@ public sealed class PullExecutionBackgroundServiceTests
     public async Task ExecuteAsync_WhenClaimNextThrows_SurvivesAndClaimsOnTheNextPoll()
     {
         var hostClient = new FakeHostApiClient(
-            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
             claimNextThrowsForFirstNCalls: 2);
         var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("looked around, nothing conclusive");
         var service = new PullExecutionBackgroundService(
@@ -110,7 +110,7 @@ public sealed class PullExecutionBackgroundServiceTests
     public async Task ExecuteAsync_WithRepositoryUrl_ClonesItBeforeRunningTheAgentLoop()
     {
         var hostClient = new FakeHostApiClient(
-            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
             repositoryUrl: "https://example.invalid/acme/repo.git");
         var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("looked around, nothing conclusive");
         var service = new PullExecutionBackgroundService(
@@ -131,10 +131,62 @@ public sealed class PullExecutionBackgroundServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WithRepositoryUrlAndCommitRef_ChecksOutTheCommitAfterCloning()
+    {
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, "abc123def^", DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
+            repositoryUrl: "https://example.invalid/acme/repo.git");
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("looked around, nothing conclusive");
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Equal(2, executionProvider.ExecutedCommands.Count);
+        var clone = executionProvider.ExecutedCommands[0].Command;
+        Assert.Equal(["clone", "--", "https://example.invalid/acme/repo.git", "."], clone.Args);
+        var checkout = executionProvider.ExecutedCommands[1].Command;
+        Assert.Equal("git", checkout.Name);
+        Assert.Equal(["checkout", "--detach", "abc123def^"], checkout.Args);
+        Assert.Single(hostClient.SubmittedReports);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithCommitRefStartingWithDash_SubmitsFailureWithoutExecutingCheckout()
+    {
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, "--upload-pack=evil", DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
+            repositoryUrl: "https://example.invalid/acme/repo.git");
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("unused");
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        // Only the clone ran — the malformed ref was rejected before git ever saw it.
+        Assert.Single(executionProvider.ExecutedCommands);
+        Assert.Empty(hostClient.SubmittedReports);
+        var failure = Assert.Single(hostClient.SubmittedFailures);
+        Assert.Contains("Invalid commit ref", failure.Reason);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WithNoRepositoryUrl_SkipsCloneAndStillRuns()
     {
         var hostClient = new FakeHostApiClient(
-            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)]);
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)]);
         var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("looked around, nothing conclusive");
         var service = new PullExecutionBackgroundService(
             hostClient,
@@ -155,7 +207,7 @@ public sealed class PullExecutionBackgroundServiceTests
     public async Task ExecuteAsync_WhenCloneFails_SubmitsFailureAndNeverRunsTheAgentLoop()
     {
         var hostClient = new FakeHostApiClient(
-            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
             repositoryUrl: "https://example.invalid/acme/private-repo.git");
         var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("unused");
         executionProvider.NextResult = new ExecutionCommandResult(false, null, "Authentication failed", 50);
@@ -182,7 +234,7 @@ public sealed class PullExecutionBackgroundServiceTests
     public async Task ExecuteAsync_WhenTheAgentReportsAFinding_SubmitsItInTheReport()
     {
         var hostClient = new FakeHostApiClient(
-            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)]);
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)]);
         var toolCall = new FunctionCallContent(
             "call-1",
             nameof(FindingReportingTools.ReportFinding),

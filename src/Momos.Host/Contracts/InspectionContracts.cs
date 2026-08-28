@@ -2,12 +2,13 @@ using Momos.Host.Domain;
 
 namespace Momos.Host.Contracts;
 
-public sealed record CreateInspectionRequestRequest(string? Focus);
+public sealed record CreateInspectionRequestRequest(string? Focus, string? CommitRef);
 
 public sealed record InspectionRequestResponse(
     Guid Id,
     Guid ProjectId,
     string? Focus,
+    string? CommitRef,
     DateTimeOffset SubmittedAt,
     InspectionRequestStatus Status,
     string? FailureReason)
@@ -16,6 +17,7 @@ public sealed record InspectionRequestResponse(
         request.Id,
         request.ProjectId,
         request.Focus,
+        request.CommitRef,
         request.SubmittedAt,
         request.Status,
         request.FailureReason);

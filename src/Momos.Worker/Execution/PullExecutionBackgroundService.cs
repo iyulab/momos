@@ -56,8 +56,8 @@ public sealed class PullExecutionBackgroundService(
         {
             var project = await hostApiClient.GetProjectAsync(request.ProjectId, cancellationToken);
             logger.LogInformation(
-                "Starting inspection for request {RequestId}, project {ProjectName} ({ProjectId})",
-                request.Id, project.Name, request.ProjectId);
+                "Starting inspection for request {RequestId}, project {ProjectName} ({ProjectId}), commitRef={CommitRef}",
+                request.Id, project.Name, request.ProjectId, request.CommitRef ?? "(default branch)");
 
             // Opened here, not by the agent-loop factory (ISessionAwareAgentLoopFactory)
             // — the repo has to be checked out into the session's workspace before the
@@ -75,6 +75,26 @@ public sealed class PullExecutionBackgroundService(
                 if (!clone.Success)
                 {
                     throw new InvalidOperationException($"Failed to check out {project.RepositoryUrl}: {clone.Error}");
+                }
+
+                if (!string.IsNullOrEmpty(request.CommitRef))
+                {
+                    // "--detach" (not "--") pins the following token as the ref to switch HEAD
+                    // to — checkout's own "--" instead means "the rest are pathspecs", which
+                    // would restore a path named after the ref rather than move HEAD.
+                    // Reject a leading "-" up front so a CommitRef value cannot be smuggled in
+                    // as a git flag (same defensive posture as the clone call above).
+                    if (request.CommitRef.StartsWith('-'))
+                    {
+                        throw new InvalidOperationException($"Invalid commit ref: {request.CommitRef}");
+                    }
+
+                    var checkout = await executionRuntimeProvider.ExecuteAsync(
+                        session, new ExecutionCommand("git", ["checkout", "--detach", request.CommitRef]), cancellationToken);
+                    if (!checkout.Success)
+                    {
+                        throw new InvalidOperationException($"Failed to check out commit {request.CommitRef}: {checkout.Error}");
+                    }
                 }
             }
             // No RepositoryUrl declared — an honest "nothing to check out" case, not a

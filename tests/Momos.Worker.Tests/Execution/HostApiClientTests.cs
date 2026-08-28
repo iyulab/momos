@@ -43,7 +43,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         var httpClient = _factory.CreateClient();
         var projectId = await CreateProjectAsync();
         await httpClient.PostAsJsonAsync(
-            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest("focus on login"));
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest("focus on login", null));
 
         var claimed = await _client.ClaimNextAsync(CancellationToken.None);
         Assert.NotNull(claimed);
@@ -67,7 +67,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         var projectId = await CreateProjectAsync();
         var httpClient = _factory.CreateClient();
         await httpClient.PostAsJsonAsync(
-            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null));
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null));
 
         var claimed = await _client.ClaimNextAsync(CancellationToken.None);
         Assert.NotNull(claimed);
