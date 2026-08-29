@@ -11,7 +11,8 @@ public sealed record InspectionRequestResponse(
     string? CommitRef,
     DateTimeOffset SubmittedAt,
     InspectionRequestStatus Status,
-    string? FailureReason)
+    string? FailureReason,
+    DateTimeOffset? ClaimedAt)
 {
     public static InspectionRequestResponse FromEntity(InspectionRequest request) => new(
         request.Id,
@@ -20,7 +21,8 @@ public sealed record InspectionRequestResponse(
         request.CommitRef,
         request.SubmittedAt,
         request.Status,
-        request.FailureReason);
+        request.FailureReason,
+        request.ClaimedAt);
 }
 
 public sealed record FindingResponse(Guid Id, FindingCategory Category, string Description, string Evidence)

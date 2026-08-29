@@ -11,8 +11,17 @@ public sealed class MomosHostFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"momos-host-test-{Guid.NewGuid():N}.db");
 
+    /// <summary>
+    /// Overridable so a reclaim test can shrink it far below the production default and
+    /// observe a claim going stale within a normal test's lifetime, instead of waiting out
+    /// the real timeout.
+    /// </summary>
+    public TimeSpan InspectionClaimReclaimTimeout { get; set; } = TimeSpan.FromMinutes(30);
+
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
-        builder.UseSetting("ConnectionStrings:MomosDb", $"Data Source={_dbPath}");
+        builder
+            .UseSetting("ConnectionStrings:MomosDb", $"Data Source={_dbPath}")
+            .UseSetting("Momos:Host:InspectionClaim:ReclaimTimeout", InspectionClaimReclaimTimeout.ToString());
 
     protected override void Dispose(bool disposing)
     {

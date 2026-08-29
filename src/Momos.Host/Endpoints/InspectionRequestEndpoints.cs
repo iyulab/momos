@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Momos.Host.Contracts;
 using Momos.Host.Data;
 using Momos.Host.Domain;
@@ -57,34 +58,55 @@ public static class InspectionRequestEndpoints
             .Produces<InspectionRequestResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        app.MapPost("/inspection-requests/claim-next", async (MomosDbContext db, CancellationToken cancellationToken) =>
+        app.MapPost("/inspection-requests/claim-next", async (
+            MomosDbContext db, IOptions<InspectionClaimOptions> claimOptions, CancellationToken cancellationToken) =>
         {
-            // Conditional ExecuteUpdate (not a read-then-write) so the Pending check and the
-            // transition to Running happen as one statement — SQLite serializes writes, so a
-            // second concurrent claim against the same row affects zero rows instead of
+            // A request is eligible when it's Pending, or when it's Running but was claimed
+            // before the reclaim cutoff — its worker is presumed gone. There's no heartbeat to
+            // tell "still running, just slow" from "dead" (see InspectionClaimOptions), so this
+            // cutoff is the only signal; a request reclaimed too early can end up running twice,
+            // but report/fail's Running-only guard stops the loser from corrupting the result.
+            var reclaimCutoff = DateTimeOffset.UtcNow - claimOptions.Value.ReclaimTimeout;
+
+            // Conditional ExecuteUpdate (not a read-then-write) so the eligibility recheck and
+            // the transition to Running happen as one statement — SQLite serializes writes, so
+            // a second concurrent claim against the same row affects zero rows instead of
             // double-claiming it. If that happens, retry against whatever is left.
             while (true)
             {
-                // SQLite's EF Core provider refuses to translate ORDER BY over DateTimeOffset
-                // (offset-aware string comparison isn't guaranteed instant-correct), so the
-                // oldest-first pick happens client-side over the (small, Pending-only) id+
-                // timestamp projection rather than in SQL.
-                var pending = await db.InspectionRequests
-                    .Where(r => r.Status == InspectionRequestStatus.Pending)
-                    .Select(r => new { r.Id, r.SubmittedAt })
+                // SQLite's EF Core provider refuses to translate ordering/range comparisons
+                // ('<', ORDER BY) over DateTimeOffset (offset-aware string comparison isn't
+                // guaranteed instant-correct) — only exact equality is safe in SQL. So both the
+                // oldest-first pick and the reclaim-eligibility check happen client-side over a
+                // (small) Pending+Running projection rather than in SQL.
+                var candidates = await db.InspectionRequests
+                    .Where(r => r.Status == InspectionRequestStatus.Pending || r.Status == InspectionRequestStatus.Running)
+                    .Select(r => new { r.Id, r.SubmittedAt, r.Status, r.ClaimedAt })
                     .ToListAsync(cancellationToken);
 
-                if (pending.Count == 0)
+                var candidate = candidates
+                    .Where(r => r.Status == InspectionRequestStatus.Pending
+                        || (r.Status == InspectionRequestStatus.Running && r.ClaimedAt < reclaimCutoff))
+                    .OrderBy(r => r.SubmittedAt)
+                    .FirstOrDefault();
+
+                if (candidate is null)
                 {
                     return Results.NoContent();
                 }
 
-                var candidateId = pending.OrderBy(r => r.SubmittedAt).First().Id;
+                var claimedAt = DateTimeOffset.UtcNow;
 
+                // Guards on the exact (Status, ClaimedAt) observed above — a reclaim leaves
+                // Status at Running (unlike the one-way Pending→Running transition), so Status
+                // alone isn't a strong enough guard here; this is a compare-and-swap on both so
+                // a second concurrent claim of the same reclaim-eligible row affects zero rows.
                 var claimed = await db.InspectionRequests
-                    .Where(r => r.Id == candidateId && r.Status == InspectionRequestStatus.Pending)
+                    .Where(r => r.Id == candidate.Id && r.Status == candidate.Status && r.ClaimedAt == candidate.ClaimedAt)
                     .ExecuteUpdateAsync(
-                        setters => setters.SetProperty(r => r.Status, InspectionRequestStatus.Running),
+                        setters => setters
+                            .SetProperty(r => r.Status, InspectionRequestStatus.Running)
+                            .SetProperty(r => r.ClaimedAt, claimedAt),
                         cancellationToken);
 
                 if (claimed == 0)
@@ -92,7 +114,7 @@ public static class InspectionRequestEndpoints
                     continue;
                 }
 
-                var inspectionRequest = await db.InspectionRequests.FindAsync([candidateId], cancellationToken);
+                var inspectionRequest = await db.InspectionRequests.FindAsync([candidate.Id], cancellationToken);
                 return Results.Ok(InspectionRequestResponse.FromEntity(inspectionRequest!));
             }
         })

@@ -116,6 +116,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
         var claimed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(created!.Id, claimed!.Id);
         Assert.Equal(InspectionRequestStatus.Running, claimed.Status);
+        Assert.NotNull(claimed.ClaimedAt);
     }
 
     [Fact]

@@ -17,6 +17,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddDbContext<MomosDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("MomosDb")
         ?? throw new InvalidOperationException("ConnectionStrings:MomosDb is required.")));
+builder.Services
+    .AddOptions<InspectionClaimOptions>()
+    .Bind(builder.Configuration.GetSection(InspectionClaimOptions.SectionName));
 
 var app = builder.Build();
 

@@ -29,4 +29,12 @@ public sealed class InspectionRequest
     public DateTimeOffset SubmittedAt { get; init; } = DateTimeOffset.UtcNow;
     public InspectionRequestStatus Status { get; set; } = InspectionRequestStatus.Pending;
     public string? FailureReason { get; set; }
+
+    /// <summary>
+    /// When claim-next last transitioned this request to <see cref="InspectionRequestStatus.Running"/>.
+    /// Null until first claimed. Used to reclaim a request whose worker went away mid-run (no
+    /// heartbeat exists to signal "still alive but slow" vs. "dead" — see claim-next's
+    /// ReclaimTimeout) — not a general last-activity timestamp.
+    /// </summary>
+    public DateTimeOffset? ClaimedAt { get; set; }
 }
