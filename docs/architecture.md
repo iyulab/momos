@@ -12,7 +12,7 @@
 
 ## 연결 방향
 
-Worker가 Host에 접속한다(pull). Host가 Worker에 직접 접속하지 않는다. 이 방향 덕분에 방화벽 뒤 사내망에 있는 실행 환경도 문제없이 연결된다.
+Worker가 Host에 접속한다(pull). Host가 Worker에 직접 접속하지 않는다. 이 방향 덕분에 방화벽 뒤 사내망에 있는 실행 환경도 문제없이 연결된다. Worker 전용 엔드포인트(claim/report/fail)는 공유 키 기반 인증으로 보호된다 — 설정은 [README](../README.md) 참고.
 
 ## 데이터 소유권
 

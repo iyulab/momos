@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using CodeBeaker.Core.Interfaces;
 using CodeBeaker.Core.Sessions;
 using CodeBeaker.Core.Storage;
@@ -66,6 +67,7 @@ public static class ServiceCollectionExtensions
         {
             var hostOptions = sp.GetRequiredService<IOptions<HostClientOptions>>().Value;
             client.BaseAddress = new Uri(hostOptions.BaseUrl);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", hostOptions.ApiKey);
         });
         services.AddHostedService<PullExecutionBackgroundService>();
 

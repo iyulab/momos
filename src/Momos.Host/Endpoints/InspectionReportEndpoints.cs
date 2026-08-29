@@ -60,9 +60,11 @@ public static class InspectionReportEndpoints
             return Results.Created($"/inspection-requests/{id}/report", InspectionReportResponse.FromEntity(report));
         })
             .WithName("SubmitInspectionReport")
+            .AddEndpointFilter<WorkerApiKeyFilter>()
             .Produces<InspectionReportResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         return app;
     }

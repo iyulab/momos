@@ -17,7 +17,7 @@ public sealed class InspectionRequestReclaimTests : IDisposable
     private readonly MomosHostFactory _factory = new() { InspectionClaimReclaimTimeout = TimeSpan.FromMilliseconds(100) };
     private readonly HttpClient _client;
 
-    public InspectionRequestReclaimTests() => _client = _factory.CreateClient();
+    public InspectionRequestReclaimTests() => _client = _factory.CreateAuthorizedClient();
 
     public void Dispose() => _factory.Dispose();
 

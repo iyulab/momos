@@ -15,7 +15,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
     public InspectionReportEndpointsTests(MomosHostFactory factory)
     {
         _factory = factory;
-        _client = factory.CreateClient();
+        _client = factory.CreateAuthorizedClient();
     }
 
     [Fact]

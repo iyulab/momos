@@ -20,6 +20,11 @@ builder.Services.AddDbContext<MomosDbContext>(options =>
 builder.Services
     .AddOptions<InspectionClaimOptions>()
     .Bind(builder.Configuration.GetSection(InspectionClaimOptions.SectionName));
+builder.Services
+    .AddOptions<WorkerAuthOptions>()
+    .Bind(builder.Configuration.GetSection(WorkerAuthOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
 var app = builder.Build();
 

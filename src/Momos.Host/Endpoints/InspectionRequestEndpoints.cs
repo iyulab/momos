@@ -119,8 +119,10 @@ public static class InspectionRequestEndpoints
             }
         })
             .WithName("ClaimNextInspectionRequest")
+            .AddEndpointFilter<WorkerApiKeyFilter>()
             .Produces<InspectionRequestResponse>()
-            .Produces(StatusCodes.Status204NoContent);
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         app.MapPost("/inspection-requests/{id:guid}/fail", async (Guid id, FailInspectionRequestRequest request, MomosDbContext db, CancellationToken cancellationToken) =>
         {
@@ -145,9 +147,11 @@ public static class InspectionRequestEndpoints
             return Results.Ok(InspectionRequestResponse.FromEntity(inspectionRequest));
         })
             .WithName("FailInspectionRequest")
+            .AddEndpointFilter<WorkerApiKeyFilter>()
             .Produces<InspectionRequestResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         return app;
     }

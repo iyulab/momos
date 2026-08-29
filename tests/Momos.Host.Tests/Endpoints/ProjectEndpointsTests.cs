@@ -8,7 +8,7 @@ public sealed class ProjectEndpointsTests : IClassFixture<MomosHostFactory>
 {
     private readonly HttpClient _client;
 
-    public ProjectEndpointsTests(MomosHostFactory factory) => _client = factory.CreateClient();
+    public ProjectEndpointsTests(MomosHostFactory factory) => _client = factory.CreateAuthorizedClient();
 
     [Fact]
     public async Task PostThenGet_RoundTripsAProject()

@@ -9,7 +9,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
 {
     private readonly HttpClient _client;
 
-    public InspectionRequestEndpointsTests(MomosHostFactory factory) => _client = factory.CreateClient();
+    public InspectionRequestEndpointsTests(MomosHostFactory factory) => _client = factory.CreateAuthorizedClient();
 
     private async Task<Guid> CreateProjectAsync(string? repositoryUrl = null)
     {

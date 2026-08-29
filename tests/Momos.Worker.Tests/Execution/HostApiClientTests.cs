@@ -12,12 +12,12 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
     public HostApiClientTests(TestMomosHostFactory factory)
     {
         _factory = factory;
-        _client = new HostApiClient(factory.CreateClient());
+        _client = new HostApiClient(factory.CreateAuthorizedClient());
     }
 
     private async Task<Guid> CreateProjectAsync()
     {
-        var httpClient = _factory.CreateClient();
+        var httpClient = _factory.CreateAuthorizedClient();
         var response = await httpClient.PostAsJsonAsync(
             "/projects", new CreateProjectRequest("acme", null, null, "purpose", "vision", "scope"));
         var project = await response.Content.ReadFromJsonAsync<ProjectResponse>();
@@ -40,7 +40,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
     [Fact]
     public async Task FullRoundTrip_ClaimGetProjectSubmitReport_MatchesHostState()
     {
-        var httpClient = _factory.CreateClient();
+        var httpClient = _factory.CreateAuthorizedClient();
         var projectId = await CreateProjectAsync();
         await httpClient.PostAsJsonAsync(
             $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest("focus on login", null));
@@ -65,7 +65,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
     public async Task SubmitFailureAsync_TransitionsRequestToFailedWithReason()
     {
         var projectId = await CreateProjectAsync();
-        var httpClient = _factory.CreateClient();
+        var httpClient = _factory.CreateAuthorizedClient();
         await httpClient.PostAsJsonAsync(
             $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null));
 
