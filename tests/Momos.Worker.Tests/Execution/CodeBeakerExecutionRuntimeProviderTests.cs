@@ -40,8 +40,8 @@ public class CodeBeakerExecutionRuntimeProviderTests
     [Fact]
     public async Task CreateSessionAsync_RequestsTheSecurityRuntimePreference()
     {
-        // HD-07: a real inspection run on the unsandboxed native runtime killed every
-        // dotnet.exe process on a shared host, this session's own Worker included.
+        // An unsandboxed native runtime can run agent-directed commands broad enough to
+        // affect unrelated processes on a shared host, not just the code under inspection.
         // RuntimePreference.Security picks the most isolated *available* runtime (e.g.
         // Docker) instead of code-beaker's default Balanced preference, which weighs
         // startup/memory so heavily that a near-zero-overhead runtime wins regardless of
@@ -58,10 +58,10 @@ public class CodeBeakerExecutionRuntimeProviderTests
     [Fact]
     public async Task CreateSessionAsync_WhenNativeRuntimeIsSelected_ThrowsAndClosesTheSession()
     {
-        // HD-08: two incidents (cycle-25, cycle-27) happened on this exact fallback —
-        // an isolated runtime (e.g. Docker) unavailable, code-beaker falling back to the
-        // unsandboxed NativeProcessRuntime. HD-07's response was warn-only; this refuses
-        // the fallback outright instead.
+        // An isolated runtime (e.g. Docker) can be unavailable, leaving code-beaker to
+        // fall back to the unsandboxed NativeProcessRuntime — silently allowing that
+        // fallback risks running agent-directed commands with no sandbox at all, so this
+        // refuses it outright instead of only warning.
         var sessionManager = new FakeSessionManager { NextRuntimeType = RuntimeType.NativeProcess };
         var logger = new RecordingLogger();
         var provider = new CodeBeakerExecutionRuntimeProvider(sessionManager, logger);

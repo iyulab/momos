@@ -10,8 +10,8 @@ using Momos.Worker.Tests.Execution;
 namespace Momos.Worker.Tests.Agent;
 
 /// <summary>
-/// Covers ADR-0009 decision 3 = B's wiring: one code-beaker session per
-/// <see cref="IAgentLoopFactory.CreateAsync(CancellationToken)"/> call (decision 2),
+/// Covers the factory's session wiring: one code-beaker session per
+/// <see cref="IAgentLoopFactory.CreateAsync(CancellationToken)"/> call,
 /// closed when the returned loop is disposed (<see cref="SessionScopedAgentLoop"/>).
 /// </summary>
 public class MomosAgentLoopFactoryTests

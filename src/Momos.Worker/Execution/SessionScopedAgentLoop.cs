@@ -5,11 +5,11 @@ namespace Momos.Worker.Execution;
 
 /// <summary>
 /// Decorates an <see cref="IAgentLoop"/> so the code-execution session backing its
-/// native tool (ADR-0009 decision 3 = B) closes when the caller is done with the loop.
+/// native tool closes when the caller is done with the loop.
 /// <see cref="IAgentLoop"/> has no disposal contract of its own — IronHive.Agent expects
 /// the loop to outlive a single turn — so <see cref="Momos.Worker.Execution.PullExecutionBackgroundService"/>
 /// closes the session via the <see cref="IAsyncDisposable"/> this wrapper also implements,
-/// the same one-session-per-inspection-request lifetime ADR-0009 decision 2 calls for.
+/// matching the one-session-per-inspection-request lifetime the rest of the pipeline uses.
 /// </summary>
 public sealed class SessionScopedAgentLoop(
     IAgentLoop inner,

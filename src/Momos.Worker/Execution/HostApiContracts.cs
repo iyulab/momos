@@ -5,7 +5,7 @@ namespace Momos.Worker.Execution;
 /// values, via <see cref="System.Text.Json.Serialization.JsonStringEnumConverter"/>
 /// on both sides — see <c>HostApiClient.JsonOptions</c>). Kept as a local copy
 /// rather than a shared reference — Worker and Host are separate deployables by
-/// design (ADR-0008 decision 1).
+/// design.
 /// </summary>
 public enum InspectionRequestStatus
 {

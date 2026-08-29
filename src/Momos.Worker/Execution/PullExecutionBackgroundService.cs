@@ -7,10 +7,10 @@ using Momos.Worker.Agent;
 namespace Momos.Worker.Execution;
 
 /// <summary>
-/// Polls Host for the next Pending inspection request (ADR-0008 pull protocol), checks
-/// the target repo out into a fresh code-beaker session's workspace, runs the agent loop
-/// against it, and reports the outcome back. The agent loop has a code-execution tool and
-/// a finding-reporting tool (ADR-0009 decision 3 = B) — the agent decides what, if
+/// Polls Host for the next Pending inspection request, checks the target repo out into
+/// a fresh code-beaker session's workspace, runs the agent loop against it, and reports
+/// the outcome back. The agent loop has a code-execution tool and a finding-reporting
+/// tool — the agent decides what, if
 /// anything, to report; an inspection that finds nothing submits zero findings rather than
 /// fabricate one, per momos's 근거 기반 엄밀함 non-negotiable. Computer Use activation is
 /// still a separate, undecided "반드시 논의" item (momos improvement protocol).
@@ -41,8 +41,8 @@ public sealed class PullExecutionBackgroundService(
             {
                 // A BackgroundService that throws out of ExecuteAsync takes the whole
                 // host down — a transient Host-unreachable blip must not do that. Retry
-                // policy/backoff is explicitly out of scope (BD-20260826-05); this only
-                // stops one bad poll from killing the process, at the existing cadence.
+                // policy/backoff is deliberately out of scope for now; this only stops
+                // one bad poll from killing the process, at the existing cadence.
                 logger.LogError(ex, "Pull loop iteration failed, will retry next poll");
                 await Task.Delay(options.Value.PollInterval, stoppingToken);
             }
@@ -61,15 +61,14 @@ public sealed class PullExecutionBackgroundService(
 
             // Opened here, not by the agent-loop factory (ISessionAwareAgentLoopFactory)
             // — the repo has to be checked out into the session's workspace before the
-            // agent's first turn, so the session must exist first (ADR-0009 decision 2:
-            // one session per inspection request).
+            // agent's first turn, so the session must exist first (one session per
+            // inspection request).
             //
             // "dotnet" is a stand-in for real repo language detection, which doesn't
-            // exist yet (ADR-0009's "잠금 효과" note anticipated this gap) — it names the
-            // only language the current pilots target. A string an isolated runtime
-            // doesn't recognize would fail session creation outright, so this can't stay
-            // a generic placeholder the way an always-available native-only runtime could
-            // afford.
+            // exist yet — it names the only language the current pilots target. A string
+            // an isolated runtime doesn't recognize would fail session creation outright,
+            // so this can't stay a generic placeholder the way an always-available
+            // native-only runtime could afford.
             session = await executionRuntimeProvider.CreateSessionAsync(new ExecutionSessionRequest("dotnet"), cancellationToken);
 
             if (!string.IsNullOrEmpty(project.RepositoryUrl))
@@ -105,7 +104,7 @@ public sealed class PullExecutionBackgroundService(
                 }
             }
             // No RepositoryUrl declared — an honest "nothing to check out" case, not a
-            // failure (D-25 non-invasiveness: momos never assumes a repo it wasn't told about).
+            // failure: momos never assumes a repo it wasn't told about.
 
             var (agentLoop, findings) = await agentLoopFactory.CreateAsync(new AgentLoopFactoryOptions(), session, cancellationToken);
             await agentLoop.RunAsync(BuildPrompt(project, request.Focus), cancellationToken);

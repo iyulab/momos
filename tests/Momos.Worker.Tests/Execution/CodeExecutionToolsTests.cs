@@ -22,9 +22,9 @@ public class CodeExecutionToolsTests
     [Fact]
     public async Task RunCommand_Success_DoesNotLogCommandOutput()
     {
-        // HD-05: the inspected target is untrusted and its output can carry secrets
-        // (.env contents, credentials) — the Worker's own log must never carry a preview
-        // of it. "What ran" stays auditable; "what it showed" is the agent's call via
+        // The inspected target is untrusted and its output can carry secrets (.env
+        // contents, credentials) — the Worker's own log must never carry a preview of it.
+        // "What ran" stays auditable; "what it showed" is the agent's call via
         // ReportFinding's Evidence field, not something every RunCommand call broadcasts.
         var provider = new FakeExecutionRuntimeProvider
         {

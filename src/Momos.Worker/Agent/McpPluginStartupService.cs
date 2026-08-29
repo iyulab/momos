@@ -5,8 +5,7 @@ using Microsoft.Extensions.Options;
 namespace Momos.Worker.Agent;
 
 /// <summary>
-/// Loads MCP plugins from operator configuration at startup (D-38: tool
-/// orchestration is MCP-based, no bespoke protocol) and disconnects them at
+/// Loads MCP plugins from operator configuration at startup and disconnects them at
 /// shutdown. With no plugins configured — the default — this is a no-op: it
 /// only connects what an operator has explicitly listed in
 /// <see cref="McpPluginsConfig"/>, never anything Momos decides on its own.

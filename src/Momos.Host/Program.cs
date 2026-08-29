@@ -11,7 +11,7 @@ builder.Services.AddProblemDetails();
 // OpenAPI metadata (.Produces<T>()) already promises a discoverable contract,
 // and an integer alone doesn't tell a caller what it means. Momos.Worker's
 // HostApiClient carries the matching converter on its own JsonSerializerOptions
-// (separate deployable, ADR-0008 decision 1 — no shared serialization config).
+// (separate deployable with no shared serialization config between the two).
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddDbContext<MomosDbContext>(options =>

@@ -7,17 +7,18 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Momos.Worker.Tests;
 
 /// <summary>
-/// Covers the real DI graph <c>AddMomosWorker</c> wires for ADR-0009 decisions 1·2·3(=B) —
-/// the other tests in this project exercise the port/adapter logic against fakes
+/// Covers the real DI graph <c>AddMomosWorker</c> wires for code-beaker's execution
+/// stack — the other tests in this project exercise the port/adapter logic against fakes
 /// (<see cref="Execution.FakeExecutionRuntimeProvider"/>, <c>FakeSessionManager</c>);
 /// this one proves the actual registrations (<c>SessionManager</c>, <c>NativeProcessRuntime</c>,
 /// <c>InMemorySessionStore</c>) resolve and run a real OS process end to end.
 ///
 /// Goes through <see cref="ISessionManager"/> directly, not
-/// <see cref="Momos.Worker.Execution.IExecutionRuntimeProvider"/> — HD-08 makes the
-/// provider refuse a session that lands on <c>NativeProcessRuntime</c> (the only runtime
-/// <c>AddMomosWorker</c> registers), so exercising that native path end to end now has to
-/// bypass the provider's isolation policy. That policy is covered separately by
+/// <see cref="Momos.Worker.Execution.IExecutionRuntimeProvider"/> — the provider treats an
+/// unsandboxed runtime as unusable and refuses a session that lands on
+/// <c>NativeProcessRuntime</c> (the only runtime <c>AddMomosWorker</c> registers), so
+/// exercising that native path end to end now has to bypass the provider's isolation
+/// policy. That policy is covered separately by
 /// <c>CodeBeakerExecutionRuntimeProviderTests</c>'s fakes-based tests.
 /// </summary>
 public class ServiceCollectionExtensionsTests

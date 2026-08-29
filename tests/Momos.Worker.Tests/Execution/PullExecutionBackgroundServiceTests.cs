@@ -50,8 +50,8 @@ public sealed class PullExecutionBackgroundServiceTests
         var report = Assert.Single(hostClient.SubmittedReports);
         Assert.Empty(report.Findings);
         Assert.Empty(hostClient.SubmittedFailures);
-        // ADR-0009 decision 2: the session opened for this request must close once
-        // the run is done, success or not.
+        // The session opened for this request must close once the run is done,
+        // success or not.
         Assert.Single(executionProvider.ClosedSessions);
     }
 

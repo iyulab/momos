@@ -5,7 +5,7 @@ namespace Momos.Worker.Execution;
 
 /// <summary>
 /// Exposes <see cref="IExecutionRuntimeProvider"/>'s sandboxed command execution as a
-/// native in-process agent tool (ADR-0009 decision 3 = B) — wrapped with
+/// native in-process agent tool — wrapped with
 /// <c>Microsoft.Extensions.AI.AIFunctionFactory.Create</c> at the call site, the same
 /// pattern <c>IronHive.Agent</c>'s own built-in tools use for their file/shell
 /// capabilities. No MCP transport is involved: the capability is already in-process

@@ -15,8 +15,8 @@ public class GpuStackLlmOptionsStartupValidationTests
     [Fact]
     public async Task StartAsync_WithMissingConfig_ThrowsOptionsValidationException()
     {
-        // Fully qualified: this project also references Momos.Host (for the ADR-0008
-        // Worker-side e2e test), and the Momos.Host namespace now resolves via
+        // Fully qualified: this project also references Momos.Host (for a Worker-side
+        // e2e test against the real Host API), and the Momos.Host namespace now resolves via
         // enclosing-namespace lookup ahead of the `using Microsoft.Extensions.Hosting`
         // import — an unqualified `Host` here would bind to that namespace, not this class.
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();

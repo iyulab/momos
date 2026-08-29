@@ -30,8 +30,8 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IChatClientProvider, GpuStackChatClientProvider>();
 
-        // ADR-0009 decisions 1·2·3(=B): code-beaker as an in-process execution sandbox.
-        // Docker and native are both registered so RuntimeSelector's Security preference
+        // code-beaker as an in-process execution sandbox: Docker and native are both
+        // registered so RuntimeSelector's Security preference
         // has an isolated runtime to actually pick when one is reachable, instead of
         // always resolving to the unsandboxed native fallback — leaving only native
         // registered made that preference a no-op regardless of host state. Node/Python

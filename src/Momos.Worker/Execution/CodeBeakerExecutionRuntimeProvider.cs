@@ -7,23 +7,23 @@ using Microsoft.Extensions.Logging;
 namespace Momos.Worker.Execution;
 
 /// <summary>
-/// Adapts code-beaker's <see cref="ISessionManager"/> to <see cref="IExecutionRuntimeProvider"/>
-/// (ADR-0009 decision 1) — a thin wrapper, not a reimplementation: sandboxing, resource
-/// limits, and command execution all stay code-beaker's responsibility.
+/// Adapts code-beaker's <see cref="ISessionManager"/> to <see cref="IExecutionRuntimeProvider"/> —
+/// a thin wrapper, not a reimplementation: sandboxing, resource limits, and command
+/// execution all stay code-beaker's responsibility.
 ///
-/// Wired directly into <c>Momos.Worker</c>'s own DI container (<c>AddMomosWorker</c>) —
-/// decision 3 (ADR-0009) resolved to B (native in-process tool registration, not a
-/// separate MCP server process), so code-beaker's process-local <c>InMemorySessionStore</c>
-/// living in the same process as the sessions it tracks is exactly what this needs.
+/// Wired directly into <c>Momos.Worker</c>'s own DI container (<c>AddMomosWorker</c>) as a
+/// native in-process tool rather than a separate MCP server process, so code-beaker's
+/// process-local <c>InMemorySessionStore</c> living in the same process as the sessions it
+/// tracks is exactly what this needs.
 /// </summary>
 public sealed class CodeBeakerExecutionRuntimeProvider(
     ISessionManager sessionManager,
     ILogger<CodeBeakerExecutionRuntimeProvider> logger) : IExecutionRuntimeProvider
 {
     /// <summary>
-    /// ADR-0009 decision 2's default posture: sandbox on, filesystem restricted to the
-    /// session workspace, network left enabled (checking out the target repo and
-    /// installing its dependencies both need it).
+    /// Default posture: sandbox on, filesystem restricted to the session workspace,
+    /// network left enabled (checking out the target repo and installing its
+    /// dependencies both need it).
     /// </summary>
     public static SecurityConfig DefaultSecurityConfig => new()
     {
@@ -32,7 +32,7 @@ public sealed class CodeBeakerExecutionRuntimeProvider(
         SandboxDisableNetwork = false,
     };
 
-    /// <summary>ADR-0009 decision 2's suggested default (2GB) — no pilot data yet to tune it.</summary>
+    /// <summary>Suggested default (2GB) — no pilot data yet to tune it.</summary>
     public const long DefaultMemoryLimitMB = 2048;
 
     public async Task<ExecutionSessionHandle> CreateSessionAsync(
@@ -58,14 +58,13 @@ public sealed class CodeBeakerExecutionRuntimeProvider(
 
         if (session.RuntimeType == RuntimeType.NativeProcess)
         {
-            // HD-08: NativeProcessRuntime has no sandboxing of its own — a command run in
-            // this session is exactly as isolated as any other process on this machine.
-            // HD-07's warn-only response to this same fallback (cycle-25: killed every
-            // dotnet.exe on a shared host) still let a second incident happen on the
-            // identical fallback (cycle-27: `docker exec` into an unrelated project's live
-            // container extracted its DB credentials) — so the fallback is refused rather
-            // than merely logged. The session is closed first so an unsandboxed process
-            // isn't left running for a caller that never receives its handle.
+            // NativeProcessRuntime has no sandboxing of its own — a command run in this
+            // session is exactly as isolated as any other process on this machine, so an
+            // agent-directed command can affect unrelated processes and data on a shared
+            // host. Warning and continuing anyway isn't enough to prevent that, so the
+            // fallback is refused rather than merely logged. The session is closed first
+            // so an unsandboxed process isn't left running for a caller that never
+            // receives its handle.
             logger.LogWarning(
                 "Refusing session {SessionId} — no isolated runtime (e.g. Docker) was available for {Language}, only the unsandboxed native runtime",
                 session.SessionId, request.Language);

@@ -16,10 +16,10 @@ namespace Momos.Worker.Agent;
 /// <see cref="IErrorRecoveryService"/>) via <c>AddIronHiveAgent()</c> but leaves
 /// the top-level factory and chat-client resolution to the consumer.
 ///
-/// Also composes the code-execution and finding-reporting tools (ADR-0009 decision 3 = B)
-/// — every loop this factory builds gets two native
+/// Also composes the code-execution and finding-reporting tools — every loop this
+/// factory builds gets two native
 /// <see cref="AIFunctionFactory.Create(System.Delegate)"/>-wrapped tools: one bound to a
-/// code-beaker session (ADR-0009 decision 2: one per inspection request), one accumulating
+/// code-beaker session (one per inspection request), one accumulating
 /// into a <see cref="FindingSink"/> the caller reads back after the run. Actual tool
 /// invocation depends on the chat client resolved by <c>chatClientFactory</c> being wrapped
 /// with <c>UseFunctionInvocation()</c> (see
@@ -46,8 +46,8 @@ public sealed class MomosAgentLoopFactory(
     public async Task<IAgentLoop> CreateAsync(AgentLoopFactoryOptions options, CancellationToken cancellationToken = default)
     {
         // "native" is a placeholder until repo language detection exists —
-        // ADR-0009's "잠금 효과" note anticipated this gap; NativeProcessRuntime's
-        // catch-all environment covers it without inventing a result we can't observe.
+        // NativeProcessRuntime's catch-all environment covers it without inventing a
+        // result we can't observe.
         // Only reached by a caller with no repo to check out first (see
         // ISessionAwareAgentLoopFactory) — this factory owns this session's lifetime.
         var session = await executionRuntimeProvider.CreateSessionAsync(

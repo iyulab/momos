@@ -1,8 +1,8 @@
 namespace Momos.Worker.Execution;
 
 /// <summary>
-/// Momos-owned port over an isolated code-execution sandbox (ADR-0009 decision 1) —
-/// the same pattern as <c>IChatClientProvider</c>: Momos owns the abstraction,
+/// Momos-owned port over an isolated code-execution sandbox — the same pattern as
+/// <c>IChatClientProvider</c>: Momos owns the abstraction,
 /// code-beaker (or any future sandbox) adapts to it, so the domain never depends
 /// on an upstream provider's types directly.
 /// </summary>
@@ -24,9 +24,8 @@ public interface IExecutionRuntimeProvider
 
 /// <summary>
 /// <paramref name="Language"/> selects the sandbox environment (e.g. "python", "node") —
-/// no <c>Project</c> schema field backs this yet (ADR-0009 "잠금 효과"); the caller
-/// is expected to detect it from the checked-out repository rather than wait on a
-/// schema change.
+/// no <c>Project</c> schema field backs this yet, so the caller is expected to detect
+/// it from the checked-out repository rather than wait on a schema change.
 /// </summary>
 public sealed record ExecutionSessionRequest(string Language);
 

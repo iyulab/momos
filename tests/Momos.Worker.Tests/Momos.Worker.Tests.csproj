@@ -20,7 +20,7 @@
   <ItemGroup>
     <!-- Momos.Host reference is test-only, to drive the real Host API in-process
          (WebApplicationFactory) for a wire-contract e2e check. The shipped
-         Momos.Worker has no reference to Momos.Host (ADR-0008 decision 1). -->
+         Momos.Worker has no reference to Momos.Host — they're separate deployables. -->
     <ProjectReference Include="..\..\src\Momos.Worker\Momos.Worker.csproj" />
     <ProjectReference Include="..\..\src\Momos.Host\Momos.Host.csproj" />
   </ItemGroup>
