@@ -11,11 +11,12 @@ public sealed class FakeSessionManager : ISessionManager
     public (string SessionId, Command Command)? LastExecuted { get; private set; }
     public string? LastClosedSessionId { get; private set; }
     public CommandResult NextResult { get; set; } = CommandResult.Ok("ok");
+    public RuntimeType NextRuntimeType { get; set; } = RuntimeType.Docker;
 
     public Task<Session> CreateSessionAsync(SessionConfig config, CancellationToken cancellationToken = default)
     {
         LastCreatedConfig = config;
-        return Task.FromResult(new Session { SessionId = "fake-session-id", Language = config.Language });
+        return Task.FromResult(new Session { SessionId = "fake-session-id", Language = config.Language, RuntimeType = NextRuntimeType });
     }
 
     public Task<Session?> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default) =>

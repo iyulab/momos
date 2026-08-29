@@ -1,6 +1,8 @@
 using CodeBeaker.Commands.Models;
 using CodeBeaker.Core.Interfaces;
 using CodeBeaker.Core.Models;
+using CodeBeaker.Core.Runtime;
+using Microsoft.Extensions.Logging;
 
 namespace Momos.Worker.Execution;
 
@@ -14,7 +16,9 @@ namespace Momos.Worker.Execution;
 /// separate MCP server process), so code-beaker's process-local <c>InMemorySessionStore</c>
 /// living in the same process as the sessions it tracks is exactly what this needs.
 /// </summary>
-public sealed class CodeBeakerExecutionRuntimeProvider(ISessionManager sessionManager) : IExecutionRuntimeProvider
+public sealed class CodeBeakerExecutionRuntimeProvider(
+    ISessionManager sessionManager,
+    ILogger<CodeBeakerExecutionRuntimeProvider> logger) : IExecutionRuntimeProvider
 {
     /// <summary>
     /// ADR-0009 decision 2's default posture: sandbox on, filesystem restricted to the
@@ -40,9 +44,29 @@ public sealed class CodeBeakerExecutionRuntimeProvider(ISessionManager sessionMa
             Language = request.Language,
             MemoryLimitMB = DefaultMemoryLimitMB,
             Security = DefaultSecurityConfig,
+            // Left unset, code-beaker's RuntimeSelector defaults to Balanced — a scoring
+            // formula that weighs startup time and memory overhead so heavily that a
+            // near-zero-overhead runtime (NativeProcessRuntime) wins almost regardless of
+            // isolation. Security picks the most isolated *available* runtime instead (e.g.
+            // Docker, when its daemon is reachable) and still falls back to whatever is
+            // available — including native — when nothing more isolated is, so this never
+            // makes a pilot unrunnable on a machine without Docker.
+            RuntimePreference = RuntimePreference.Security,
         };
 
         var session = await sessionManager.CreateSessionAsync(config, cancellationToken);
+
+        if (session.RuntimeType == RuntimeType.NativeProcess)
+        {
+            // NativeProcessRuntime has no sandboxing of its own — a command run in this
+            // session is exactly as isolated as any other process on this machine, which
+            // is what let a real inspection run kill every dotnet.exe process on a shared
+            // host (this session's own Worker included) instead of just its own sandbox.
+            logger.LogWarning(
+                "Session {SessionId} is running on the unsandboxed native runtime — no more isolated runtime (e.g. Docker) was available for {Language}",
+                session.SessionId, request.Language);
+        }
+
         return new ExecutionSessionHandle(session.SessionId);
     }
 
