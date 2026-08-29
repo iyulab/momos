@@ -41,16 +41,13 @@ Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)
 
 ## 문서
 
-- [헌법](docs/constitution.md) — 정체성, 원칙, 개선 프로토콜
-- [개요](docs/overview.md) — 문제, 대상, 역할
 - [범위](docs/scope.md) — In / Out
 - [아키텍처](docs/architecture.md) — 시스템 경계, 데이터 흐름
-- [위협 모델](docs/threat-model.md) — Computer Use 위협 분류, 대응 원칙
-- [핵심 개념](docs/concepts.md)
-- [용어집](docs/glossary.md)
-- [UX 원칙](docs/ux-principles.md)
 - [통합 계약](docs/integration-contract.md) — 외부 시스템이 Momos를 호출하는 방법
-- [확장 지점](docs/extending.md)
+- [용어집](docs/glossary.md)
+
+정체성·원칙·개선 프로토콜은 [CLAUDE.md](CLAUDE.md)/[AGENTS.md](AGENTS.md) 참고 — 이 리포에서 작업하는
+사람과 AI 에이전트 모두에게 적용되는 1페이지 요약이다.
 
 ## 라이선스
 

@@ -1,6 +1,7 @@
 # Momos — AI 진입점
 
-이 문서는 헌법(`docs/constitution.md`)의 1페이지 요약이다. 작업 전 반드시 `docs/constitution.md` 전문을 확인할 것.
+이 문서는 정체성·원칙·개선 프로토콜을 담은 1페이지 요약이며, 그 자체로 완결된다 — 작업 전에
+반드시 확인할 별도의 "전문"은 없다.
 
 ## 정체성 (한 문장)
 정적 분석이 못 잡는 실행 환경에서 자율적으로 상호작용하며 UX·보안 결함을 찾아내는 에이전트.
@@ -32,8 +33,10 @@
 - 대부분의 액션은 API로 동작한다. UI(`momos-console`)는 그 API의 클라이언트일 뿐이다.
 
 ## 문서 맵
-- `docs/constitution.md` — 전문
-- `docs/overview.md`, `docs/scope.md`, `docs/architecture.md`, `docs/concepts.md`, `docs/glossary.md`, `docs/ux-principles.md`
-- `docs/threat-model.md` — Computer Use 위협 분류와 v1 대응 원칙
-- `docs/integration-contract.md`, `docs/extending.md` — 외부 통합
-- 비공개 작업 기록(결정 원장·백로그·ADR)은 이 리포 밖의 엄브렐러 워크스페이스에 있다. 이 리포만 클론했다면 접근할 필요 없는 내부 추적 자료다.
+- `docs/scope.md` — In/Out
+- `docs/architecture.md` — 시스템 경계, 데이터 흐름
+- `docs/integration-contract.md` — 외부 시스템이 Momos를 호출하는 방법
+- `docs/glossary.md` — 용어집
+- 이 리포의 `docs/`는 의도적으로 최소로 유지한다(OSS 기준 — 위 요약만으로 기여에 필요한 걸 안다).
+  설계 배경·철학의 전문(헌법·개념·위협 모델·확장 지점 등)과 비공개 작업 기록(결정 원장·백로그·ADR)은
+  이 리포 밖의 엄브렐러 워크스페이스에 있다. 이 리포만 클론했다면 접근할 필요 없는 자료다.
