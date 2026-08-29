@@ -63,7 +63,14 @@ public sealed class PullExecutionBackgroundService(
             // — the repo has to be checked out into the session's workspace before the
             // agent's first turn, so the session must exist first (ADR-0009 decision 2:
             // one session per inspection request).
-            session = await executionRuntimeProvider.CreateSessionAsync(new ExecutionSessionRequest("native"), cancellationToken);
+            //
+            // "dotnet" is a stand-in for real repo language detection, which doesn't
+            // exist yet (ADR-0009's "잠금 효과" note anticipated this gap) — it names the
+            // only language the current pilots target. A string an isolated runtime
+            // doesn't recognize would fail session creation outright, so this can't stay
+            // a generic placeholder the way an always-available native-only runtime could
+            // afford.
+            session = await executionRuntimeProvider.CreateSessionAsync(new ExecutionSessionRequest("dotnet"), cancellationToken);
 
             if (!string.IsNullOrEmpty(project.RepositoryUrl))
             {

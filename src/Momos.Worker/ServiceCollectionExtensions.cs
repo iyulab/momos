@@ -1,6 +1,7 @@
 using CodeBeaker.Core.Interfaces;
 using CodeBeaker.Core.Sessions;
 using CodeBeaker.Core.Storage;
+using CodeBeaker.Runtimes.Docker;
 using CodeBeaker.Runtimes.Native;
 using IronHive.Agent.Context;
 using IronHive.Agent.Extensions;
@@ -29,11 +30,15 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IChatClientProvider, GpuStackChatClientProvider>();
 
         // ADR-0009 decisions 1·2·3(=B): code-beaker as an in-process execution sandbox.
-        // Only NativeProcessRuntime is registered — Worker doesn't detect a checked-out
-        // repo's language yet, so registering Docker/Node/Python runtimes now would add
-        // untestable, unreachable code (YAGNI).
+        // Docker and native are both registered so RuntimeSelector's Security preference
+        // has an isolated runtime to actually pick when one is reachable, instead of
+        // always resolving to the unsandboxed native fallback — leaving only native
+        // registered made that preference a no-op regardless of host state. Node/Python
+        // stay unregistered: Worker doesn't detect a checked-out repo's language yet
+        // (still "dotnet" below), so they'd add untestable, unreachable code (YAGNI).
         services.AddSingleton<ISessionStore, InMemorySessionStore>();
         services.AddSingleton<IExecutionRuntime, NativeProcessRuntime>();
+        services.AddSingleton<IExecutionRuntime, DockerRuntime>();
         services.AddSingleton<ISessionManager, SessionManager>();
         services.AddSingleton<IExecutionRuntimeProvider, CodeBeakerExecutionRuntimeProvider>();
 

@@ -1,6 +1,8 @@
+using CodeBeaker.Commands.Models;
+using CodeBeaker.Core.Interfaces;
+using CodeBeaker.Core.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Momos.Worker.Execution;
 
 namespace Momos.Worker.Tests;
 
@@ -10,27 +12,35 @@ namespace Momos.Worker.Tests;
 /// (<see cref="Execution.FakeExecutionRuntimeProvider"/>, <c>FakeSessionManager</c>);
 /// this one proves the actual registrations (<c>SessionManager</c>, <c>NativeProcessRuntime</c>,
 /// <c>InMemorySessionStore</c>) resolve and run a real OS process end to end.
+///
+/// Goes through <see cref="ISessionManager"/> directly, not
+/// <see cref="Momos.Worker.Execution.IExecutionRuntimeProvider"/> — HD-08 makes the
+/// provider refuse a session that lands on <c>NativeProcessRuntime</c> (the only runtime
+/// <c>AddMomosWorker</c> registers), so exercising that native path end to end now has to
+/// bypass the provider's isolation policy. That policy is covered separately by
+/// <c>CodeBeakerExecutionRuntimeProviderTests</c>'s fakes-based tests.
 /// </summary>
 public class ServiceCollectionExtensionsTests
 {
     [Fact]
-    public async Task AddMomosWorker_ResolvesARealExecutionRuntimeProvider_ThatRunsANativeCommand()
+    public async Task AddMomosWorker_ResolvesARealSessionManager_ThatRunsANativeCommand()
     {
         var services = new ServiceCollection();
         var configuration = new ConfigurationBuilder().Build();
         services.AddMomosWorker(configuration);
         await using var provider = services.BuildServiceProvider();
 
-        var executionRuntimeProvider = provider.GetRequiredService<IExecutionRuntimeProvider>();
-        var session = await executionRuntimeProvider.CreateSessionAsync(new ExecutionSessionRequest("native"));
+        var sessionManager = provider.GetRequiredService<ISessionManager>();
+        var session = await sessionManager.CreateSessionAsync(new SessionConfig { Language = "native" });
         try
         {
-            var result = await executionRuntimeProvider.ExecuteAsync(session, new ExecutionCommand("dotnet", ["--version"]));
+            var result = await sessionManager.ExecuteInSessionAsync(
+                session.SessionId, new ExecuteShellCommand { CommandName = "dotnet", Args = ["--version"] });
             Assert.True(result.Success, result.Error);
         }
         finally
         {
-            await executionRuntimeProvider.CloseSessionAsync(session);
+            await sessionManager.CloseSessionAsync(session.SessionId);
         }
     }
 
@@ -52,19 +62,20 @@ public class ServiceCollectionExtensionsTests
             var services = new ServiceCollection();
             services.AddMomosWorker(new ConfigurationBuilder().Build());
             await using var provider = services.BuildServiceProvider();
-            var executionRuntimeProvider = provider.GetRequiredService<IExecutionRuntimeProvider>();
+            var sessionManager = provider.GetRequiredService<ISessionManager>();
 
-            var session = await executionRuntimeProvider.CreateSessionAsync(new ExecutionSessionRequest("native"));
+            var session = await sessionManager.CreateSessionAsync(new SessionConfig { Language = "native" });
             try
             {
-                var result = await executionRuntimeProvider.ExecuteAsync(
-                    session, new ExecutionCommand("git", ["clone", "--", sourceRepo.FullName, "."]));
+                var result = await sessionManager.ExecuteInSessionAsync(
+                    session.SessionId,
+                    new ExecuteShellCommand { CommandName = "git", Args = ["clone", "--", sourceRepo.FullName, "."] });
 
                 Assert.True(result.Success, result.Error);
             }
             finally
             {
-                await executionRuntimeProvider.CloseSessionAsync(session);
+                await sessionManager.CloseSessionAsync(session.SessionId);
             }
         }
         finally

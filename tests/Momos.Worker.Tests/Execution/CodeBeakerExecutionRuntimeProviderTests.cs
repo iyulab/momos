@@ -56,15 +56,21 @@ public class CodeBeakerExecutionRuntimeProviderTests
     }
 
     [Fact]
-    public async Task CreateSessionAsync_WhenNativeRuntimeIsSelected_LogsAWarning()
+    public async Task CreateSessionAsync_WhenNativeRuntimeIsSelected_ThrowsAndClosesTheSession()
     {
+        // HD-08: two incidents (cycle-25, cycle-27) happened on this exact fallback —
+        // an isolated runtime (e.g. Docker) unavailable, code-beaker falling back to the
+        // unsandboxed NativeProcessRuntime. HD-07's response was warn-only; this refuses
+        // the fallback outright instead.
         var sessionManager = new FakeSessionManager { NextRuntimeType = RuntimeType.NativeProcess };
         var logger = new RecordingLogger();
         var provider = new CodeBeakerExecutionRuntimeProvider(sessionManager, logger);
 
-        await provider.CreateSessionAsync(new ExecutionSessionRequest("dotnet"));
+        await Assert.ThrowsAsync<UnisolatedExecutionRuntimeException>(
+            () => provider.CreateSessionAsync(new ExecutionSessionRequest("dotnet")));
 
-        Assert.Contains(logger.Messages, m => m.Level == LogLevel.Warning && m.Message.Contains("unsandboxed"));
+        Assert.Equal("fake-session-id", sessionManager.LastClosedSessionId);
+        Assert.Contains(logger.Messages, m => m.Level == LogLevel.Warning && m.Message.Contains("Refusing"));
     }
 
     [Fact]

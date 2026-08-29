@@ -58,13 +58,20 @@ public sealed class CodeBeakerExecutionRuntimeProvider(
 
         if (session.RuntimeType == RuntimeType.NativeProcess)
         {
-            // NativeProcessRuntime has no sandboxing of its own — a command run in this
-            // session is exactly as isolated as any other process on this machine, which
-            // is what let a real inspection run kill every dotnet.exe process on a shared
-            // host (this session's own Worker included) instead of just its own sandbox.
+            // HD-08: NativeProcessRuntime has no sandboxing of its own — a command run in
+            // this session is exactly as isolated as any other process on this machine.
+            // HD-07's warn-only response to this same fallback (cycle-25: killed every
+            // dotnet.exe on a shared host) still let a second incident happen on the
+            // identical fallback (cycle-27: `docker exec` into an unrelated project's live
+            // container extracted its DB credentials) — so the fallback is refused rather
+            // than merely logged. The session is closed first so an unsandboxed process
+            // isn't left running for a caller that never receives its handle.
             logger.LogWarning(
-                "Session {SessionId} is running on the unsandboxed native runtime — no more isolated runtime (e.g. Docker) was available for {Language}",
+                "Refusing session {SessionId} — no isolated runtime (e.g. Docker) was available for {Language}, only the unsandboxed native runtime",
                 session.SessionId, request.Language);
+            await sessionManager.CloseSessionAsync(session.SessionId, cancellationToken);
+            throw new UnisolatedExecutionRuntimeException(
+                $"No isolated runtime (e.g. Docker) was available for {request.Language} — refusing to run unsandboxed on the native runtime.");
         }
 
         return new ExecutionSessionHandle(session.SessionId);
