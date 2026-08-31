@@ -10,7 +10,11 @@ internal static class WorkerProgram
 {
     private static void Main(string[] args)
     {
-        var builder = Host.CreateApplicationBuilder(args);
+        var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        {
+            Args = args,
+            ContentRootPath = AppContext.BaseDirectory,
+        });
         builder.Services.AddMomosWorker(builder.Configuration);
 
         var host = builder.Build();
