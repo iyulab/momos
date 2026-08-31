@@ -1,0 +1,41 @@
+name: Dependency Vulnerability Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  # Momos.Worker depends on CodeBeaker.* packages that are currently only
+  # available from a local NuGet feed (not published to nuget.org yet), so it
+  # can't restore on a hosted runner — this job is scoped to Momos.Host until
+  # that publish happens.
+  scan-host:
+    name: Scan Momos.Host for vulnerable packages
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        global-json-file: global.json
+
+    - name: Restore Momos.Host
+      run: |
+        dotnet restore src/Momos.Host/Momos.Host.csproj
+        dotnet restore tests/Momos.Host.Tests/Momos.Host.Tests.csproj
+
+    - name: Check for vulnerable NuGet packages
+      run: |
+        report=$(dotnet list src/Momos.Host/Momos.Host.csproj package --vulnerable --include-transitive 2>&1
+                 dotnet list tests/Momos.Host.Tests/Momos.Host.Tests.csproj package --vulnerable --include-transitive 2>&1)
+        echo "$report"
+        if echo "$report" | grep -q "has the following vulnerable packages"; then
+          echo "::error::Vulnerable NuGet package(s) detected — see the report above."
+          exit 1
+        fi
