@@ -12,6 +12,6 @@ public sealed class WorkerAuthOptions
     /// worker — simplest option for a small worker fleet; per-worker identity can be layered
     /// on later without changing this header-based wire shape.
     /// </summary>
-    [Required]
+    [Required(ErrorMessage = "Momos:Host:WorkerAuth:ApiKey가 비어 있습니다 — Momos__Host__WorkerAuth__ApiKey 환경 변수로 주입하세요(README.md '설정' 참고).")]
     public required string ApiKey { get; set; }
 }
