@@ -36,6 +36,28 @@ try {
     $config = Get-Content $configPath -Raw | ConvertFrom-Json
     Assert-Equal 'https://host.example' $config.Momos.Worker.Host.BaseUrl 'Write-WorkerConfig: BaseUrl'
     Assert-Equal 'qwen3.8-27b' $config.Momos.Llm.GpuStack.Model 'Write-WorkerConfig: Model'
+
+    # Invoke-WorkerConfiguration: 이미 설정 파일이 있으면 건드리지 않아야 한다 (idempotent)
+    $existingContent = '{"existing":"config"}'
+    Set-Content -Path $configPath -Value $existingContent -NoNewline
+    Invoke-WorkerConfiguration -InstallDir $tmp
+    Assert-Equal $existingContent (Get-Content -Path $configPath -Raw) 'Invoke-WorkerConfiguration: 기존 설정 파일을 덮어씀'
+
+    # Invoke-WorkerConfiguration: 비대화형 환경변수로 채워야 한다
+    Remove-Item -Path $configPath -Force
+    $env:MOMOS_WORKER_HOST_BASEURL = 'https://host.example'
+    $env:MOMOS_WORKER_HOST_APIKEY = 'hostkey'
+    $env:MOMOS_LLM_GPUSTACK_ENDPOINT = 'https://gpustack.example'
+    $env:MOMOS_LLM_GPUSTACK_APIKEY = 'llmkey'
+    $env:MOMOS_LLM_GPUSTACK_MODEL = 'model'
+    try {
+        Invoke-WorkerConfiguration -InstallDir $tmp
+        $envConfig = Get-Content $configPath -Raw | ConvertFrom-Json
+        Assert-Equal 'https://host.example' $envConfig.Momos.Worker.Host.BaseUrl 'Invoke-WorkerConfiguration: 환경변수 BaseUrl 반영'
+    }
+    finally {
+        Remove-Item Env:\MOMOS_WORKER_HOST_BASEURL, Env:\MOMOS_WORKER_HOST_APIKEY, Env:\MOMOS_LLM_GPUSTACK_ENDPOINT, Env:\MOMOS_LLM_GPUSTACK_APIKEY, Env:\MOMOS_LLM_GPUSTACK_MODEL -ErrorAction SilentlyContinue
+    }
 }
 finally {
     Remove-Item -Recurse -Force $tmp
