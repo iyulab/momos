@@ -44,8 +44,12 @@ write_config "$tmp2" "https://host.example" "hostkey" "https://gpustack.example"
 config_json="$(cat "$tmp2/appsettings.Production.json")"
 echo "$config_json" | grep -q '"BaseUrl": "https://host.example"' || fail "write_config: BaseUrl 누락"
 echo "$config_json" | grep -q '"Model": "qwen3.8-27b"' || fail "write_config: Model 누락"
-perm="$(stat -c '%a' "$tmp2/appsettings.Production.json" 2>/dev/null || stat -f '%A' "$tmp2/appsettings.Production.json")"
-[ "$perm" = "600" ] || fail "write_config: 권한이 600이 아님 (실제: $perm)"
+if [ "$(uname -s)" = "Linux" ]; then
+  perm="$(stat -c '%a' "$tmp2/appsettings.Production.json")"
+  [ "$perm" = "600" ] || fail "write_config: 권한이 600이 아님 (실제: $perm)"
+else
+  echo "SKIP: 파일 권한 검증은 POSIX ACL 파일시스템에서만 (현재: $(uname -s))"
+fi
 rm -rf "$tmp2"
 
 # write_config: 값에 큰따옴표·백슬래시가 있어도 유효한 JSON을 생성해야 한다

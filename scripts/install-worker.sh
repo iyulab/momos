@@ -79,7 +79,8 @@ write_config() {
   gpustack_endpoint="$(json_escape "$gpustack_endpoint")"
   gpustack_api_key="$(json_escape "$gpustack_api_key")"
   gpustack_model="$(json_escape "$gpustack_model")"
-  cat > "$dir/appsettings.Production.json" <<JSON
+  ( umask 077
+    cat > "$dir/appsettings.Production.json" <<JSON
 {
   "Momos": {
     "Worker": {
@@ -98,6 +99,7 @@ write_config() {
   }
 }
 JSON
+  )
   chmod 600 "$dir/appsettings.Production.json"
 }
 
@@ -116,12 +118,15 @@ configure_worker() {
   local gpustack_api_key="${MOMOS_LLM_GPUSTACK_APIKEY:-}"
   local gpustack_model="${MOMOS_LLM_GPUSTACK_MODEL:-}"
 
-  if [ -t 0 ] && [ -z "$base_url" ]; then
-    read -rp "Momos Host BaseUrl: " base_url
-    read -rsp "Momos Worker API Key: " api_key; echo
-    read -rp "GPUStack Endpoint: " gpustack_endpoint
-    read -rsp "GPUStack API Key: " gpustack_api_key; echo
-    read -rp "GPUStack Model: " gpustack_model
+  if [ -z "$base_url" ] && { [ -t 0 ] || [ -r /dev/tty ]; }; then
+    exec 3<&0
+    [ -t 0 ] || exec 3</dev/tty
+    read -rp "Momos Host BaseUrl: " base_url <&3
+    read -rsp "Momos Worker API Key: " api_key <&3; echo
+    read -rp "GPUStack Endpoint: " gpustack_endpoint <&3
+    read -rsp "GPUStack API Key: " gpustack_api_key <&3; echo
+    read -rp "GPUStack Model: " gpustack_model <&3
+    exec 3<&-
   fi
 
   write_config "$install_dir" "$base_url" "$api_key" "$gpustack_endpoint" "$gpustack_api_key" "$gpustack_model"
