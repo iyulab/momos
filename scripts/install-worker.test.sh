@@ -37,3 +37,15 @@ result="$(echo "$fixture_json" | extract_asset_url "momos-worker-win-x64.zip")"
 [ -z "$result" ] || fail "extract_asset_url: 매칭 없을 때 빈 문자열이 아님: $result"
 
 echo "OK: install-worker.sh 단위 테스트 통과"
+
+# write_config: 5개 값을 넣고 JSON 구조·권한을 검증
+tmp2="$(mktemp -d)"
+write_config "$tmp2" "https://host.example" "hostkey" "https://gpustack.example" "llmkey" "qwen3.8-27b"
+config_json="$(cat "$tmp2/appsettings.Production.json")"
+echo "$config_json" | grep -q '"BaseUrl": "https://host.example"' || fail "write_config: BaseUrl 누락"
+echo "$config_json" | grep -q '"Model": "qwen3.8-27b"' || fail "write_config: Model 누락"
+perm="$(stat -c '%a' "$tmp2/appsettings.Production.json" 2>/dev/null || stat -f '%A' "$tmp2/appsettings.Production.json")"
+[ "$perm" = "600" ] || fail "write_config: 권한이 600이 아님 (실제: $perm)"
+rm -rf "$tmp2"
+
+echo "OK: install-worker.sh 설정 생성 테스트 통과"

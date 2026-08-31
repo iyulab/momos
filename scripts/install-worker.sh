@@ -65,6 +65,60 @@ verify_checksum() {
   [ "$expected" = "$actual" ]
 }
 
+write_config() {
+  local dir="$1" base_url="$2" api_key="$3" gpustack_endpoint="$4" gpustack_api_key="$5" gpustack_model="$6"
+  cat > "$dir/appsettings.Production.json" <<JSON
+{
+  "Momos": {
+    "Worker": {
+      "Host": {
+        "BaseUrl": "${base_url}",
+        "ApiKey": "${api_key}"
+      }
+    },
+    "Llm": {
+      "GpuStack": {
+        "Endpoint": "${gpustack_endpoint}",
+        "ApiKey": "${gpustack_api_key}",
+        "Model": "${gpustack_model}"
+      }
+    }
+  }
+}
+JSON
+  chmod 600 "$dir/appsettings.Production.json"
+}
+
+configure_worker() {
+  local install_dir="$1"
+  local config_path="$install_dir/appsettings.Production.json"
+
+  if [ -f "$config_path" ]; then
+    echo "기존 설정 파일을 유지합니다: $config_path"
+    return 0
+  fi
+
+  local base_url="${MOMOS_WORKER_HOST_BASEURL:-}"
+  local api_key="${MOMOS_WORKER_HOST_APIKEY:-}"
+  local gpustack_endpoint="${MOMOS_LLM_GPUSTACK_ENDPOINT:-}"
+  local gpustack_api_key="${MOMOS_LLM_GPUSTACK_APIKEY:-}"
+  local gpustack_model="${MOMOS_LLM_GPUSTACK_MODEL:-}"
+
+  if [ -t 0 ] && [ -z "$base_url" ]; then
+    read -rp "Momos Host BaseUrl: " base_url
+    read -rsp "Momos Worker API Key: " api_key; echo
+    read -rp "GPUStack Endpoint: " gpustack_endpoint
+    read -rsp "GPUStack API Key: " gpustack_api_key; echo
+    read -rp "GPUStack Model: " gpustack_model
+  fi
+
+  write_config "$install_dir" "$base_url" "$api_key" "$gpustack_endpoint" "$gpustack_api_key" "$gpustack_model"
+
+  if [ -z "$base_url" ] || [ -z "$api_key" ] || [ -z "$gpustack_endpoint" ] || [ -z "$gpustack_api_key" ] || [ -z "$gpustack_model" ]; then
+    echo "일부 설정값이 비어 있습니다 — $config_path 를 직접 채운 뒤 실행하세요."
+  fi
+}
+
 fetch_and_extract() {
   local rid="$1" tag="$2" install_dir="$3"
   local asset_name="momos-worker-${rid}.tar.gz"
@@ -95,6 +149,7 @@ main() {
   rid="$(detect_platform)"
   tag="$(resolve_release_tag "$VERSION")"
   fetch_and_extract "$rid" "$tag" "$INSTALL_DIR"
+  configure_worker "$INSTALL_DIR"
 
   echo "설치 완료: $INSTALL_DIR"
   echo "실행: $INSTALL_DIR/Momos.Worker"
