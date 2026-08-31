@@ -118,9 +118,7 @@ configure_worker() {
   local gpustack_api_key="${MOMOS_LLM_GPUSTACK_APIKEY:-}"
   local gpustack_model="${MOMOS_LLM_GPUSTACK_MODEL:-}"
 
-  if [ -z "$base_url" ] && { [ -t 0 ] || [ -r /dev/tty ]; }; then
-    exec 3<&0
-    [ -t 0 ] || exec 3</dev/tty
+  if [ -z "$base_url" ] && { [ -t 0 ] && exec 3<&0 || exec 3</dev/tty; } 2>/dev/null; then
     read -rp "Momos Host BaseUrl: " base_url <&3
     read -rsp "Momos Worker API Key: " api_key <&3; echo
     read -rp "GPUStack Endpoint: " gpustack_endpoint <&3

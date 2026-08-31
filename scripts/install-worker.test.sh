@@ -77,4 +77,24 @@ MOMOS_LLM_GPUSTACK_MODEL="model" \
 grep -q '"BaseUrl": "https://host.example"' "$tmp5/appsettings.Production.json" || fail "configure_worker: 비대화형 환경변수 값이 반영되지 않음"
 rm -rf "$tmp5"
 
+# configure_worker: 진짜 비대화형(제어 터미널 없음)이고 환경변수도 없으면 빈 템플릿을 쓰고
+# exit 0으로 끝나야 한다(예전 회귀: exec 3</dev/tty가 ENXIO로 실패해 set -e 때문에 스크립트가
+# 죽었던 적이 있음 — setsid로 실제 제어 터미널을 떼어내야 이 경로를 재현할 수 있다).
+if [ "$(uname -s)" = "Linux" ] && command -v setsid >/dev/null 2>&1; then
+  tmp6="$(mktemp -d)"
+  script_path="$SCRIPT_DIR/install-worker.sh"
+  if setsid bash -c "
+    unset MOMOS_WORKER_HOST_BASEURL MOMOS_WORKER_HOST_APIKEY MOMOS_LLM_GPUSTACK_ENDPOINT MOMOS_LLM_GPUSTACK_APIKEY MOMOS_LLM_GPUSTACK_MODEL
+    source '$script_path'
+    configure_worker '$tmp6'
+  " < /dev/null > /dev/null 2>&1; then
+    [ -f "$tmp6/appsettings.Production.json" ] || fail "configure_worker: 진짜 비대화형 경로에서 설정 파일이 생성되지 않음"
+  else
+    fail "configure_worker: 진짜 비대화형(터미널 없음)에서 exit 0이어야 하는데 실패함 — /dev/tty ENXIO 회귀 재발 의심"
+  fi
+  rm -rf "$tmp6"
+else
+  echo "SKIP: 진짜 비대화형 경로 테스트는 Linux + setsid 필요 (현재: $(uname -s))"
+fi
+
 echo "OK: install-worker.sh 설정 생성 테스트 통과"
