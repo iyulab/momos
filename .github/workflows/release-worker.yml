@@ -1,3 +1,7 @@
+# This pipeline requires CodeBeaker.Commands, CodeBeaker.Core, and CodeBeaker.Runtimes
+# to be published to nuget.org before the first worker-v* tag is pushed.
+# Pushing a tag before that publish will fail at dotnet restore with NU1101.
+
 name: Release Momos.Worker
 
 on:
@@ -82,13 +86,13 @@ jobs:
           merge-multiple: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.0.8
         with:
           files: artifacts/*
 
       - name: Delete intermediate build artifacts
         if: always()
-        uses: geekyeggo/delete-artifact@v5
+        uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
         with:
           name: |
             momos-worker-win-x64
