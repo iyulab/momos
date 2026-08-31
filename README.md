@@ -67,7 +67,7 @@ iwr https://raw.githubusercontent.com/iyulab/momos/main/scripts/install-worker.p
 
 값은 설치 디렉터리의 `appsettings.Production.json`에 기록된다(소유자 전용 권한). 기본 설치 경로는 Linux `~/.local/share/momos-worker`, Windows `%LOCALAPPDATA%\MomosWorker`이며 `MOMOS_WORKER_INSTALL_DIR` 환경변수로 바꿀 수 있다. 특정 버전을 설치하려면 `MOMOS_WORKER_VERSION=0.1.0`처럼 지정한다(기본은 최신 릴리스).
 
-설치 후 실행은 직접 하거나(`<설치경로>/Momos.Worker`, Windows는 `Momos.Worker.exe`) 운영 환경에 맞는 방식(Windows Service, systemd 등)으로 상주시킨다 — 이 스크립트는 그 등록까지는 하지 않는다. 재실행하면 기존 설정 파일은 그대로 둔 채 바이너리만 최신으로 교체한다.
+설치 후 실행은 직접 하거나(`<설치경로>/Momos.Worker`, Windows는 `Momos.Worker.exe`) 운영 환경에 맞는 방식(Windows Service, systemd 등)으로 상주시킨다 — 이 스크립트는 그 등록까지는 하지 않는다. 재실행하면 기존 설정 파일은 그대로 둔 채 바이너리만 최신으로 교체한다. Windows에서 설치한 사용자와 다른 계정(예: LocalSystem)으로 서비스를 등록하면 그 계정에 `appsettings.Production.json` 읽기 권한을 추가해야 한다 — 설치 스크립트가 현재 사용자 전용으로 ACL을 좁혀두기 때문이다.
 
 새 버전은 `worker-v*` 형태의 태그(예: `worker-v0.1.0`)로 릴리스된다 — Host(컨테이너 배포)와는 독립된 버전 계열이다.
 
