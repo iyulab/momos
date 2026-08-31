@@ -8,6 +8,11 @@ $ErrorActionPreference = 'Stop'
 $Repo = 'iyulab/momos'
 $Rid = 'win-x64'
 
+function ConvertFrom-SecureStringToPlainText {
+    param([System.Security.SecureString]$SecureString)
+    [System.Net.NetworkCredential]::new('', $SecureString).Password
+}
+
 function Resolve-ReleaseTag {
     param([string]$Version)
     if ($Version -ne 'latest') { return "worker-v$Version" }
@@ -49,7 +54,8 @@ function Write-WorkerConfig {
     # 현재 사용자만 접근 가능하도록 상속을 끊고 전용 권한 부여 (Linux 쪽 chmod 600에 상응)
     $acl = Get-Acl $path
     $acl.SetAccessRuleProtection($true, $false)
-    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($env:USERNAME, 'FullControl', 'Allow')
+    $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($currentIdentity, 'FullControl', 'Allow')
     $acl.AddAccessRule($rule)
     Set-Acl -Path $path -AclObject $acl
 }
@@ -70,9 +76,9 @@ function Invoke-WorkerConfiguration {
 
     if ([Environment]::UserInteractive -and -not $baseUrl) {
         $baseUrl = Read-Host 'Momos Host BaseUrl'
-        $apiKey = Read-Host 'Momos Worker API Key'
+        $apiKey = ConvertFrom-SecureStringToPlainText (Read-Host 'Momos Worker API Key' -AsSecureString)
         $gpuEndpoint = Read-Host 'GPUStack Endpoint'
-        $gpuApiKey = Read-Host 'GPUStack API Key'
+        $gpuApiKey = ConvertFrom-SecureStringToPlainText (Read-Host 'GPUStack API Key' -AsSecureString)
         $gpuModel = Read-Host 'GPUStack Model'
     }
 

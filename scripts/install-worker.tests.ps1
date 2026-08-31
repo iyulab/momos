@@ -10,6 +10,10 @@ function Assert-True($condition, $label) {
     if (-not $condition) { $script:failures += "FAIL: $label" }
 }
 
+$secure = ConvertTo-SecureString -String 'test-secret' -AsPlainText -Force
+$plain = ConvertFrom-SecureStringToPlainText -SecureString $secure
+Assert-Equal 'test-secret' $plain 'ConvertFrom-SecureStringToPlainText: round-trip'
+
 # Test-Checksum: 정상/손상 파일 각각 검증
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
 New-Item -ItemType Directory -Path $tmp | Out-Null
