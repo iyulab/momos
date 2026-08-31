@@ -1,0 +1,99 @@
+# This pipeline requires CodeBeaker.Commands, CodeBeaker.Core, and CodeBeaker.Runtimes
+# to be published to nuget.org before the first worker-v* tag is pushed.
+# Pushing a tag before that publish will fail at dotnet restore with NU1101.
+
+name: Release Momos.Worker
+
+on:
+  push:
+    tags:
+      - 'worker-v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+            ext: zip
+          - rid: linux-x64
+            runner: ubuntu-latest
+            ext: tar.gz
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Derive version from tag
+        id: version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          echo "value=${tag#worker-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish self-contained single-file binary
+        shell: bash
+        run: |
+          dotnet publish src/Momos.Worker/Momos.Worker.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:Version=${{ steps.version.outputs.value }} \
+            -o publish/${{ matrix.rid }}
+
+      - name: Package archive
+        shell: bash
+        run: |
+          if [ "${{ matrix.ext }}" = "zip" ]; then
+            (cd publish/${{ matrix.rid }} && 7z a -tzip ../../momos-worker-${{ matrix.rid }}.zip .)
+          else
+            tar -czf momos-worker-${{ matrix.rid }}.tar.gz -C publish/${{ matrix.rid }} .
+          fi
+
+      - name: Checksum
+        shell: bash
+        run: sha256sum momos-worker-${{ matrix.rid }}.${{ matrix.ext }} > momos-worker-${{ matrix.rid }}.${{ matrix.ext }}.sha256
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: momos-worker-${{ matrix.rid }}
+          path: |
+            momos-worker-${{ matrix.rid }}.${{ matrix.ext }}
+            momos-worker-${{ matrix.rid }}.${{ matrix.ext }}.sha256
+          retention-days: 1
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.0.8
+        with:
+          files: artifacts/*
+
+      - name: Delete intermediate build artifacts
+        if: always()
+        uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
+        with:
+          name: |
+            momos-worker-win-x64
+            momos-worker-linux-x64

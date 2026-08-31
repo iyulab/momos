@@ -1,0 +1,36 @@
+name: Test Install Scripts
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/install-worker.sh'
+      - 'scripts/install-worker.test.sh'
+      - 'scripts/install-worker.ps1'
+      - 'scripts/install-worker.tests.ps1'
+      - '.github/workflows/test-install-scripts.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'scripts/install-worker.sh'
+      - 'scripts/install-worker.test.sh'
+      - 'scripts/install-worker.ps1'
+      - 'scripts/install-worker.tests.ps1'
+      - '.github/workflows/test-install-scripts.yml'
+  workflow_dispatch:
+
+jobs:
+  test-bash:
+    name: Test install-worker.sh (bash)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/install-worker.test.sh
+
+  test-powershell:
+    name: Test install-worker.ps1 (pwsh)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: ./scripts/install-worker.tests.ps1
