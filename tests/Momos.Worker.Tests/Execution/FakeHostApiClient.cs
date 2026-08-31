@@ -17,6 +17,9 @@ internal sealed class FakeHostApiClient(
     public List<SubmitReportRequest> SubmittedReports { get; } = [];
     public List<(Guid Id, string Reason)> SubmittedFailures { get; } = [];
 
+    /// <summary>Total <see cref="ClaimNextAsync"/> calls so far, successful or throwing — lets a test condition-wait on the pull loop having reached a given iteration instead of sleeping an arbitrary duration.</summary>
+    public int ClaimCallCount => _claimCallCount;
+
     public Task<ClaimedInspectionRequest?> ClaimNextAsync(CancellationToken cancellationToken)
     {
         _claimCallCount++;

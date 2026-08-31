@@ -22,6 +22,8 @@ public sealed class PullExecutionBackgroundService(
     IOptions<PullExecutionOptions> options,
     ILogger<PullExecutionBackgroundService> logger) : BackgroundService
 {
+    private int _consecutiveFailures;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -29,6 +31,7 @@ public sealed class PullExecutionBackgroundService(
             try
             {
                 var claimed = await hostApiClient.ClaimNextAsync(stoppingToken);
+                _consecutiveFailures = 0;
                 if (claimed is null)
                 {
                     await Task.Delay(options.Value.PollInterval, stoppingToken);
@@ -50,9 +53,25 @@ public sealed class PullExecutionBackgroundService(
                 // next poll or another one. No separate retry/backoff for this case is
                 // needed on top of that.
                 //
-                // What *is* unbounded here is the poll loop itself: nothing caps how
-                // long it keeps retrying once Host is down (only the log volume grows).
-                logger.LogError(ex, "Pull loop iteration failed, will retry next poll");
+                // The loop itself never stops retrying — giving up would sacrifice
+                // availability for no benefit once Host recovers — but nothing capped
+                // how long it kept logging at error level while Host stayed down. Past
+                // ConsecutiveFailureLogThreshold, downgrade to a single critical log and
+                // go quiet until the next success, so a prolonged outage doesn't drown
+                // out other log signal without needing the poll loop to actually stop.
+                _consecutiveFailures++;
+                if (_consecutiveFailures < options.Value.ConsecutiveFailureLogThreshold)
+                {
+                    logger.LogError(ex, "Pull loop iteration failed, will retry next poll");
+                }
+                else if (_consecutiveFailures == options.Value.ConsecutiveFailureLogThreshold)
+                {
+                    logger.LogCritical(
+                        ex,
+                        "Pull loop has failed {ConsecutiveFailures} consecutive times — suppressing further per-iteration error logs until it succeeds again",
+                        _consecutiveFailures);
+                }
+
                 await Task.Delay(options.Value.PollInterval, stoppingToken);
             }
         }
@@ -125,6 +144,13 @@ public sealed class PullExecutionBackgroundService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // Covers a mid-run Host hiccup (GetProjectAsync/SubmitReportAsync) and an
+            // LLM-provider failure alike — both surface here as "the run threw", and
+            // both are handled the same way: report it and move on. If SubmitFailureAsync
+            // itself also throws (Host is the one that's down), the exception propagates
+            // to ExecuteAsync's catch and the request is left Running — the claim-next
+            // reclaim lease (InspectionClaimOptions.ReclaimTimeout) picks it back up once
+            // it expires, so no separate retry/backoff is needed for that case either.
             logger.LogError(ex, "Inspection run failed for request {RequestId}", request.Id);
             await hostApiClient.SubmitFailureAsync(request.Id, ex.Message, cancellationToken);
         }

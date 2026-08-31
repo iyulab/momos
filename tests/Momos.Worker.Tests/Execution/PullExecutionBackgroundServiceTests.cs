@@ -13,6 +13,18 @@ namespace Momos.Worker.Tests.Execution;
 
 public sealed class PullExecutionBackgroundServiceTests
 {
+    /// <summary>Captures each formatted log message so a test can assert on what did (or did not) reach the log.</summary>
+    private sealed class RecordingLogger : ILogger<PullExecutionBackgroundService>
+    {
+        public List<(LogLevel Level, string Message)> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add((logLevel, formatter(state, exception)));
+    }
+
     private static (ISessionAwareAgentLoopFactory Factory, FakeExecutionRuntimeProvider ExecutionProvider) BuildFakeAgentLoopFactory(string reply) =>
         BuildFakeAgentLoopFactory(new FakeChatClientProvider(reply));
 
@@ -264,6 +276,42 @@ public sealed class PullExecutionBackgroundServiceTests
         Assert.Equal(FindingCategory.FunctionalDefect, finding.Category);
         Assert.Equal("App crashes on startup", finding.Description);
         Assert.Contains("NullReferenceException", finding.Evidence);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenClaimNextFailsRepeatedly_DowngradesToACriticalLogAtTheThresholdAndThenSuppresses()
+    {
+        var hostClient = new FakeHostApiClient([], claimNextThrowsForFirstNCalls: 5);
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("unused");
+        var logger = new RecordingLogger();
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(5), ConsecutiveFailureLogThreshold = 3 }),
+            logger);
+
+        await service.StartAsync(CancellationToken.None);
+        // Condition-based wait (not a fixed sleep): the 6th call is the first one past
+        // the 5 configured failures, so by the time it lands the loop has already run
+        // its course through 3 failures (crossing the threshold) and recovered.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (hostClient.ClaimCallCount < 6 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(5);
+        }
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.True(hostClient.ClaimCallCount >= 6, "pull loop never reached a 6th claim-next call");
+        var errors = logger.Messages.Where(m => m.Level == LogLevel.Error).ToList();
+        var criticals = logger.Messages.Where(m => m.Level == LogLevel.Critical).ToList();
+        // Threshold is 3: the 1st and 2nd failures log at Error, the 3rd crosses the
+        // threshold and logs at Critical instead — and nothing past that, even though
+        // 2 more failures (4th, 5th) still happened before the 6th call recovered.
+        Assert.Equal(2, errors.Count);
+        var critical = Assert.Single(criticals);
+        Assert.Contains("3", critical.Message);
+        Assert.Contains("suppressing", critical.Message);
     }
 
     [Fact]
