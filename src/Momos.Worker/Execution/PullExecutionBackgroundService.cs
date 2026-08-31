@@ -40,9 +40,18 @@ public sealed class PullExecutionBackgroundService(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // A BackgroundService that throws out of ExecuteAsync takes the whole
-                // host down — a transient Host-unreachable blip must not do that. Retry
-                // policy/backoff is deliberately out of scope for now; this only stops
-                // one bad poll from killing the process, at the existing cadence.
+                // host down — a transient Host-unreachable blip must not do that.
+                //
+                // This is where a request stays stuck if RunInspectionAsync's own
+                // catch (below) can't even report the failure — e.g. Host itself is
+                // unreachable. That's not a gap: it left the request Running, and the
+                // claim-next reclaim lease (InspectionClaimOptions.ReclaimTimeout) picks
+                // it back up once the lease expires, whether that's this worker on its
+                // next poll or another one. No separate retry/backoff for this case is
+                // needed on top of that.
+                //
+                // What *is* unbounded here is the poll loop itself: nothing caps how
+                // long it keeps retrying once Host is down (only the log volume grows).
                 logger.LogError(ex, "Pull loop iteration failed, will retry next poll");
                 await Task.Delay(options.Value.PollInterval, stoppingToken);
             }
