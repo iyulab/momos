@@ -34,6 +34,7 @@ namespace Momos.Worker.Agent;
 public sealed class MomosAgentLoopFactory(
     IChatClientFactory chatClientFactory,
     IUsageTracker usageTracker,
+    UsageLimiter usageLimiter,
     ContextManager contextManager,
     IErrorRecoveryService errorRecovery,
     IToolRetriever toolRetriever,
@@ -63,6 +64,14 @@ public sealed class MomosAgentLoopFactory(
     private async Task<(IAgentLoop Loop, FindingSink Findings)> BuildAgentLoopAsync(
         AgentLoopFactoryOptions options, ExecutionSessionHandle session, CancellationToken cancellationToken)
     {
+        // usageLimiter is a single process-wide instance (see
+        // ServiceCollectionExtensions.AddIronHiveAgentEngine) tracked against by
+        // UsageLimitingChatClient on every model call — reset it here so one inspection's
+        // usage never counts against the next. Safe because PullExecutionBackgroundService
+        // processes requests strictly sequentially; this factory is not built concurrently
+        // for two overlapping sessions.
+        usageLimiter.Reset();
+
         var chatClient = string.IsNullOrEmpty(options.Provider)
             ? await chatClientFactory.CreateAsync(options.Model, cancellationToken)
             : await chatClientFactory.CreateAsync(options.Provider, options.Model, cancellationToken);

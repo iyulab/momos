@@ -9,6 +9,7 @@ using IronHive.Agent.Extensions;
 using IronHive.Agent.Loop;
 using IronHive.Agent.Mcp;
 using IronHive.Agent.Providers;
+using IronHive.Agent.Tracking;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,7 +44,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISessionManager, SessionManager>();
         services.AddSingleton<IExecutionRuntimeProvider, CodeBeakerExecutionRuntimeProvider>();
 
-        services.AddIronHiveAgentEngine();
+        var agentLoopLimits = configuration.GetSection(AgentLoopLimitsOptions.SectionName).Get<AgentLoopLimitsOptions>()
+            ?? new AgentLoopLimitsOptions();
+        services.AddIronHiveAgentEngine(agentLoopLimits);
 
         // Empty by default — connects only what an operator explicitly lists.
         // Enabling a Computer Use tool and its permission posture is a
@@ -81,9 +84,22 @@ public static class ServiceCollectionExtensions
     /// <see cref="IChatClientProvider"/>s. Callers must register at least one
     /// <see cref="IChatClientProvider"/> before calling this.
     /// </summary>
-    public static IServiceCollection AddIronHiveAgentEngine(this IServiceCollection services)
+    public static IServiceCollection AddIronHiveAgentEngine(this IServiceCollection services, AgentLoopLimitsOptions? limits = null)
     {
-        services.AddIronHiveAgent();
+        limits ??= new AgentLoopLimitsOptions();
+
+        services.AddIronHiveAgent(o =>
+        {
+            // AgentLoop never actually reads this (confirmed by reflection: no
+            // IUsageLimiter/UsageLimitsConfig field on the type) — set it anyway so the
+            // UsageLimiter this registers in DI (below) carries momos's real limit, and so
+            // a future IronHive.Agent version that does wire it through picks it up for
+            // free. MaxSessionCost is left at the library default: GPUStack's self-hosted
+            // model id has no pricing entry (confirmed: EstimatedCostUsd stays 0.00m), so a
+            // cost cap would never trip for momos's current deployment — token count is the
+            // real guard, see UsageLimitingChatClient.
+            o.UsageLimits = new UsageLimitsConfig { MaxSessionTokens = limits.MaxSessionTokens, StopOnLimit = true };
+        });
 
         services.AddSingleton<IToolRetriever, KeywordToolRetriever>();
         services.AddSingleton<IChatClientFactory>(sp =>
@@ -100,8 +116,23 @@ public static class ServiceCollectionExtensions
             // the AITool or reports its result back to the model. This decorator is what
             // actually runs CodeExecutionTools/FindingReportingTools and feeds their
             // results back for the next turn.
+            //
+            // ChatClientBuilder layers in call order — the *first* .Use()/.UseXxx() call
+            // ends up outermost, the *last* ends up closest to the raw client (confirmed
+            // empirically: reversing this once made UsageLimitingChatClient wrap the whole
+            // multi-iteration FunctionInvokingChatClient call instead of each iteration of
+            // it, so the pre-call check only ran once per RunAsync and never tripped).
+            // UseFunctionInvocation must therefore come *first* so
+            // UsageLimitingChatClient — registered second — ends up wrapping the raw
+            // provider client directly, called once per tool-call iteration rather than
+            // once per top-level RunAsync; that's the only vantage point that can stop a
+            // runaway loop mid-flight instead of after every iteration already ran.
+            var usageLimiter = sp.GetRequiredService<UsageLimiter>();
             return new ChatClientFactory(providers, providers.Values.First(),
-                client => client.AsBuilder().UseFunctionInvocation().Build(sp));
+                client => client.AsBuilder()
+                    .UseFunctionInvocation(configure: c => c.MaximumIterationsPerRequest = limits.MaxIterationsPerRequest)
+                    .Use(inner => new UsageLimitingChatClient(inner, usageLimiter))
+                    .Build(sp));
         });
         services.AddSingleton<MomosAgentLoopFactory>();
         services.AddSingleton<IAgentLoopFactory>(sp => sp.GetRequiredService<MomosAgentLoopFactory>());

@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Momos.Worker.Agent;
 using Momos.Worker.Execution;
 using Momos.Worker.Tests.Execution;
 
@@ -139,5 +140,46 @@ public class MomosAgentLoopFactoryTests
         Assert.NotNull(executionProvider.LastExecuted);
         Assert.Equal("dotnet", executionProvider.LastExecuted!.Value.Command.Name);
         Assert.Contains("no issues found", response.Content);
+    }
+
+    /// <summary>
+    /// <see cref="AgentLoop"/> itself has no field referencing a usage limiter (confirmed by
+    /// reflection — <c>AgentServicesOptions.UsageLimits</c> registers a
+    /// <c>IronHive.Agent.Tracking.UsageLimiter</c> in DI that the loop never reads), so the
+    /// only place a session-token cap can actually stop a runaway tool-call loop is the chat
+    /// client itself. This drives a real multi-turn loop past its configured
+    /// <see cref="AgentLoopLimitsOptions.MaxSessionTokens"/> and checks the *next* turn is
+    /// refused before it ever reaches the fake provider — proving
+    /// <see cref="UsageLimitingChatClient"/> is actually wired into the request path
+    /// (<see cref="ServiceCollectionExtensions.AddIronHiveAgentEngine"/>), not just present
+    /// as an unused class.
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_WhenSessionTokenUsageExceedsTheConfiguredLimit_StopsBeforeTheNextModelCall()
+    {
+        var toolCall = new FunctionCallContent(
+            "call-1",
+            nameof(CodeExecutionTools.RunCommand),
+            new Dictionary<string, object?> { ["command"] = "dotnet", ["args"] = new[] { "build" } });
+        var overLimitResponse = new ChatResponse(new ChatMessage(ChatRole.Assistant, [toolCall]))
+        {
+            Usage = new UsageDetails { TotalTokenCount = 1_000 },
+        };
+        var chatClientProvider = new FakeChatClientProvider(
+            responsesBeforeFinal: [overLimitResponse],
+            finalResponse: new ChatResponse(new ChatMessage(ChatRole.Assistant, "should never be reached")));
+        var services = new ServiceCollection();
+        services.AddSingleton<IChatClientProvider>(chatClientProvider);
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
+        services.AddSingleton<IExecutionRuntimeProvider>(new FakeExecutionRuntimeProvider
+        {
+            NextResult = new ExecutionCommandResult(true, "build succeeded", null, 100),
+        });
+        services.AddIronHiveAgentEngine(new AgentLoopLimitsOptions { MaxSessionTokens = 10 });
+        var factory = services.BuildServiceProvider().GetRequiredService<IAgentLoopFactory>();
+        var agentLoop = await factory.CreateAsync();
+
+        await Assert.ThrowsAsync<UsageLimitExceededException>(
+            () => agentLoop.RunAsync("look for problems in this repository"));
     }
 }
