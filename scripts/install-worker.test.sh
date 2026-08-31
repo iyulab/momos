@@ -48,4 +48,29 @@ perm="$(stat -c '%a' "$tmp2/appsettings.Production.json" 2>/dev/null || stat -f 
 [ "$perm" = "600" ] || fail "write_config: 권한이 600이 아님 (실제: $perm)"
 rm -rf "$tmp2"
 
+# write_config: 값에 큰따옴표·백슬래시가 있어도 유효한 JSON을 생성해야 한다
+tmp3="$(mktemp -d)"
+write_config "$tmp3" 'a"b\c' "hostkey" "https://gpustack.example" "llmkey" "model"
+config_json3="$(cat "$tmp3/appsettings.Production.json")"
+echo "$config_json3" | grep -qF '"BaseUrl": "a\"b\\c"' || fail "write_config: 큰따옴표·백슬래시 이스케이프 실패"
+rm -rf "$tmp3"
+
+# configure_worker: 이미 설정 파일이 있으면 건드리지 않아야 한다 (idempotent)
+tmp4="$(mktemp -d)"
+echo '{"existing":"config"}' > "$tmp4/appsettings.Production.json"
+configure_worker "$tmp4" > /dev/null
+[ "$(cat "$tmp4/appsettings.Production.json")" = '{"existing":"config"}' ] || fail "configure_worker: 기존 설정 파일을 덮어씀"
+rm -rf "$tmp4"
+
+# configure_worker: 비대화형(stdin이 tty가 아님)이면 프롬프트 없이 환경변수 값으로 채운다
+tmp5="$(mktemp -d)"
+MOMOS_WORKER_HOST_BASEURL="https://host.example" \
+MOMOS_WORKER_HOST_APIKEY="hostkey" \
+MOMOS_LLM_GPUSTACK_ENDPOINT="https://gpustack.example" \
+MOMOS_LLM_GPUSTACK_APIKEY="llmkey" \
+MOMOS_LLM_GPUSTACK_MODEL="model" \
+  configure_worker "$tmp5" < /dev/null
+grep -q '"BaseUrl": "https://host.example"' "$tmp5/appsettings.Production.json" || fail "configure_worker: 비대화형 환경변수 값이 반영되지 않음"
+rm -rf "$tmp5"
+
 echo "OK: install-worker.sh 설정 생성 테스트 통과"

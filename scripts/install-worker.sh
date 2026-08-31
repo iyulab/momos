@@ -65,8 +65,20 @@ verify_checksum() {
   [ "$expected" = "$actual" ]
 }
 
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  printf '%s' "$s"
+}
+
 write_config() {
   local dir="$1" base_url="$2" api_key="$3" gpustack_endpoint="$4" gpustack_api_key="$5" gpustack_model="$6"
+  base_url="$(json_escape "$base_url")"
+  api_key="$(json_escape "$api_key")"
+  gpustack_endpoint="$(json_escape "$gpustack_endpoint")"
+  gpustack_api_key="$(json_escape "$gpustack_api_key")"
+  gpustack_model="$(json_escape "$gpustack_model")"
   cat > "$dir/appsettings.Production.json" <<JSON
 {
   "Momos": {
