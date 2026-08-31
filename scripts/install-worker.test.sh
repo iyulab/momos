@@ -32,4 +32,8 @@ fixture_json='{"assets":[{"name":"momos-worker-linux-x64.tar.gz","browser_downlo
 result="$(echo "$fixture_json" | extract_asset_url "momos-worker-linux-x64.tar.gz")"
 [ "$result" = "https://example.invalid/momos-worker-linux-x64.tar.gz" ] || fail "extract_asset_url: 기대값과 다름: $result"
 
+# extract_asset_url: 매칭되는 자산이 없을 때 빈 문자열을 반환해야 한다 (에러로 죽지 않아야 함)
+result="$(echo "$fixture_json" | extract_asset_url "momos-worker-win-x64.zip")"
+[ -z "$result" ] || fail "extract_asset_url: 매칭 없을 때 빈 문자열이 아님: $result"
+
 echo "OK: install-worker.sh 단위 테스트 통과"

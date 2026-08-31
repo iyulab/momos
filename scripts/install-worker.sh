@@ -30,7 +30,7 @@ resolve_release_tag() {
   tag="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases" \
     | grep -o '"tag_name": *"worker-v[^"]*"' \
     | head -n1 \
-    | sed -E 's/.*"(worker-v[^"]*)".*/\1/')"
+    | sed -E 's/.*"(worker-v[^"]*)".*/\1/' || true)"
   if [ -z "$tag" ]; then
     echo "worker-v* 태그를 가진 릴리스를 찾을 수 없습니다 (repo=$REPO)" >&2
     return 1
@@ -43,7 +43,7 @@ extract_asset_url() {
   local asset_name="$1"
   grep -o "\"browser_download_url\": *\"[^\"]*${asset_name}\"" \
     | head -n1 \
-    | sed -E 's/.*"(https:[^"]+)"/\1/'
+    | sed -E 's/.*"(https:[^"]+)"/\1/' || true
 }
 
 resolve_asset_url() {
@@ -74,7 +74,6 @@ fetch_and_extract() {
   checksum_url="$(resolve_asset_url "$tag" "${asset_name}.sha256")"
 
   tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "$tmp_dir"' RETURN
 
   echo "다운로드 중: $tarball_url"
   curl -fsSL -o "$tmp_dir/archive.tar.gz" "$tarball_url"
@@ -82,11 +81,13 @@ fetch_and_extract() {
 
   if ! verify_checksum "$tmp_dir/archive.tar.gz" "$tmp_dir/archive.tar.gz.sha256"; then
     echo "체크섬이 일치하지 않습니다 — 설치를 중단합니다." >&2
+    rm -rf "$tmp_dir"
     return 1
   fi
 
   mkdir -p "$install_dir"
   tar -xzf "$tmp_dir/archive.tar.gz" -C "$install_dir"
+  rm -rf "$tmp_dir"
 }
 
 main() {
