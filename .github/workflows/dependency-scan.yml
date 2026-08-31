@@ -32,10 +32,19 @@ jobs:
 
     - name: Check for vulnerable NuGet packages
       run: |
-        report=$(dotnet list src/Momos.Host/Momos.Host.csproj package --vulnerable --include-transitive 2>&1
-                 dotnet list tests/Momos.Host.Tests/Momos.Host.Tests.csproj package --vulnerable --include-transitive 2>&1)
+        set +e
+        report=$(dotnet list src/Momos.Host/Momos.Host.csproj package --vulnerable --include-transitive 2>&1)
+        status=$?
+        report2=$(dotnet list tests/Momos.Host.Tests/Momos.Host.Tests.csproj package --vulnerable --include-transitive 2>&1)
+        status2=$?
+        set -e
         echo "$report"
-        if echo "$report" | grep -q "has the following vulnerable packages"; then
+        echo "$report2"
+        if [ $status -ne 0 ] || [ $status2 -ne 0 ]; then
+          echo "::error::dotnet list package --vulnerable failed to run — treating an unreadable scan as a failure, not a pass."
+          exit 1
+        fi
+        if echo "$report"$'\n'"$report2" | grep -q "has the following vulnerable packages"; then
           echo "::error::Vulnerable NuGet package(s) detected — see the report above."
           exit 1
         fi
