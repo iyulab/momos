@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Momos.Host.Tests;
 
@@ -22,11 +23,21 @@ public sealed class MomosHostFactory : WebApplicationFactory<Program>
     /// </summary>
     public TimeSpan InspectionClaimReclaimTimeout { get; set; } = TimeSpan.FromMinutes(30);
 
+    /// <summary>
+    /// Overridable so a reclaim test can advance a fake time provider (e.g.
+    /// <c>Microsoft.Extensions.Time.Testing.FakeTimeProvider</c>) instead of waiting out a
+    /// real timeout — the claim-next endpoint reads
+    /// <see cref="TimeProvider.GetUtcNow"/> rather than <see cref="DateTimeOffset.UtcNow"/>
+    /// for exactly this reason.
+    /// </summary>
+    public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         builder
             .UseSetting("ConnectionStrings:MomosDb", $"Data Source={_dbPath}")
             .UseSetting("Momos:Host:InspectionClaim:ReclaimTimeout", InspectionClaimReclaimTimeout.ToString())
-            .UseSetting("Momos:Host:WorkerAuth:ApiKey", WorkerApiKey);
+            .UseSetting("Momos:Host:WorkerAuth:ApiKey", WorkerApiKey)
+            .ConfigureServices(services => services.AddSingleton(TimeProvider));
 
     /// <summary>
     /// A client carrying the configured worker key — what every test in this project wants

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Time.Testing;
 using Momos.Host.Contracts;
 using Momos.Host.Domain;
 
@@ -8,16 +9,22 @@ namespace Momos.Host.Tests.Endpoints;
 /// <summary>
 /// Exercises claim-next's reclaim of a <see cref="InspectionRequestStatus.Running"/> request
 /// whose worker went away — owns its own <see cref="MomosHostFactory"/> (rather than sharing
-/// <see cref="InspectionRequestEndpointsTests"/>'s) so it can set a far shorter
-/// <c>ReclaimTimeout</c> than production, to observe a claim going stale within a test's
-/// lifetime.
+/// <see cref="InspectionRequestEndpointsTests"/>'s) so it can wire in a
+/// <see cref="FakeTimeProvider"/> and advance it deterministically past the reclaim timeout,
+/// instead of relying on a real-time delay racing the claim-next round trip (that raced under
+/// load — see git history on this file).
 /// </summary>
 public sealed class InspectionRequestReclaimTests : IDisposable
 {
-    private readonly MomosHostFactory _factory = new() { InspectionClaimReclaimTimeout = TimeSpan.FromMilliseconds(100) };
+    private readonly FakeTimeProvider _time = new();
+    private readonly MomosHostFactory _factory;
     private readonly HttpClient _client;
 
-    public InspectionRequestReclaimTests() => _client = _factory.CreateAuthorizedClient();
+    public InspectionRequestReclaimTests()
+    {
+        _factory = new MomosHostFactory { TimeProvider = _time };
+        _client = _factory.CreateAuthorizedClient();
+    }
 
     public void Dispose() => _factory.Dispose();
 
@@ -50,7 +57,7 @@ public sealed class InspectionRequestReclaimTests : IDisposable
     public async Task ClaimNext_WhenClaimedRequestIsPastReclaimTimeout_ReclaimsItWithANewerClaimedAt()
     {
         var claimed = await CreateAndClaimAsync();
-        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        _time.Advance(_factory.InspectionClaimReclaimTimeout + TimeSpan.FromSeconds(1));
 
         var response = await _client.PostAsync("/inspection-requests/claim-next", content: null);
 

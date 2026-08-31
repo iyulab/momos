@@ -59,14 +59,14 @@ public static class InspectionRequestEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         app.MapPost("/inspection-requests/claim-next", async (
-            MomosDbContext db, IOptions<InspectionClaimOptions> claimOptions, CancellationToken cancellationToken) =>
+            MomosDbContext db, IOptions<InspectionClaimOptions> claimOptions, TimeProvider timeProvider, CancellationToken cancellationToken) =>
         {
             // A request is eligible when it's Pending, or when it's Running but was claimed
             // before the reclaim cutoff — its worker is presumed gone. There's no heartbeat to
             // tell "still running, just slow" from "dead" (see InspectionClaimOptions), so this
             // cutoff is the only signal; a request reclaimed too early can end up running twice,
             // but report/fail's Running-only guard stops the loser from corrupting the result.
-            var reclaimCutoff = DateTimeOffset.UtcNow - claimOptions.Value.ReclaimTimeout;
+            var reclaimCutoff = timeProvider.GetUtcNow() - claimOptions.Value.ReclaimTimeout;
 
             // Conditional ExecuteUpdate (not a read-then-write) so the eligibility recheck and
             // the transition to Running happen as one statement — SQLite serializes writes, so
@@ -95,7 +95,7 @@ public static class InspectionRequestEndpoints
                     return Results.NoContent();
                 }
 
-                var claimedAt = DateTimeOffset.UtcNow;
+                var claimedAt = timeProvider.GetUtcNow();
 
                 // Guards on the exact (Status, ClaimedAt) observed above — a reclaim leaves
                 // Status at Running (unlike the one-way Pending→Running transition), so Status

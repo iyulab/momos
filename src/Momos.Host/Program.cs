@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.AddSingleton(TimeProvider.System);
 // Named enum values (not the underlying int) in request/response bodies — the
 // OpenAPI metadata (.Produces<T>()) already promises a discoverable contract,
 // and an integer alone doesn't tell a caller what it means. Momos.Worker's
