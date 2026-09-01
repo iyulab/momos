@@ -122,10 +122,11 @@ public sealed class WorkerSelfUpdater(HttpClient httpClient, IOptions<WorkerSelf
         var currentLink = Path.Combine(installRoot, WorkerInstallLayout.PointerDirectoryName);
         var stagedLink = currentLink + ".new";
 
-        // Only ever a leftover link from an interrupted swap. Non-recursive, so it removes the
-        // reparse point and not the version directory behind it — and deliberately not guarded with
-        // File.Exists: anything at this path that is not a directory-type link is something this
-        // code did not create, and letting CreateSymbolicLink refuse it is safer than deleting it.
+        // Only ever a leftover link from an interrupted swap, cleared because the creation below
+        // refuses an occupied path. Non-recursive, so it removes the reparse point and not the
+        // version directory behind it — and it refuses a non-empty directory rather than delete
+        // something this code did not put there. A file here is left alone entirely, and fails the
+        // creation below instead, which is the safe outcome for a path this code does not own.
         if (Directory.Exists(stagedLink))
         {
             Directory.Delete(stagedLink);
@@ -154,9 +155,17 @@ public sealed class WorkerSelfUpdater(HttpClient httpClient, IOptions<WorkerSelf
             // Reached only if the rename itself failed, which can leave nothing at "current".
             // Nothing later in the process will retry, so make the one attempt that could restore a
             // launchable install before the failure propagates.
-            if (!Directory.Exists(currentLink))
+            try
             {
-                Directory.CreateSymbolicLink(currentLink, versionDir);
+                if (!Directory.Exists(currentLink))
+                {
+                    Directory.CreateSymbolicLink(currentLink, versionDir);
+                }
+            }
+            catch
+            {
+                // A failed recovery has nothing to add: rethrowing it here would replace the
+                // exception that says what actually went wrong with one about the attempt to undo it.
             }
 
             throw;
