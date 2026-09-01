@@ -10,6 +10,11 @@ namespace Momos.Host.Endpoints;
 /// write endpoints (claim-next/report/fail) via <c>AddEndpointFilter</c> — project and
 /// inspection-request read/create endpoints are a separate integration surface and are
 /// not covered by this filter.
+///
+/// Minimal API model binding runs before endpoint filters: on any of these endpoints, a
+/// request with a missing/malformed required-body parameter never reaches this filter at
+/// all and gets 400 from binding, regardless of the Authorization header. So an
+/// unauthenticated caller sees 401 only when its request body is otherwise well-formed.
 /// </summary>
 public sealed class WorkerApiKeyFilter(IOptions<WorkerAuthOptions> options) : IEndpointFilter
 {

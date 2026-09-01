@@ -42,6 +42,22 @@ public sealed class WorkerAuthTests : IClassFixture<MomosHostFactory>
     }
 
     [Fact]
+    public async Task ClaimNext_WithoutAuthorizationHeaderAndNoBody_ReturnsBadRequestNotUnauthorized()
+    {
+        // Documents current (surprising) behavior, not a desired one — see the ordering note
+        // on WorkerApiKeyFilter. Required-body model binding runs before endpoint filters, so
+        // a missing body short-circuits with 400 before WorkerApiKeyFilter ever inspects the
+        // (also missing) Authorization header. If a future change makes the body optional and
+        // this flips to 401, this test should start failing and needs updating deliberately —
+        // not silently drift unnoticed either way.
+        var client = _factory.CreateDefaultClient();
+
+        var response = await client.PostAsync("/inspection-requests/claim-next", content: null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task SubmitReport_WithoutAuthorizationHeader_ReturnsUnauthorized()
     {
         var unauthenticated = _factory.CreateDefaultClient();
