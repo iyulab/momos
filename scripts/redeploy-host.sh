@@ -4,33 +4,70 @@ set -euo pipefail
 # Redeploys momos-host with a hard cutover instead of Container Apps' default
 # zero-downtime revision overlap: the previous revision is fully stopped before the
 # new one starts, so no two revisions ever hold the SQLite-over-Azure-Files database
-# open at once. Trades a short deploy-time outage for that guarantee — see the
-# Worker/Host update strategy design this script implements.
+# open at once. Trades a short deploy-time outage for that guarantee, which the platform's
+# own overlapping rollout cannot give when the two revisions share one database file.
 
 RG="${MOMOS_HOST_RESOURCE_GROUP:-momos}"
 APP="${MOMOS_HOST_APP_NAME:-momos-host}"
 IMAGE="${1:?사용법: redeploy-host.sh <image-ref>}"
 
-echo "1/5 리비전 모드를 multiple로 확인/전환 (이미 multiple이면 no-op)"
+# 리비전이 실제로 0 replica가 될 때까지 기다리는 상한(초). 넘기면 배포를 중단한다 —
+# 못 내려간 리비전을 남겨둔 채 새 리비전을 띄우는 것이 이 스크립트가 막으려는 바로 그 상황이다.
+DRAIN_TIMEOUT_SECONDS="${MOMOS_HOST_DRAIN_TIMEOUT_SECONDS:-120}"
+
+echo "1/6 리비전 모드를 multiple로 확인/전환 (이미 multiple이면 no-op)"
 az containerapp revision set-mode --name "$APP" --resource-group "$RG" --mode multiple >/dev/null
 
-echo "2/5 배포 전 active 리비전 목록 확보"
+echo "2/6 배포 전 active 리비전 목록 확보"
 old_revisions="$(az containerapp revision list --name "$APP" --resource-group "$RG" \
   --query "[?properties.active].name" -o tsv)"
 echo "  기존 active 리비전: ${old_revisions:-(없음)}"
 
 if [ -n "$old_revisions" ]; then
-  echo "3/5 기존 리비전을 비활성화 — SQLite 파일을 새 리비전과 동시에 물지 않도록 먼저 완전히 내린다"
+  echo "3/6 기존 리비전을 비활성화 — SQLite 파일을 새 리비전과 동시에 물지 않도록 먼저 완전히 내린다"
   while IFS= read -r rev; do
     [ -z "$rev" ] && continue
-    az containerapp revision deactivate --revision "$rev" --resource-group "$RG" >/dev/null
+    az containerapp revision deactivate --revision "$rev" --resource-group "$RG" </dev/null >/dev/null
     echo "  비활성화됨: $rev"
   done <<< "$old_revisions"
+
+  # `revision deactivate`는 컨트롤 플레인이 요청을 접수한 시점에 반환한다 — 컨테이너는 그 뒤로도
+  # SIGTERM + 유예시간만큼 더 살아 있다. 그 구간에 새 리비전을 띄우면 두 리비전이 같은 SQLite
+  # 파일을 동시에 물게 되어, 이 스크립트가 존재하는 이유 자체가 사라진다. 그래서 접수가 아니라
+  # replica 수가 실제로 0이 된 것을 확인한 뒤에만 다음 단계로 넘어간다.
+  echo "4/6 비활성화한 리비전의 replica가 실제로 0이 될 때까지 대기 (상한 ${DRAIN_TIMEOUT_SECONDS}초)"
+  drain_deadline=$(( $(date +%s) + DRAIN_TIMEOUT_SECONDS ))
+  while IFS= read -r rev; do
+    [ -z "$rev" ] && continue
+    while :; do
+      # 완전히 내려간 리비전은 0을 주거나 아예 값을 주지 않는다(tsv에서 null은 빈 문자열,
+      # 파이썬 None이 그대로 나오는 경우도 있다) — 셋 다 "내려갔다"로 취급한다.
+      # 조회 자체가 실패하면 "내려갔다"로 넘기지 않고 계속 재시도한다 — 확인하지 못한 것을
+      # 확인한 것으로 치는 순간 이 대기 단계는 아무것도 보장하지 못한다.
+      if replicas="$(az containerapp revision show --name "$APP" --revision "$rev" --resource-group "$RG" \
+        --query "properties.replicas" -o tsv </dev/null 2>/dev/null)"; then
+        case "$replicas" in
+          ""|0|None) break ;;
+        esac
+      else
+        replicas="(조회 실패)"
+      fi
+
+      if [ "$(date +%s)" -ge "$drain_deadline" ]; then
+        echo "리비전 $rev 이(가) 제한시간 안에 내려가지 않았습니다 (replicas=$replicas)." >&2
+        echo "지금 새 리비전을 띄우면 SQLite 파일을 동시에 물게 되므로 배포를 중단합니다 — 수동 확인 후 다시 실행하세요." >&2
+        exit 1
+      fi
+      sleep 5
+    done
+    echo "  드레인 완료: $rev"
+  done <<< "$old_revisions"
 else
-  echo "3/5 기존 active 리비전 없음 — 스킵(첫 배포)"
+  echo "3/6 기존 active 리비전 없음 — 스킵(첫 배포)"
+  echo "4/6 드레인 대기 없음 — 스킵(내릴 리비전이 없음)"
 fi
 
-echo "4/5 새 이미지로 리비전 생성: $IMAGE"
+echo "5/6 새 이미지로 리비전 생성: $IMAGE"
 az containerapp update --name "$APP" --resource-group "$RG" --image "$IMAGE" >/dev/null
 
 new_revisions="$(az containerapp revision list --name "$APP" --resource-group "$RG" \
@@ -42,7 +79,7 @@ if [ -z "$new_revision" ]; then
 fi
 echo "  새 리비전: $new_revision"
 
-echo "5/5 트래픽을 새 리비전 100%로 고정"
+echo "6/6 트래픽을 새 리비전 100%로 고정"
 az containerapp ingress traffic set --name "$APP" --resource-group "$RG" \
   --revision-weight "${new_revision}=100" >/dev/null
 

@@ -32,39 +32,46 @@ public sealed class PullExecutionBackgroundService(
             try
             {
                 var result = await hostApiClient.ClaimNextAsync(stoppingToken);
-                _consecutiveFailures = 0;
+                var claimedWork = false;
 
                 if (result.UpdateRequired)
                 {
-                    // Host가 이 protocol version을 더 이상 안 받아준다 — 일감이 없으니(Request는
-                    // 항상 null) 곧장 self-update. 실패해도 프로세스는 안 죽는다(D-51 패턴, 아래
-                    // catch에서 그대로 처리), 다음 poll에서 다시 시도.
+                    // Host no longer accepts this Worker's protocol version, so it withheld work
+                    // (Request is always null here) — nothing to finish first, update right away.
                     await selfUpdater.UpdateAsync(result.RecommendedWorkerVersion, stoppingToken);
-                    await Task.Delay(options.Value.PollInterval, stoppingToken);
-                    continue;
                 }
-
-                if (result.Request is null)
+                else if (result.Request is null)
                 {
                     if (result.RecommendedWorkerVersion is not null)
                     {
-                        // 일감도 없고 마침 업데이트 힌트도 있다 — 지금이 가장 확실한 유휴
-                        // 경계이므로 여기서 처리한다.
+                        // No work and an update on offer: the least disruptive moment there is.
                         await selfUpdater.UpdateAsync(result.RecommendedWorkerVersion, stoppingToken);
                     }
+                }
+                else
+                {
+                    await RunInspectionAsync(result.Request, stoppingToken);
+                    claimedWork = true;
 
-                    await Task.Delay(options.Value.PollInterval, stoppingToken);
-                    continue;
+                    // Just-finished work is an idle boundary too, so act on the hint this poll
+                    // already carried rather than waiting for a poll that finds the queue empty —
+                    // a Worker whose queue never drains would otherwise never update at all.
+                    if (result.RecommendedWorkerVersion is not null)
+                    {
+                        await selfUpdater.UpdateAsync(result.RecommendedWorkerVersion, stoppingToken);
+                    }
                 }
 
-                await RunInspectionAsync(result.Request, stoppingToken);
+                // Counts consecutive failed iterations, so it resets only once an iteration has run
+                // to completion — resetting right after a successful claim would pin the count at 1
+                // whenever the failing step is a later one, and the threshold below would never trip.
+                _consecutiveFailures = 0;
 
-                // 방금 일감을 끝냈다 — 이 poll 응답에 실려온 힌트를 다음 poll을 기다리지 않고
-                // 바로 반영한다(작업 완료 직후가 GitHub Actions runner의 job-경계 트리거와
-                // 동일한 유휴 지점).
-                if (result.RecommendedWorkerVersion is not null)
+                // Straight back to claiming after real work: an idle wait only makes sense when the
+                // last poll found nothing to do.
+                if (!claimedWork)
                 {
-                    await selfUpdater.UpdateAsync(result.RecommendedWorkerVersion, stoppingToken);
+                    await Task.Delay(options.Value.PollInterval, stoppingToken);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -86,6 +93,11 @@ public sealed class PullExecutionBackgroundService(
                 // ConsecutiveFailureLogThreshold, downgrade to a single critical log and
                 // go quiet until the next success, so a prolonged outage doesn't drown
                 // out other log signal without needing the poll loop to actually stop.
+                //
+                // A failing self-update lands here for the same reason and gets the same
+                // treatment: it retries every poll interval, and a Worker Host has locked
+                // out is doing nothing else, so without the threshold it would log an error
+                // and hit the release API every few seconds indefinitely.
                 _consecutiveFailures++;
                 if (_consecutiveFailures < options.Value.ConsecutiveFailureLogThreshold)
                 {

@@ -3,9 +3,10 @@ using System.Reflection;
 namespace Momos.Worker.Execution;
 
 /// <summary>
-/// Worker가 매 claim-next poll마다 Host에 보내는 자기 식별 정보. <see cref="ProtocolVersion"/>은
-/// Host↔Worker 통신 계약이 실제로 바뀔 때만 사람이 올리는 값(Worker 릴리스 주기와 독립) —
-/// PLAN-momos-20260901-worker-host-update-strategy.md 설계 섹션 1.
+/// What the Worker tells Host about itself on every claim-next poll. <see cref="ProtocolVersion"/>
+/// is bumped by hand, and only when the Host↔Worker request/response contract actually changes —
+/// keeping it separate from <see cref="Version"/> is what lets Host ship unrelated changes without
+/// forcing every Worker to update.
 /// </summary>
 public static class WorkerVersionInfo
 {

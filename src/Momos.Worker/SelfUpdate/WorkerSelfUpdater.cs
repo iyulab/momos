@@ -10,26 +10,39 @@ using Momos.Worker.Execution;
 namespace Momos.Worker.SelfUpdate;
 
 /// <summary>
-/// PLAN-momos-20260901-worker-host-update-strategy.md 설계 섹션 2 구현체. install-worker.sh/.ps1과
-/// 같은 프로토콜(GitHub Releases API → 자산 다운로드 → sha256 검증)을 셸아웃 없이 .NET 네이티브로
-/// 재구현한다 — bash/pwsh 존재를 전제하는 런타임 의존성을 만들지 않기 위함.
+/// Applies an update the same way install-worker.sh/.ps1 do — resolve the release, download the
+/// asset, verify its sha256, unpack it into its own version directory — but implemented directly
+/// against .NET rather than by shelling out to those scripts, so a running Worker never depends on
+/// bash or pwsh being present on the machine it was deployed to.
 /// </summary>
 public sealed class WorkerSelfUpdater(HttpClient httpClient, IOptions<WorkerSelfUpdateOptions> options, ILogger<WorkerSelfUpdater> logger) : IWorkerSelfUpdater
 {
+    private string? _lastSuppressedNotice;
+
     public async Task UpdateAsync(string? targetVersion, CancellationToken cancellationToken)
     {
-        try
+        if (!options.Value.Enabled)
         {
-            await StageUpdateAsync(targetVersion, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // D-51과 같은 태도: self-update 실패로 Worker 프로세스 자체가 죽으면 안 된다 — 실패는
-            // 로깅만 하고 다음 poll에서 다시 시도한다(호출부 PullExecutionBackgroundService의
-            // 기존 catch 블록이 이 예외를 그대로 삼켜 로그 임계치 패턴을 적용한다).
-            logger.LogError(ex, "Self-update to {TargetVersion} failed — will retry on next poll", targetVersion ?? "latest");
+            // Say it, but only when the answer changes. The caller asks again every poll interval,
+            // so an unacted-on update would otherwise repeat the same warning every few seconds for
+            // as long as the Worker runs — which buries it rather than surfacing it.
+            var notice = targetVersion ?? "latest";
+            if (_lastSuppressedNotice != notice)
+            {
+                _lastSuppressedNotice = notice;
+                logger.LogWarning(
+                    "Worker update to {TargetVersion} is available or required, but self-update is disabled ({SettingKey}:Enabled) — install it manually, or the Worker stays on this version and Host may keep refusing it work",
+                    notice,
+                    WorkerSelfUpdateOptions.SectionName);
+            }
+
             return;
         }
+
+        // Failures propagate to the caller's poll loop on purpose: it already counts consecutive
+        // failed iterations and stops logging each one past a threshold, and handling them here
+        // instead would leave that counter at zero and log every retry forever.
+        await StageUpdateAsync(targetVersion, cancellationToken);
 
         logger.LogInformation("Staged Worker update to {TargetVersion} — exiting for the residency mechanism to relaunch", targetVersion);
         Environment.Exit(WorkerExitCodes.UpdateStaged);
@@ -52,7 +65,7 @@ public sealed class WorkerSelfUpdater(HttpClient httpClient, IOptions<WorkerSelf
         }
 
         var version = tag.StartsWith("worker-v", StringComparison.Ordinal) ? tag["worker-v".Length..] : tag;
-        var versionDir = Path.Combine(opts.InstallRoot, "installs", version);
+        var versionDir = Path.Combine(opts.InstallRoot, WorkerInstallLayout.VersionsDirectoryName, version);
 
         // 압축을 임시 디렉터리에 풀고, 성공한 뒤에만 최종 위치로 옮긴다 — 중간에 실패해도
         // installs/<version>/이 반쯤 채워진 채 남지 않게(원자성).
@@ -62,12 +75,14 @@ public sealed class WorkerSelfUpdater(HttpClient httpClient, IOptions<WorkerSelf
         {
             await ExtractAsync(assetBytes, opts.Rid, stagingDir, cancellationToken);
 
-            // 지속 설정(appsettings.Production.json)은 InstallRoot에만 있다 — 새 버전 디렉터리에도
-            // 복사해야 그 디렉터리를 ContentRootPath로 기동했을 때 그대로 읽힌다(WorkerProgram.cs).
-            var persistentConfig = Path.Combine(opts.InstallRoot, "appsettings.Production.json");
+            // The install root's settings file is what the new version actually boots from
+            // (WorkerInstallLayout.AddInstalledSettings reads it there directly). This copy is
+            // belt-and-braces only: it keeps a version directory self-contained enough to launch on
+            // its own, e.g. when diagnosing one outside the install layout.
+            var persistentConfig = Path.Combine(opts.InstallRoot, WorkerInstallLayout.SettingsFileName);
             if (File.Exists(persistentConfig))
             {
-                File.Copy(persistentConfig, Path.Combine(stagingDir, "appsettings.Production.json"), overwrite: true);
+                File.Copy(persistentConfig, Path.Combine(stagingDir, WorkerInstallLayout.SettingsFileName), overwrite: true);
             }
 
             if (Directory.Exists(versionDir))
@@ -89,20 +104,63 @@ public sealed class WorkerSelfUpdater(HttpClient httpClient, IOptions<WorkerSelf
         SwapCurrentPointer(opts.InstallRoot, versionDir);
     }
 
+    /// <summary>
+    /// Points "current" at <paramref name="versionDir"/>, in an order chosen so that a failure can
+    /// never leave the install without a "current" at all — losing it strands the machine with no
+    /// launchable Worker and no way back short of a reinstall.
+    /// <para>
+    /// Creating the link is the one step here that can fail on an otherwise healthy machine: on
+    /// Windows <see cref="Directory.CreateSymbolicLink"/> needs a privilege that is not granted by
+    /// default (the install script sidesteps it by making a junction, which .NET has no API to
+    /// create). So the new link is built under a scratch name first, while the old pointer is still
+    /// in place — if that throws, the old version simply keeps running, which is the same fail-safe
+    /// posture as refusing to swap on a checksum mismatch.
+    /// </para>
+    /// </summary>
     private static void SwapCurrentPointer(string installRoot, string versionDir)
     {
-        var currentLink = Path.Combine(installRoot, "current");
-        // 검증까지 끝난 뒤에만 여기 도달한다 — 실패 시 포인터를 안 건드려 구버전이 계속
-        // 돈다(fail-safe, 스펙 섹션 2).
-        if (Directory.Exists(currentLink))
+        var currentLink = Path.Combine(installRoot, WorkerInstallLayout.PointerDirectoryName);
+        var stagedLink = currentLink + ".new";
+
+        // Only ever a leftover link from an interrupted swap. Non-recursive, so it removes the
+        // reparse point and not the version directory behind it — and deliberately not guarded with
+        // File.Exists: anything at this path that is not a directory-type link is something this
+        // code did not create, and letting CreateSymbolicLink refuse it is safer than deleting it.
+        if (Directory.Exists(stagedLink))
         {
-            // Directory.CreateSymbolicLink 아래에서 항상 디렉터리 타입 reparse point를 만드므로
-            // "current"는 항상 디렉터리로 보인다(File.Exists는 결코 true가 안 됨) — File.Delete를
-            // 쓰면 UnauthorizedAccessException. non-recursive Directory.Delete는 reparse point
-            // 자체만 지우고 그 대상 디렉터리(versionDir)는 건드리지 않는다.
-            Directory.Delete(currentLink);
+            Directory.Delete(stagedLink);
         }
-        Directory.CreateSymbolicLink(currentLink, versionDir);
+
+        Directory.CreateSymbolicLink(stagedLink, versionDir);
+
+        try
+        {
+            if (Directory.Exists(currentLink))
+            {
+                // A directory-type reparse point reports as a directory, so File.Delete throws
+                // UnauthorizedAccessException here; non-recursive Directory.Delete removes the
+                // pointer itself and leaves the version directory it referenced alone.
+                Directory.Delete(currentLink);
+            }
+
+            // A rename, not a second CreateSymbolicLink: the link provably exists now, so putting it
+            // in place no longer depends on the privilege that could have failed. Directory.Move
+            // refuses an existing destination, which is why the old pointer is removed first — the
+            // gap between the two is a metadata-only operation within one directory.
+            Directory.Move(stagedLink, currentLink);
+        }
+        catch
+        {
+            // Reached only if the rename itself failed, which can leave nothing at "current".
+            // Nothing later in the process will retry, so make the one attempt that could restore a
+            // launchable install before the failure propagates.
+            if (!Directory.Exists(currentLink))
+            {
+                Directory.CreateSymbolicLink(currentLink, versionDir);
+            }
+
+            throw;
+        }
     }
 
     private async Task<string> ResolveReleaseTagAsync(string repo, string? targetVersion, CancellationToken cancellationToken)
@@ -170,8 +228,9 @@ public sealed class WorkerSelfUpdater(HttpClient httpClient, IOptions<WorkerSelf
 
 public static class WorkerExitCodes
 {
-    /// <summary>정상 종료지만 "크래시가 아니라 업데이트 완료 후 재기동해 달라"는 의도를 로그에서
-    /// 구분하기 위한 값 — 상주 메커니즘(systemd/Windows Service)이 재시작 여부를 판단하는 데는
-    /// 안 쓰인다(항상 재시작이 기본 정책이므로, 스펙 섹션 2). 값 자체는 진단용.</summary>
+    /// <summary>A clean exit that means "an update was staged, relaunch me" rather than a crash.
+    /// Diagnostic only: the residency mechanism is expected to restart the Worker on any exit, so
+    /// nothing branches on this value — it exists so an operator reading the logs can tell the two
+    /// kinds of exit apart.</summary>
     public const int UpdateStaged = 75;
 }

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Hosting;
+using Momos.Worker.SelfUpdate;
 
 namespace Momos.Worker;
 
@@ -15,6 +16,12 @@ internal static class WorkerProgram
             Args = args,
             ContentRootPath = AppContext.BaseDirectory,
         });
+
+        // The content root above is the directory this binary sits in. On an installed Worker that
+        // is a versioned directory, one level below where the operator's settings file lives, so the
+        // default content-root-relative lookup alone would never find it.
+        WorkerInstallLayout.AddInstalledSettings(builder.Configuration, AppContext.BaseDirectory);
+
         builder.Services.AddMomosWorker(builder.Configuration);
 
         var host = builder.Build();
