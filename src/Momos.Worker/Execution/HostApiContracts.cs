@@ -49,3 +49,9 @@ public sealed record FindingPayload(FindingCategory Category, string Description
 public sealed record SubmitReportRequest(IReadOnlyList<FindingPayload> Findings);
 
 public sealed record SubmitFailureRequest(string Reason);
+
+public sealed record ClaimNextRequest(int ProtocolVersion, string WorkerVersion);
+
+/// <summary>Mirrors Host's ClaimNextResponse wire shape (Momos.Host.Contracts.ClaimNextResponse) —
+/// see ClaimedInspectionRequest's doc comment for why this is a local copy.</summary>
+public sealed record ClaimNextResult(ClaimedInspectionRequest? Request, bool UpdateRequired, string? RecommendedWorkerVersion);

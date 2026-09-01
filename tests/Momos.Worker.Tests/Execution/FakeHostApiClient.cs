@@ -20,7 +20,7 @@ internal sealed class FakeHostApiClient(
     /// <summary>Total <see cref="ClaimNextAsync"/> calls so far, successful or throwing — lets a test condition-wait on the pull loop having reached a given iteration instead of sleeping an arbitrary duration.</summary>
     public int ClaimCallCount => _claimCallCount;
 
-    public Task<ClaimedInspectionRequest?> ClaimNextAsync(CancellationToken cancellationToken)
+    public Task<ClaimNextResult> ClaimNextAsync(CancellationToken cancellationToken)
     {
         _claimCallCount++;
         if (_claimCallCount <= claimNextThrowsForFirstNCalls)
@@ -28,7 +28,8 @@ internal sealed class FakeHostApiClient(
             throw new HttpRequestException("connection refused");
         }
 
-        return Task.FromResult(_claimIndex < claims.Count ? claims[_claimIndex++] : null);
+        var request = _claimIndex < claims.Count ? claims[_claimIndex++] : null;
+        return Task.FromResult(new ClaimNextResult(request, UpdateRequired: false, RecommendedWorkerVersion: null));
     }
 
     public Task<ProjectInfo> GetProjectAsync(Guid projectId, CancellationToken cancellationToken) =>

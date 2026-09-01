@@ -1,4 +1,3 @@
-using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -15,16 +14,16 @@ public sealed class HostApiClient(HttpClient httpClient) : IHostApiClient
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public async Task<ClaimedInspectionRequest?> ClaimNextAsync(CancellationToken cancellationToken)
+    public async Task<ClaimNextResult> ClaimNextAsync(CancellationToken cancellationToken)
     {
-        var response = await httpClient.PostAsync("/inspection-requests/claim-next", content: null, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NoContent)
-        {
-            return null;
-        }
-
+        var response = await httpClient.PostAsJsonAsync(
+            "/inspection-requests/claim-next",
+            new ClaimNextRequest(WorkerVersionInfo.ProtocolVersion, WorkerVersionInfo.Version),
+            JsonOptions,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ClaimedInspectionRequest>(JsonOptions, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<ClaimNextResult>(JsonOptions, cancellationToken)
+            ?? throw new InvalidOperationException("Host returned an empty body for claim-next.");
     }
 
     public async Task<ProjectInfo> GetProjectAsync(Guid projectId, CancellationToken cancellationToken)

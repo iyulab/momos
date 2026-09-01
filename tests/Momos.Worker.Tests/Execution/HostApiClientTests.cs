@@ -25,16 +25,17 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
     }
 
     [Fact]
-    public async Task ClaimNextAsync_WithNoPendingRequests_ReturnsNull()
+    public async Task ClaimNextAsync_WithNoPendingRequests_ReturnsResultWithNullRequest()
     {
         // Drain whatever earlier tests in this shared fixture left pending.
-        while (await _client.ClaimNextAsync(CancellationToken.None) is not null)
+        while ((await _client.ClaimNextAsync(CancellationToken.None)).Request is not null)
         {
         }
 
-        var claimed = await _client.ClaimNextAsync(CancellationToken.None);
+        var result = await _client.ClaimNextAsync(CancellationToken.None);
 
-        Assert.Null(claimed);
+        Assert.Null(result.Request);
+        Assert.False(result.UpdateRequired);
     }
 
     [Fact]
@@ -45,18 +46,18 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         await httpClient.PostAsJsonAsync(
             $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest("focus on login", null));
 
-        var claimed = await _client.ClaimNextAsync(CancellationToken.None);
-        Assert.NotNull(claimed);
-        Assert.Equal(InspectionRequestStatus.Running, claimed!.Status);
+        var result = await _client.ClaimNextAsync(CancellationToken.None);
+        Assert.NotNull(result.Request);
+        Assert.Equal(InspectionRequestStatus.Running, result.Request!.Status);
 
-        var project = await _client.GetProjectAsync(claimed.ProjectId, CancellationToken.None);
+        var project = await _client.GetProjectAsync(result.Request.ProjectId, CancellationToken.None);
         Assert.Equal(projectId, project.Id);
         Assert.Equal("acme", project.Name);
 
         await _client.SubmitReportAsync(
-            claimed.Id, [new FindingPayload(Category: 0, Description: "d", Evidence: "e")], CancellationToken.None);
+            result.Request.Id, [new FindingPayload(Category: 0, Description: "d", Evidence: "e")], CancellationToken.None);
 
-        var afterResponse = await httpClient.GetAsync($"/inspection-requests/{claimed.Id}");
+        var afterResponse = await httpClient.GetAsync($"/inspection-requests/{result.Request.Id}");
         var after = await afterResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Completed, after!.Status);
     }
@@ -69,14 +70,25 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         await httpClient.PostAsJsonAsync(
             $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null));
 
-        var claimed = await _client.ClaimNextAsync(CancellationToken.None);
-        Assert.NotNull(claimed);
+        var result = await _client.ClaimNextAsync(CancellationToken.None);
+        Assert.NotNull(result.Request);
 
-        await _client.SubmitFailureAsync(claimed!.Id, "agent loop crashed", CancellationToken.None);
+        await _client.SubmitFailureAsync(result.Request!.Id, "agent loop crashed", CancellationToken.None);
 
-        var afterResponse = await httpClient.GetAsync($"/inspection-requests/{claimed.Id}");
+        var afterResponse = await httpClient.GetAsync($"/inspection-requests/{result.Request.Id}");
         var after = await afterResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Failed, after!.Status);
         Assert.Equal("agent loop crashed", after.FailureReason);
+    }
+
+    [Fact]
+    public async Task ClaimNextAsync_SendsWorkerVersionInfo_AndHostEchoesNoUpdateRequired()
+    {
+        var result = await _client.ClaimNextAsync(CancellationToken.None);
+
+        // 이 테스트가 통과한다는 것 자체가 Host가 요청 body(ProtocolVersion=WorkerVersionInfo.ProtocolVersion)를
+        // 파싱해 200을 돌려줬다는 뜻 — appsettings.Development.json의 MinSupportedProtocolVersion
+        // 기본값(1)과 WorkerVersionInfo.ProtocolVersion(1)이 일치해야 한다.
+        Assert.False(result.UpdateRequired);
     }
 }
