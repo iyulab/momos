@@ -19,6 +19,7 @@ public sealed class PullExecutionBackgroundService(
     IHostApiClient hostApiClient,
     ISessionAwareAgentLoopFactory agentLoopFactory,
     IExecutionRuntimeProvider executionRuntimeProvider,
+    IWorkerSelfUpdater selfUpdater,
     IOptions<PullExecutionOptions> options,
     ILogger<PullExecutionBackgroundService> logger) : BackgroundService
 {
@@ -30,15 +31,45 @@ public sealed class PullExecutionBackgroundService(
         {
             try
             {
-                var claimed = await hostApiClient.ClaimNextAsync(stoppingToken);
+                var result = await hostApiClient.ClaimNextAsync(stoppingToken);
                 _consecutiveFailures = 0;
-                if (claimed is null)
+
+                if (result.UpdateRequired)
                 {
+                    // Host가 이 protocol version을 더 이상 안 받아준다 — 일감이 없으니(Request는
+                    // 항상 null) 곧장 self-update. 실패해도 프로세스는 안 죽는다(D-51 패턴, 아래
+                    // catch에서 그대로 처리), 다음 poll에서 다시 시도.
+                    await selfUpdater.UpdateAsync(result.RecommendedWorkerVersion, stoppingToken);
                     await Task.Delay(options.Value.PollInterval, stoppingToken);
                     continue;
                 }
 
-                await RunInspectionAsync(claimed, stoppingToken);
+                if (result.Request is null)
+                {
+                    if (result.RecommendedWorkerVersion is not null)
+                    {
+                        // 일감도 없고 마침 업데이트 힌트도 있다 — 지금이 가장 확실한 유휴
+                        // 경계이므로 여기서 처리한다.
+                        await selfUpdater.UpdateAsync(result.RecommendedWorkerVersion, stoppingToken);
+                    }
+
+                    await Task.Delay(options.Value.PollInterval, stoppingToken);
+                    continue;
+                }
+
+                await RunInspectionAsync(result.Request, stoppingToken);
+
+                // 방금 일감을 끝냈다 — 이 poll 응답에 실려온 힌트를 다음 poll을 기다리지 않고
+                // 바로 반영한다(작업 완료 직후가 GitHub Actions runner의 job-경계 트리거와
+                // 동일한 유휴 지점). 성공 시 selfUpdater가 프로세스를 종료시키므로 아래 delay는
+                // 실전에서 거의 실행되지 않는다 — 실패해 재시도로 돌아온 경우에만, 바로 다음
+                // 루프 반복에서 (아직 큐가 비어 있으므로) 동일 힌트로 또 즉시 재시도하는 걸
+                // 막는 지연이다(다른 두 self-update 분기와 동일한 패턴).
+                if (result.RecommendedWorkerVersion is not null)
+                {
+                    await selfUpdater.UpdateAsync(result.RecommendedWorkerVersion, stoppingToken);
+                    await Task.Delay(options.Value.PollInterval, stoppingToken);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

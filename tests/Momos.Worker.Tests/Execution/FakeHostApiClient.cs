@@ -8,7 +8,9 @@ internal sealed class FakeHostApiClient(
     IReadOnlyList<ClaimedInspectionRequest> claims,
     bool getProjectThrows = false,
     int claimNextThrowsForFirstNCalls = 0,
-    string? repositoryUrl = null) : IHostApiClient
+    string? repositoryUrl = null,
+    int updateRequiredForFirstNCalls = 0,
+    string? recommendedWorkerVersion = null) : IHostApiClient
 {
     private int _claimIndex;
     private int _claimCallCount;
@@ -28,8 +30,13 @@ internal sealed class FakeHostApiClient(
             throw new HttpRequestException("connection refused");
         }
 
+        if (_claimCallCount <= updateRequiredForFirstNCalls)
+        {
+            return Task.FromResult(new ClaimNextResult(Request: null, UpdateRequired: true, recommendedWorkerVersion));
+        }
+
         var request = _claimIndex < claims.Count ? claims[_claimIndex++] : null;
-        return Task.FromResult(new ClaimNextResult(request, UpdateRequired: false, RecommendedWorkerVersion: null));
+        return Task.FromResult(new ClaimNextResult(request, UpdateRequired: false, recommendedWorkerVersion));
     }
 
     public Task<ProjectInfo> GetProjectAsync(Guid projectId, CancellationToken cancellationToken) =>

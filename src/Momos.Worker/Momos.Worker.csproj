@@ -26,4 +26,10 @@
     <Content Include="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- WorkerSelfUpdater.StageUpdateAsync is internal — a test-only hook to verify the
+         staging steps without exercising Environment.Exit. -->
+    <InternalsVisibleTo Include="Momos.Worker.Tests" />
+  </ItemGroup>
+
 </Project>

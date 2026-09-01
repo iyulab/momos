@@ -52,6 +52,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -79,6 +80,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -106,6 +108,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -129,6 +132,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -153,6 +157,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -180,6 +185,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -204,6 +210,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -227,6 +234,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -264,6 +272,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -288,6 +297,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(5), ConsecutiveFailureLogThreshold = 3 }),
             logger);
 
@@ -323,6 +333,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
 
@@ -332,5 +343,63 @@ public sealed class PullExecutionBackgroundServiceTests
 
         Assert.Empty(hostClient.SubmittedReports);
         Assert.Empty(hostClient.SubmittedFailures);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenClaimNextSignalsUpdateRequired_SkipsWorkAndTriggersSelfUpdateImmediately()
+    {
+        var hostClient = new FakeHostApiClient([], updateRequiredForFirstNCalls: 1, recommendedWorkerVersion: "0.2.0");
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("unused");
+        var selfUpdater = new FakeWorkerSelfUpdater();
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            selfUpdater,
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (selfUpdater.RequestedVersions.Count == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(5);
+        }
+        await service.StopAsync(CancellationToken.None);
+
+        var requested = Assert.Single(selfUpdater.RequestedVersions);
+        Assert.Equal("0.2.0", requested);
+        Assert.Empty(hostClient.SubmittedReports);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenClaimNextReturnsOptionalUpdateHint_FinishesWorkThenSelfUpdates()
+    {
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
+            recommendedWorkerVersion: "0.2.0");
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("looked around, nothing conclusive");
+        var selfUpdater = new FakeWorkerSelfUpdater();
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            selfUpdater,
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (selfUpdater.RequestedVersions.Count == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(5);
+        }
+        await service.StopAsync(CancellationToken.None);
+
+        // 일감을 먼저 끝낸 뒤(SubmittedReports에 1건) self-update가 걸려야 한다.
+        Assert.Single(hostClient.SubmittedReports);
+        var requested = Assert.Single(selfUpdater.RequestedVersions);
+        Assert.Equal("0.2.0", requested);
     }
 }

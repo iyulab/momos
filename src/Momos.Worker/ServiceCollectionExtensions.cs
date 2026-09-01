@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
 using Momos.Worker.Execution;
+using Momos.Worker.SelfUpdate;
 
 namespace Momos.Worker;
 
@@ -72,6 +73,12 @@ public static class ServiceCollectionExtensions
             client.BaseAddress = new Uri(hostOptions.BaseUrl);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", hostOptions.ApiKey);
         });
+
+        services
+            .AddOptions<WorkerSelfUpdateOptions>()
+            .Bind(configuration.GetSection(WorkerSelfUpdateOptions.SectionName));
+        services.AddHttpClient<IWorkerSelfUpdater, WorkerSelfUpdater>();
+
         services.AddHostedService<PullExecutionBackgroundService>();
 
         return services;
