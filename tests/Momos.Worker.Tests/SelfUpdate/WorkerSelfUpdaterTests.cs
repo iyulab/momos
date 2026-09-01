@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Execution;
@@ -82,6 +83,112 @@ public sealed class WorkerSelfUpdaterTests : IDisposable
         await updater2.StageUpdateAsync("0.3.0", CancellationToken.None);
 
         await AssertCurrentResolvesToAsync("0.3.0", "v0.3.0 binary");
+        // The scratch name the swap builds the new pointer under is not left behind: a stale one
+        // would have to be cleaned up by the next swap before it could create its own.
+        Assert.False(Directory.Exists(StagedLinkPath), "the staging pointer outlived the swap");
+    }
+
+    [Fact]
+    public async Task StageUpdateAsync_WithALeftoverStagingPointer_ClearsItAndStillSwaps()
+    {
+        await StageAsync("0.2.0");
+        await AssertCurrentResolvesToAsync("0.2.0", "v0.2.0 binary");
+
+        // What an interrupted swap leaves behind — the new pointer created, the rename onto
+        // "current" never reached.
+        Directory.CreateSymbolicLink(StagedLinkPath, Path.Combine(_installRoot, "installs", "0.2.0"));
+
+        await StageAsync("0.3.0");
+
+        await AssertCurrentResolvesToAsync("0.3.0", "v0.3.0 binary");
+        Assert.False(Directory.Exists(StagedLinkPath), "the staging pointer outlived the swap");
+    }
+
+    [Fact]
+    public async Task StageUpdateAsync_WhenTheNewPointerCannotBeCreated_LeavesTheOldOneServing()
+    {
+        await StageAsync("0.2.0");
+        await AssertCurrentResolvesToAsync("0.2.0", "v0.2.0 binary");
+
+        // Stands in for the real reason creating the pointer fails on Windows — the privilege a
+        // symbolic link needs is not granted by default. Either way the swap cannot produce a new
+        // pointer, and the question this asserts is what happens to the old one when it can't.
+        await File.WriteAllTextAsync(StagedLinkPath, "occupied");
+
+        await Assert.ThrowsAnyAsync<IOException>(() => StageAsync("0.3.0"));
+
+        // Untouched, so the version that was running keeps running. Losing it instead would leave
+        // the machine with nothing to launch and no way back short of reinstalling.
+        await AssertCurrentResolvesToAsync("0.2.0", "v0.2.0 binary");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenDisabled_StagesNothingAndSaysSoOncePerVersion()
+    {
+        var logger = new RecordingLogger();
+        var updater = new WorkerSelfUpdater(
+            // Any request at all is a failure here: being switched off has to mean nothing was
+            // fetched, not that the result was discarded after the fact.
+            new HttpClient(new UnreachableHandler()),
+            Options.Create(new WorkerSelfUpdateOptions { Enabled = false, Repo = "iyulab/momos", InstallRoot = _installRoot, Rid = "win-x64" }),
+            logger);
+
+        await updater.UpdateAsync("0.2.0", CancellationToken.None);
+        await updater.UpdateAsync("0.2.0", CancellationToken.None);
+
+        Assert.False(Directory.Exists(Path.Combine(_installRoot, "installs")));
+        // The caller asks again every poll interval, so repeating the same notice would bury it.
+        var warning = Assert.Single(logger.Messages, m => m.Level == LogLevel.Warning);
+        Assert.Contains("0.2.0", warning.Message);
+
+        // A different version is new information, so it is worth saying again.
+        await updater.UpdateAsync("0.3.0", CancellationToken.None);
+
+        Assert.Equal(2, logger.Messages.Count(m => m.Level == LogLevel.Warning));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenStagingFails_LetsTheFailureReachTheCaller()
+    {
+        var updater = new WorkerSelfUpdater(
+            new HttpClient(new TamperedChecksumHandler(BuildZipAsset("corrupted"))),
+            Options.Create(new WorkerSelfUpdateOptions { Enabled = true, Repo = "iyulab/momos", InstallRoot = _installRoot, Rid = "win-x64" }),
+            NullLogger<WorkerSelfUpdater>.Instance);
+
+        // Handling it here instead would leave the caller's consecutive-failure counter at zero,
+        // and every retry would keep logging an error and hitting the release API indefinitely.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => updater.UpdateAsync("0.2.0", CancellationToken.None));
+    }
+
+    private string StagedLinkPath => Path.Combine(_installRoot, "current.new");
+
+    private Task StageAsync(string version)
+    {
+        var updater = new WorkerSelfUpdater(
+            new HttpClient(new FakeGitHubHandler($"worker-v{version}", BuildZipAsset($"v{version} binary"))),
+            Options.Create(new WorkerSelfUpdateOptions { Repo = "iyulab/momos", InstallRoot = _installRoot, Rid = "win-x64" }),
+            NullLogger<WorkerSelfUpdater>.Instance);
+
+        return updater.StageUpdateAsync(version, CancellationToken.None);
+    }
+
+    /// <summary>Captures each formatted log message so a test can assert on what did (or did not) reach the log.</summary>
+    private sealed class RecordingLogger : ILogger<WorkerSelfUpdater>
+    {
+        public List<(LogLevel Level, string Message)> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add((logLevel, formatter(state, exception)));
+    }
+
+    private sealed class UnreachableHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException($"No request should have been made, but one went to {request.RequestUri}");
     }
 
     /// <summary>Verifies "current" is actually a symlink pointing at installs/&lt;version&gt;

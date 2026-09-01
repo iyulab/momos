@@ -402,4 +402,38 @@ public sealed class PullExecutionBackgroundServiceTests
         var requested = Assert.Single(selfUpdater.RequestedVersions);
         Assert.Equal("0.2.0", requested);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenSelfUpdateFailsRepeatedly_DowngradesToACriticalLogAtTheThresholdAndThenSuppresses()
+    {
+        // Host is refusing this Worker work until it updates, so a failing update is all the loop
+        // does — every poll interval, against the same release API, for as long as it runs.
+        var hostClient = new FakeHostApiClient([], updateRequiredForFirstNCalls: 5, recommendedWorkerVersion: "0.2.0");
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("unused");
+        var logger = new RecordingLogger();
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            new FakeWorkerSelfUpdater(throwsForFirstNCalls: 5),
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(5), ConsecutiveFailureLogThreshold = 3 }),
+            logger);
+
+        await service.StartAsync(CancellationToken.None);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (hostClient.ClaimCallCount < 6 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(5);
+        }
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.True(hostClient.ClaimCallCount >= 6, "pull loop never reached a 6th claim-next call");
+        // The claim itself succeeded every time and only the update failed, so this also pins down
+        // when the counter resets: were it cleared on a successful claim, each iteration would
+        // start over at one, the threshold would never be reached, and all 5 failures would log at
+        // Error with nothing ever suppressed.
+        Assert.Equal(2, logger.Messages.Count(m => m.Level == LogLevel.Error));
+        var critical = Assert.Single(logger.Messages, m => m.Level == LogLevel.Critical);
+        Assert.Contains("suppressing", critical.Message);
+    }
 }
