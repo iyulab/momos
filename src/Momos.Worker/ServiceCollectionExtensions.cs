@@ -77,7 +77,12 @@ public static class ServiceCollectionExtensions
         services
             .AddOptions<WorkerSelfUpdateOptions>()
             .Bind(configuration.GetSection(WorkerSelfUpdateOptions.SectionName));
-        services.AddHttpClient<IWorkerSelfUpdater, WorkerSelfUpdater>();
+        services.AddHttpClient<IWorkerSelfUpdater, WorkerSelfUpdater>(client =>
+        {
+            // GitHub's REST API rejects requests with no User-Agent header (returns 403) —
+            // unlike IHostApiClient's HttpClient above, this one talks to api.github.com.
+            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("momos-worker", WorkerVersionInfo.Version));
+        });
 
         services.AddHostedService<PullExecutionBackgroundService>();
 

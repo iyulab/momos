@@ -61,14 +61,10 @@ public sealed class PullExecutionBackgroundService(
 
                 // 방금 일감을 끝냈다 — 이 poll 응답에 실려온 힌트를 다음 poll을 기다리지 않고
                 // 바로 반영한다(작업 완료 직후가 GitHub Actions runner의 job-경계 트리거와
-                // 동일한 유휴 지점). 성공 시 selfUpdater가 프로세스를 종료시키므로 아래 delay는
-                // 실전에서 거의 실행되지 않는다 — 실패해 재시도로 돌아온 경우에만, 바로 다음
-                // 루프 반복에서 (아직 큐가 비어 있으므로) 동일 힌트로 또 즉시 재시도하는 걸
-                // 막는 지연이다(다른 두 self-update 분기와 동일한 패턴).
+                // 동일한 유휴 지점).
                 if (result.RecommendedWorkerVersion is not null)
                 {
                     await selfUpdater.UpdateAsync(result.RecommendedWorkerVersion, stoppingToken);
-                    await Task.Delay(options.Value.PollInterval, stoppingToken);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

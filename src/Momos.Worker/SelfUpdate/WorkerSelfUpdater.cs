@@ -94,9 +94,13 @@ public sealed class WorkerSelfUpdater(HttpClient httpClient, IOptions<WorkerSelf
         var currentLink = Path.Combine(installRoot, "current");
         // 검증까지 끝난 뒤에만 여기 도달한다 — 실패 시 포인터를 안 건드려 구버전이 계속
         // 돈다(fail-safe, 스펙 섹션 2).
-        if (Directory.Exists(currentLink) || File.Exists(currentLink))
+        if (Directory.Exists(currentLink))
         {
-            File.Delete(currentLink); // 심볼릭 링크/junction 자체만 지운다(대상 디렉터리는 안 건드림).
+            // Directory.CreateSymbolicLink 아래에서 항상 디렉터리 타입 reparse point를 만드므로
+            // "current"는 항상 디렉터리로 보인다(File.Exists는 결코 true가 안 됨) — File.Delete를
+            // 쓰면 UnauthorizedAccessException. non-recursive Directory.Delete는 reparse point
+            // 자체만 지우고 그 대상 디렉터리(versionDir)는 건드리지 않는다.
+            Directory.Delete(currentLink);
         }
         Directory.CreateSymbolicLink(currentLink, versionDir);
     }

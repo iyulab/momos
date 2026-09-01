@@ -58,23 +58,48 @@ public sealed class WorkerSelfUpdaterTests : IDisposable
     }
 
     [Fact]
-    public async Task StageUpdateAsync_WithValidChecksum_ExtractsToVersionedDirAndSwapsCurrentPointer()
+    public async Task StageUpdateAsync_WithValidChecksum_SwapsCurrentPointerAndReSwapsOnASubsequentUpdate()
     {
-        var zipBytes = BuildZipAsset("v0.2.0 binary");
-        var handler = new FakeGitHubHandler("worker-v0.2.0", zipBytes);
-        var httpClient = new HttpClient(handler);
-        var updater = new WorkerSelfUpdater(
-            httpClient,
+        var updater1 = new WorkerSelfUpdater(
+            new HttpClient(new FakeGitHubHandler("worker-v0.2.0", BuildZipAsset("v0.2.0 binary"))),
             Options.Create(new WorkerSelfUpdateOptions { Repo = "iyulab/momos", InstallRoot = _installRoot, Rid = "win-x64" }),
             NullLogger<WorkerSelfUpdater>.Instance);
 
-        await updater.StageUpdateAsync("0.2.0", CancellationToken.None);
+        await updater1.StageUpdateAsync("0.2.0", CancellationToken.None);
 
-        var currentTarget = Path.GetFullPath(Path.Combine(_installRoot, "current"));
-        Assert.True(Directory.Exists(currentTarget) || File.Exists(currentTarget) || Directory.Exists(Path.Combine(_installRoot, "installs", "0.2.0")));
-        var stagedFile = Path.Combine(_installRoot, "installs", "0.2.0", "Momos.Worker.exe");
-        Assert.True(File.Exists(stagedFile));
-        Assert.Equal("v0.2.0 binary", await File.ReadAllTextAsync(stagedFile));
+        await AssertCurrentResolvesToAsync("0.2.0", "v0.2.0 binary");
+
+        // Re-swap onto a second, newer version — Directory.CreateSymbolicLink always creates a
+        // directory-type reparse point, so "current" always reports Directory.Exists == true;
+        // deleting it with File.Delete (rather than Directory.Delete) throws
+        // UnauthorizedAccessException, which would make every update after the first fail
+        // forever. That regression is exactly what this second stage call catches.
+        var updater2 = new WorkerSelfUpdater(
+            new HttpClient(new FakeGitHubHandler("worker-v0.3.0", BuildZipAsset("v0.3.0 binary"))),
+            Options.Create(new WorkerSelfUpdateOptions { Repo = "iyulab/momos", InstallRoot = _installRoot, Rid = "win-x64" }),
+            NullLogger<WorkerSelfUpdater>.Instance);
+
+        await updater2.StageUpdateAsync("0.3.0", CancellationToken.None);
+
+        await AssertCurrentResolvesToAsync("0.3.0", "v0.3.0 binary");
+    }
+
+    /// <summary>Verifies "current" is actually a symlink pointing at installs/&lt;version&gt;
+    /// (not just that some path exists somewhere), and that reading through it reaches the
+    /// staged file with the expected content.</summary>
+    private async Task AssertCurrentResolvesToAsync(string version, string expectedContent)
+    {
+        var currentLink = Path.Combine(_installRoot, "current");
+        var expectedTarget = Path.Combine(_installRoot, "installs", version);
+
+        var resolved = Directory.ResolveLinkTarget(currentLink, returnFinalTarget: true);
+        Assert.NotNull(resolved);
+        Assert.Equal(
+            Path.GetFullPath(expectedTarget).TrimEnd(Path.DirectorySeparatorChar),
+            resolved!.FullName.TrimEnd(Path.DirectorySeparatorChar));
+
+        var resolvedFile = Path.Combine(currentLink, "Momos.Worker.exe");
+        Assert.Equal(expectedContent, await File.ReadAllTextAsync(resolvedFile));
     }
 
     [Fact]
