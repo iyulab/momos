@@ -59,8 +59,20 @@ public static class InspectionRequestEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         app.MapPost("/inspection-requests/claim-next", async (
-            MomosDbContext db, IOptions<InspectionClaimOptions> claimOptions, TimeProvider timeProvider, CancellationToken cancellationToken) =>
+            ClaimNextRequest claimRequest, MomosDbContext db, IOptions<InspectionClaimOptions> claimOptions,
+            IOptions<WorkerCompatibilityOptions> compatOptions, TimeProvider timeProvider, CancellationToken cancellationToken) =>
         {
+            var compat = compatOptions.Value;
+            if (claimRequest.ProtocolVersion < compat.MinSupportedProtocolVersion)
+            {
+                // A version-mismatched Worker can't safely interpret what claim-next would hand
+                // it, so it gets no work — only the update signal that tells it to stop asking
+                // until it's upgraded.
+                return Results.Ok(new ClaimNextResponse(Request: null, UpdateRequired: true, compat.RecommendedWorkerVersion));
+            }
+
+            var recommendedHint = claimRequest.WorkerVersion == compat.RecommendedWorkerVersion ? null : compat.RecommendedWorkerVersion;
+
             // A request is eligible when it's Pending, or when it's Running but was claimed
             // before the reclaim cutoff — its worker is presumed gone. There's no heartbeat to
             // tell "still running, just slow" from "dead" (see InspectionClaimOptions), so this
@@ -92,7 +104,7 @@ public static class InspectionRequestEndpoints
 
                 if (candidate is null)
                 {
-                    return Results.NoContent();
+                    return Results.Ok(new ClaimNextResponse(Request: null, UpdateRequired: false, recommendedHint));
                 }
 
                 var claimedAt = timeProvider.GetUtcNow();
@@ -115,13 +127,12 @@ public static class InspectionRequestEndpoints
                 }
 
                 var inspectionRequest = await db.InspectionRequests.FindAsync([candidate.Id], cancellationToken);
-                return Results.Ok(InspectionRequestResponse.FromEntity(inspectionRequest!));
+                return Results.Ok(new ClaimNextResponse(InspectionRequestResponse.FromEntity(inspectionRequest!), UpdateRequired: false, recommendedHint));
             }
         })
             .WithName("ClaimNextInspectionRequest")
             .AddEndpointFilter<WorkerApiKeyFilter>()
-            .Produces<InspectionRequestResponse>()
-            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ClaimNextResponse>()
             .Produces(StatusCodes.Status401Unauthorized);
 
         app.MapPost("/inspection-requests/{id:guid}/fail", async (Guid id, FailInspectionRequestRequest request, MomosDbContext db, CancellationToken cancellationToken) =>

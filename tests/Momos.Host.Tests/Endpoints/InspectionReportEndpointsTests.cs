@@ -18,6 +18,14 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         _client = factory.CreateAuthorizedClient();
     }
 
+    private async Task<InspectionRequestResponse> ClaimNextAsync()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 1, WorkerVersion: "0.1.0"));
+        var envelope = await response.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value);
+        return envelope!.Request!;
+    }
+
     [Fact]
     public async Task Get_BeforeAReportExists_Returns404()
     {
@@ -131,8 +139,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var project = await projectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
         await _client.PostAsJsonAsync(
             $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
-        var claimed = await (await _client.PostAsync("/inspection-requests/claim-next", content: null))
-            .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
+        var claimed = await ClaimNextAsync();
 
         var submission = new SubmitInspectionReportRequest(
         [
@@ -183,8 +190,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var project = await projectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
         await _client.PostAsJsonAsync(
             $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
-        var claimed = await (await _client.PostAsync("/inspection-requests/claim-next", content: null))
-            .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
+        var claimed = await ClaimNextAsync();
 
         var submission = new SubmitInspectionReportRequest(
         [

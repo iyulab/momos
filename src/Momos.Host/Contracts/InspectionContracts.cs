@@ -55,3 +55,12 @@ public sealed record SubmitInspectionReportRequest(IReadOnlyList<SubmitFindingRe
 
 /// <summary>A Worker's failed-run report for one <see cref="InspectionRequest"/>.</summary>
 public sealed record FailInspectionRequestRequest(string Reason);
+
+/// <summary>A Worker's claim-next call, carrying the protocol/build versions it speaks so the
+/// Host can refuse work to a too-old Worker before handing out an <see cref="InspectionRequest"/>.</summary>
+public sealed record ClaimNextRequest(int ProtocolVersion, string WorkerVersion);
+
+/// <summary>Always-200 envelope for claim-next, replacing the old 200-or-204 status-code
+/// signaling: <see cref="Request"/> is null when there's nothing to claim OR when the calling
+/// Worker's protocol is unsupported (<see cref="UpdateRequired"/> distinguishes the two).</summary>
+public sealed record ClaimNextResponse(InspectionRequestResponse? Request, bool UpdateRequired, string? RecommendedWorkerVersion);

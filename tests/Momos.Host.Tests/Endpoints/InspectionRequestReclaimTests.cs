@@ -1,4 +1,3 @@
-using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Time.Testing;
 using Momos.Host.Contracts;
@@ -28,6 +27,14 @@ public sealed class InspectionRequestReclaimTests : IDisposable
 
     public void Dispose() => _factory.Dispose();
 
+    private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: 1, WorkerVersion: "0.1.0");
+
+    private async Task<ClaimNextResponse> ClaimNextAsync()
+    {
+        var response = await _client.PostAsJsonAsync("/inspection-requests/claim-next", ClaimNextAsCurrentWorker);
+        return (await response.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value))!;
+    }
+
     private async Task<InspectionRequestResponse> CreateAndClaimAsync()
     {
         var projectResponse = await _client.PostAsJsonAsync(
@@ -37,9 +44,8 @@ public sealed class InspectionRequestReclaimTests : IDisposable
         await _client.PostAsJsonAsync(
             $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
 
-        var claimed = await (await _client.PostAsync("/inspection-requests/claim-next", content: null))
-            .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
-        return claimed!;
+        var claimed = await ClaimNextAsync();
+        return claimed.Request!;
     }
 
     [Fact]
@@ -48,9 +54,9 @@ public sealed class InspectionRequestReclaimTests : IDisposable
         var claimed = await CreateAndClaimAsync();
         Assert.NotNull(claimed.ClaimedAt);
 
-        var response = await _client.PostAsync("/inspection-requests/claim-next", content: null);
+        var response = await ClaimNextAsync();
 
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Null(response.Request);
     }
 
     [Fact]
@@ -59,11 +65,11 @@ public sealed class InspectionRequestReclaimTests : IDisposable
         var claimed = await CreateAndClaimAsync();
         _time.Advance(_factory.InspectionClaimReclaimTimeout + TimeSpan.FromSeconds(1));
 
-        var response = await _client.PostAsync("/inspection-requests/claim-next", content: null);
+        var response = await ClaimNextAsync();
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var reclaimed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
-        Assert.Equal(claimed.Id, reclaimed!.Id);
+        Assert.NotNull(response.Request);
+        var reclaimed = response.Request;
+        Assert.Equal(claimed.Id, reclaimed.Id);
         Assert.Equal(InspectionRequestStatus.Running, reclaimed.Status);
         Assert.True(reclaimed.ClaimedAt > claimed.ClaimedAt);
     }

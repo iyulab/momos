@@ -82,24 +82,33 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: 1, WorkerVersion: "0.1.0");
+
+    private async Task<ClaimNextResponse> ClaimNextAsync()
+    {
+        var response = await _client.PostAsJsonAsync("/inspection-requests/claim-next", ClaimNextAsCurrentWorker);
+        return (await response.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value))!;
+    }
+
     // The class fixture's SQLite DB is shared (and test order unspecified) across every
     // [Fact] in this class — drain whatever other tests left Pending before asserting an
     // empty-queue precondition, rather than requiring DB isolation this suite doesn't have.
     private async Task DrainClaimQueueAsync()
     {
-        while ((await _client.PostAsync("/inspection-requests/claim-next", content: null)).StatusCode == HttpStatusCode.OK)
+        while ((await ClaimNextAsync()).Request is not null)
         {
         }
     }
 
     [Fact]
-    public async Task ClaimNext_WithNoPendingRequests_Returns204()
+    public async Task ClaimNext_WithNoPendingRequests_ReturnsNoRequest()
     {
         await DrainClaimQueueAsync();
 
-        var response = await _client.PostAsync("/inspection-requests/claim-next", content: null);
+        var claimed = await ClaimNextAsync();
 
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Null(claimed.Request);
+        Assert.False(claimed.UpdateRequired);
     }
 
     [Fact]
@@ -110,27 +119,26 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
             $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null)))
             .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
-        var response = await _client.PostAsync("/inspection-requests/claim-next", content: null);
+        var claimed = await ClaimNextAsync();
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var claimed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
-        Assert.Equal(created!.Id, claimed!.Id);
-        Assert.Equal(InspectionRequestStatus.Running, claimed.Status);
-        Assert.NotNull(claimed.ClaimedAt);
+        Assert.NotNull(claimed.Request);
+        Assert.Equal(created!.Id, claimed.Request.Id);
+        Assert.Equal(InspectionRequestStatus.Running, claimed.Request.Status);
+        Assert.NotNull(claimed.Request.ClaimedAt);
     }
 
     [Fact]
-    public async Task ClaimNext_CalledTwiceWithOnlyOnePending_SecondCallReturns204()
+    public async Task ClaimNext_CalledTwiceWithOnlyOnePending_SecondCallReturnsNoRequest()
     {
         await DrainClaimQueueAsync();
         var projectId = await CreateProjectAsync();
         await _client.PostAsJsonAsync($"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null));
 
-        var first = await _client.PostAsync("/inspection-requests/claim-next", content: null);
-        var second = await _client.PostAsync("/inspection-requests/claim-next", content: null);
+        var first = await ClaimNextAsync();
+        var second = await ClaimNextAsync();
 
-        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
+        Assert.NotNull(first.Request);
+        Assert.Null(second.Request);
     }
 
     [Fact]
@@ -162,11 +170,10 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
     {
         var projectId = await CreateProjectAsync();
         await _client.PostAsJsonAsync($"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null));
-        var claimed = await (await _client.PostAsync("/inspection-requests/claim-next", content: null))
-            .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
+        var claimed = await ClaimNextAsync();
 
         var response = await _client.PostAsJsonAsync(
-            $"/inspection-requests/{claimed!.Id}/fail", new FailInspectionRequestRequest("agent loop crashed"));
+            $"/inspection-requests/{claimed.Request!.Id}/fail", new FailInspectionRequestRequest("agent loop crashed"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var failed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);

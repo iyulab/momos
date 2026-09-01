@@ -27,6 +27,9 @@ builder.Services
     .Bind(builder.Configuration.GetSection(WorkerAuthOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services
+    .AddOptions<WorkerCompatibilityOptions>()
+    .Bind(builder.Configuration.GetSection(WorkerCompatibilityOptions.SectionName));
 
 var app = builder.Build();
 
