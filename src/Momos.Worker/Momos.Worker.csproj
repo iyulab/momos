@@ -2,6 +2,10 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- release-worker.yml이 dotnet publish -p:Version=<worker-v* 태그>로 매 릴리스마다
+         덮어쓴다 — 이 기본값은 로컬 dotnet build/test에서만 쓰인다. -->
+    <Version>0.0.0-dev</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
