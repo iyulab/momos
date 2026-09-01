@@ -68,3 +68,13 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 Write-Host "OK: install-worker.ps1 단위 테스트 통과"
+
+# Junction 레이아웃 검증
+$tmp7 = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
+New-Item -ItemType Directory -Force -Path (Join-Path $tmp7 'installs\0.1.0') | Out-Null
+Set-Content -Path (Join-Path $tmp7 'installs\0.1.0\Momos.Worker.exe') -Value 'binary'
+$currentLink = Join-Path $tmp7 'current'
+New-Item -ItemType Junction -Path $currentLink -Target (Join-Path $tmp7 'installs\0.1.0') | Out-Null
+if (-not (Test-Path (Join-Path $currentLink 'Momos.Worker.exe'))) { throw 'current junction을 통해 바이너리에 접근 불가' }
+Remove-Item -Recurse -Force $tmp7
+Write-Host 'OK: install-worker.ps1 레이아웃 테스트 통과'

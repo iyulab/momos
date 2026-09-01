@@ -112,8 +112,14 @@ function Install-MomosWorker {
             throw '체크섬이 일치하지 않습니다 — 설치를 중단합니다.'
         }
 
-        New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-        Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
+        $versionString = $tag -replace '^worker-v', ''
+        $versionDir = Join-Path (Join-Path $installDir 'installs') $versionString
+        New-Item -ItemType Directory -Force -Path $versionDir | Out-Null
+        Expand-Archive -Path $zipPath -DestinationPath $versionDir -Force
+
+        $currentLink = Join-Path $installDir 'current'
+        if (Test-Path $currentLink) { Remove-Item $currentLink -Force }
+        New-Item -ItemType Junction -Path $currentLink -Target $versionDir | Out-Null
     }
     finally {
         Remove-Item -Recurse -Force $tmpDir
@@ -122,7 +128,7 @@ function Install-MomosWorker {
     Invoke-WorkerConfiguration -InstallDir $installDir
 
     Write-Host "설치 완료: $installDir"
-    Write-Host "실행: $installDir\Momos.Worker.exe"
+    Write-Host "실행: $installDir\current\Momos.Worker.exe"
 }
 
 if (-not $TestMode) {

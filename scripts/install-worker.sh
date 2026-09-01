@@ -137,7 +137,7 @@ configure_worker() {
 fetch_and_extract() {
   local rid="$1" tag="$2" install_dir="$3"
   local asset_name="momos-worker-${rid}.tar.gz"
-  local tarball_url checksum_url tmp_dir
+  local tarball_url checksum_url tmp_dir version version_dir
 
   tarball_url="$(resolve_asset_url "$tag" "$asset_name")"
   checksum_url="$(resolve_asset_url "$tag" "${asset_name}.sha256")"
@@ -154,9 +154,14 @@ fetch_and_extract() {
     return 1
   fi
 
-  mkdir -p "$install_dir"
-  tar -xzf "$tmp_dir/archive.tar.gz" -C "$install_dir"
+  # worker-v0.1.0 -> 0.1.0
+  version="${tag#worker-v}"
+  version_dir="$install_dir/installs/$version"
+  mkdir -p "$version_dir"
+  tar -xzf "$tmp_dir/archive.tar.gz" -C "$version_dir"
   rm -rf "$tmp_dir"
+
+  ln -sfn "$version_dir" "$install_dir/current"
 }
 
 main() {
@@ -167,7 +172,7 @@ main() {
   configure_worker "$INSTALL_DIR"
 
   echo "설치 완료: $INSTALL_DIR"
-  echo "실행: $INSTALL_DIR/Momos.Worker"
+  echo "실행: $INSTALL_DIR/current/Momos.Worker"
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then

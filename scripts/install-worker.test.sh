@@ -98,3 +98,25 @@ else
 fi
 
 echo "OK: install-worker.sh 설정 생성 테스트 통과"
+
+# fetch_and_extract: installs/<version>/에 풀리고 current가 그걸 가리켜야 한다 (네트워크 없이
+# resolve_asset_url/curl을 로컬 파일 서버로 흉내낼 수 없으므로, 여기서는 압축 해제+포인터
+# 로직만 별도 헬퍼로 분리해 직접 검증한다 — 실제 다운로드 경로는 CI의
+# test-install-scripts.yml이 실제 GitHub Release 대상 스모크로 커버).
+# install-worker.sh는 detect_platform에서 Linux만 지원하므로 이 검증도 Linux 한정 — Git Bash는
+# 심볼릭 링크 생성 권한이 없으면 ln -sfn이 junction으로 대체돼(-L 판정 대상이 아님) 이 테스트가
+# 오탐 실패한다(위 detect_platform/chmod 600/setsid 테스트와 동일한 환경 제약).
+if [ "$(uname -s)" = "Linux" ]; then
+  tmp7="$(mktemp -d)"
+  mkdir -p "$tmp7/installs/0.1.0"
+  echo "binary" > "$tmp7/installs/0.1.0/Momos.Worker"
+  ln -sfn "$tmp7/installs/0.1.0" "$tmp7/current"
+  [ -L "$tmp7/current" ] || fail "current: 심볼릭 링크가 아님"
+  [ "$(readlink -f "$tmp7/current")" = "$(readlink -f "$tmp7/installs/0.1.0")" ] || fail "current: installs/0.1.0을 가리키지 않음"
+  [ -f "$tmp7/current/Momos.Worker" ] || fail "current: 링크를 통해 바이너리에 접근 불가"
+  rm -rf "$tmp7"
+else
+  echo "SKIP: current 심볼릭 링크 레이아웃 테스트는 Linux에서만 검증 (현재: $(uname -s))"
+fi
+
+echo "OK: install-worker.sh 레이아웃 테스트 통과"
