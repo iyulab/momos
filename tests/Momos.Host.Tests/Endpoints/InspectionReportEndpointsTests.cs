@@ -54,7 +54,11 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var inspectionRequest = await requestResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         // Seed directly through the DbContext (bypassing the Running-status precondition
-        // the POST endpoint enforces) so this test isolates the read side only.
+        // the POST endpoint enforces) so this test isolates the read side only. Still moves
+        // the request to Completed (not left Pending) -- a Pending request with a report
+        // already attached is a state the real state machine never produces, and leaving it
+        // that way makes this request an eligible-but-poisoned pick for any other test in
+        // this shared-fixture class that calls the generic claim-next endpoint.
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MomosDbContext>();
@@ -67,6 +71,8 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
                 Evidence = "screen A uses 'Submit', screen B uses 'Send'",
             });
             db.InspectionReports.Add(report);
+            var trackedRequest = await db.InspectionRequests.FindAsync([inspectionRequest.Id]);
+            trackedRequest!.Status = InspectionRequestStatus.Completed;
             await db.SaveChangesAsync();
         }
 
@@ -122,6 +128,10 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
                 Evidence = "e",
             });
             db.InspectionReports.Add(report);
+            // See the same-shaped seeding in Get_AfterAReportExists_ReturnsItWithFindings for
+            // why this moves the request to Completed rather than leaving it Pending.
+            var trackedRequest = await db.InspectionRequests.FindAsync([inspectionRequest!.Id]);
+            trackedRequest!.Status = InspectionRequestStatus.Completed;
             await db.SaveChangesAsync();
         }
 
@@ -205,5 +215,34 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var requestAfter = await (await _client.GetAsync($"/inspection-requests/{claimed.Id}"))
             .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(InspectionRequestStatus.Completed, requestAfter!.Status);
+    }
+
+    [Fact]
+    public async Task Post_IndexesEachFindingIntoTheProjectKnowledgeBase()
+    {
+        var project = await (await _client.PostAsJsonAsync(
+                "/projects", new CreateProjectRequest("acme-knowledge-index-test", null, null, "purpose", "vision", "scope")))
+            .Content.ReadFromJsonAsync<ProjectResponse>();
+        await _client.PostAsJsonAsync(
+            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
+        var claimed = await ClaimNextAsync();
+
+        var submission = new SubmitInspectionReportRequest(
+        [
+            new SubmitFindingRequest(FindingCategory.FunctionalDefect, "Login button does nothing", "console: TypeError at login.js:42"),
+        ]);
+        var submit = await _client.PostAsJsonAsync($"/inspection-requests/{claimed!.Id}/report", submission);
+        Assert.Equal(HttpStatusCode.Created, submit.StatusCode);
+
+        // Query by claimed.ProjectId, not the locally-created `project`'s id: claim-next
+        // claims the oldest eligible request across this whole (shared-fixture) test class,
+        // not necessarily the one this test just created (see Post_WhileStillPending_Returns409,
+        // which deliberately leaves an unclaimed Pending request behind) -- the only guarantee
+        // is that whatever got claimed is what the finding gets indexed under.
+        var query = await _client.PostAsJsonAsync(
+            $"/projects/{claimed.ProjectId}/knowledge/query", new QueryKnowledgeRequest("login button", MaxResults: 5));
+        var results = await query.Content.ReadFromJsonAsync<QueryKnowledgeResponse>(TestJsonOptions.Value);
+
+        Assert.Contains(results!.Snippets, s => s.Content.Contains("Login button does nothing"));
     }
 }

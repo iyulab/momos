@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Momos.Host.Contracts;
 using Momos.Host.Data;
 using Momos.Host.Domain;
+using Momos.Host.Knowledge;
 
 namespace Momos.Host.Endpoints;
 
@@ -23,7 +24,9 @@ public static class InspectionReportEndpoints
             .Produces<InspectionReportResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        app.MapPost("/inspection-requests/{id:guid}/report", async (Guid id, SubmitInspectionReportRequest request, MomosDbContext db, CancellationToken cancellationToken) =>
+        app.MapPost("/inspection-requests/{id:guid}/report", async (
+            Guid id, SubmitInspectionReportRequest request, MomosDbContext db,
+            IKnowledgeIndex knowledgeIndex, CancellationToken cancellationToken) =>
         {
             var inspectionRequest = await db.InspectionRequests.FindAsync([id], cancellationToken);
             if (inspectionRequest is null)
@@ -56,6 +59,20 @@ public static class InspectionReportEndpoints
             db.InspectionReports.Add(report);
             inspectionRequest.Status = InspectionRequestStatus.Completed;
             await db.SaveChangesAsync(cancellationToken);
+
+            foreach (var finding in report.Findings)
+            {
+                await knowledgeIndex.IndexAsync(
+                    $"{finding.Category}: {finding.Description}\nEvidence: {finding.Evidence}",
+                    $"finding:{finding.Id}",
+                    new Dictionary<string, object>
+                    {
+                        ["ProjectId"] = inspectionRequest.ProjectId.ToString(),
+                        ["SourceType"] = "finding",
+                        ["InspectionReportId"] = report.Id.ToString(),
+                    },
+                    cancellationToken);
+            }
 
             return Results.Created($"/inspection-requests/{id}/report", InspectionReportResponse.FromEntity(report));
         })
