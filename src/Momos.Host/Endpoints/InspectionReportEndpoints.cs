@@ -26,7 +26,7 @@ public static class InspectionReportEndpoints
 
         app.MapPost("/inspection-requests/{id:guid}/report", async (
             Guid id, SubmitInspectionReportRequest request, MomosDbContext db,
-            IKnowledgeIndex knowledgeIndex, CancellationToken cancellationToken) =>
+            IKnowledgeIndex knowledgeIndex, ILogger<Program> logger, CancellationToken cancellationToken) =>
         {
             var inspectionRequest = await db.InspectionRequests.FindAsync([id], cancellationToken);
             if (inspectionRequest is null)
@@ -60,18 +60,31 @@ public static class InspectionReportEndpoints
             inspectionRequest.Status = InspectionRequestStatus.Completed;
             await db.SaveChangesAsync(cancellationToken);
 
+            // The report is already committed above — indexing it into the knowledge base
+            // is a best-effort side effect, not part of the submission's success criteria.
+            // A failure here (embedding endpoint unreachable, SQLite lock contention, etc.)
+            // must not turn an already-persisted report into an apparent 500 to the Worker,
+            // which would retry against a request that no longer accepts submissions
+            // (Status is already Completed) and see a confusing 409 instead.
             foreach (var finding in report.Findings)
             {
-                await knowledgeIndex.IndexAsync(
-                    $"{finding.Category}: {finding.Description}\nEvidence: {finding.Evidence}",
-                    $"finding:{finding.Id}",
-                    new Dictionary<string, object>
-                    {
-                        ["ProjectId"] = inspectionRequest.ProjectId.ToString(),
-                        ["SourceType"] = "finding",
-                        ["InspectionReportId"] = report.Id.ToString(),
-                    },
-                    cancellationToken);
+                try
+                {
+                    await knowledgeIndex.IndexAsync(
+                        $"{finding.Category}: {finding.Description}\nEvidence: {finding.Evidence}",
+                        $"finding:{finding.Id}",
+                        new Dictionary<string, object>
+                        {
+                            ["ProjectId"] = inspectionRequest.ProjectId.ToString(),
+                            ["SourceType"] = "finding",
+                            ["InspectionReportId"] = report.Id.ToString(),
+                        },
+                        cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex, "Failed to index finding {FindingId} into the project knowledge base.", finding.Id);
+                }
             }
 
             return Results.Created($"/inspection-requests/{id}/report", InspectionReportResponse.FromEntity(report));

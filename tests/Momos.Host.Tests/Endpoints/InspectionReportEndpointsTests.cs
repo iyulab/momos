@@ -1,9 +1,11 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Momos.Host.Contracts;
 using Momos.Host.Data;
 using Momos.Host.Domain;
+using Momos.Host.Knowledge;
 
 namespace Momos.Host.Tests.Endpoints;
 
@@ -244,5 +246,42 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var results = await query.Content.ReadFromJsonAsync<QueryKnowledgeResponse>(TestJsonOptions.Value);
 
         Assert.Contains(results!.Snippets, s => s.Content.Contains("Login button does nothing"));
+    }
+
+    [Fact]
+    public async Task Post_WhenIndexingAFindingThrows_TheReportIsStillPersistedAndReturned()
+    {
+        using var factory = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services => services.AddSingleton<IKnowledgeIndex>(new ThrowingKnowledgeIndex())));
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", MomosHostFactory.WorkerApiKey);
+
+        var project = await (await client.PostAsJsonAsync(
+                "/projects", new CreateProjectRequest("acme-indexing-failure-test", null, null, "purpose", "vision", "scope")))
+            .Content.ReadFromJsonAsync<ProjectResponse>();
+        await client.PostAsJsonAsync(
+            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
+        var claimResponse = await client.PostAsJsonAsync(
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 1, WorkerVersion: "0.1.0"));
+        var claimed = (await claimResponse.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value))!.Request!;
+
+        var submission = new SubmitInspectionReportRequest(
+        [
+            new SubmitFindingRequest(FindingCategory.FunctionalDefect, "login button does nothing", "clicked 3x, no navigation"),
+        ]);
+        var response = await client.PostAsJsonAsync($"/inspection-requests/{claimed.Id}/report", submission);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var report = await response.Content.ReadFromJsonAsync<InspectionReportResponse>(TestJsonOptions.Value);
+        Assert.Single(report!.Findings);
+    }
+
+    private sealed class ThrowingKnowledgeIndex : IKnowledgeIndex
+    {
+        public Task IndexAsync(string content, string documentId, Dictionary<string, object> metadata, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("simulated knowledge index failure");
+
+        public Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("simulated knowledge index failure");
     }
 }
