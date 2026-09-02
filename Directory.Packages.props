@@ -5,9 +5,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="IronHive.Agent" Version="0.7.2" />
-    <PackageVersion Include="IronHive.Core" Version="0.21.0" />
-    <PackageVersion Include="IronHive.Providers.OpenAI.Compatible" Version="0.21.0" />
+    <PackageVersion Include="IronHive.Agent" Version="0.9.6" />
+    <PackageVersion Include="IronHive.Core" Version="0.22.1" />
+    <PackageVersion Include="IronHive.Providers.OpenAI.Compatible" Version="0.22.1" />
     <PackageVersion Include="CodeBeaker.Commands" Version="0.1.0" />
     <PackageVersion Include="CodeBeaker.Core" Version="0.1.0" />
     <PackageVersion Include="CodeBeaker.Runtimes" Version="0.1.0" />
