@@ -60,7 +60,13 @@ internal sealed class FluxIndexKnowledgeIndex(IFluxIndexContext context) : IKnow
 
     public async Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken)
     {
-        var results = await context.Retriever.SearchAsync(query, maxResults, minScore: 0.2f, filter, cancellationToken);
+        // Retriever.SearchAsync is vector-only (its own doc comment: "벡터 유사도 검색") — with
+        // no production embedding endpoint configured (e.g. in tests, see KnowledgeOptions),
+        // FluxIndex falls back to InMemoryEmbeddingService, whose similarity scores are not
+        // semantically meaningful and can miss an exact-term match entirely. HybridSearchAsync's
+        // keyword leg is unaffected by embedding quality, so it catches what pure vector search
+        // would drop while still counting toward relevance when a real embedding IS configured.
+        var results = await context.Retriever.HybridSearchAsync(query, query, maxResults, vectorWeight: 0.5, filter, cancellationToken);
         return results.Select(r => new KnowledgeSearchHit(r.DocumentChunk.Content, r.Score)).ToList();
     }
 }

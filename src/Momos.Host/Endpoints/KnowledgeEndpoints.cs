@@ -38,6 +38,29 @@ public static class KnowledgeEndpoints
             .Produces<RegisterKnowledgeDocumentResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        app.MapPost("/projects/{projectId:guid}/knowledge/query", async (
+            Guid projectId, QueryKnowledgeRequest request,
+            MomosDbContext db, IKnowledgeIndex knowledgeIndex, CancellationToken cancellationToken) =>
+        {
+            var project = await db.Projects.FindAsync([projectId], cancellationToken);
+            if (project is null)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Project not found.");
+            }
+
+            var hits = await knowledgeIndex.SearchAsync(
+                request.Query,
+                new Dictionary<string, object> { ["ProjectId"] = projectId.ToString() },
+                request.MaxResults,
+                cancellationToken);
+
+            return Results.Ok(new QueryKnowledgeResponse(
+                hits.Select(h => new KnowledgeSnippet(h.Content, h.Score)).ToList()));
+        })
+            .WithName("QueryProjectKnowledge")
+            .Produces<QueryKnowledgeResponse>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return app;
     }
 }
