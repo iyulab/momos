@@ -14,5 +14,6 @@ COPY --from=build /app .
 
 RUN mkdir -p /data
 ENV ConnectionStrings__MomosDb="Data Source=/data/momos.db"
+ENV Momos__Host__Knowledge__SqlitePath="/data/knowledge.db"
 
 ENTRYPOINT ["dotnet", "Momos.Host.dll"]

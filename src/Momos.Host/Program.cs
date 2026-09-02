@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Momos.Host.Data;
 using Momos.Host.Endpoints;
+using Momos.Host.Knowledge;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +31,12 @@ builder.Services
 builder.Services
     .AddOptions<WorkerCompatibilityOptions>()
     .Bind(builder.Configuration.GetSection(WorkerCompatibilityOptions.SectionName));
+builder.Services
+    .AddOptions<KnowledgeOptions>()
+    .Bind(builder.Configuration.GetSection(KnowledgeOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddKnowledgeIndex();
 
 var app = builder.Build();
 

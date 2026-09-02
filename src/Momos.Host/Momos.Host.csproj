@@ -7,6 +7,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="FluxIndex.SDK" />
+    <PackageReference Include="FluxIndex.Storage.SQLite" />
+    <PackageReference Include="FluxIndex.Providers.OpenAI" />
   </ItemGroup>
 
 </Project>
