@@ -85,6 +85,62 @@ public class MomosAgentLoopFactoryTests
     /// Wiring the tool into <c>AgentOptions</c> alone would be dead code if a keyword-based
     /// retriever filtered it back out for a prompt that shares no keywords with its name/description.
     /// </summary>
+    /// <summary>
+    /// Mirrors <see cref="RunAsync_TheChatClientActuallyReceivesTheCodeExecutionTool"/> for the
+    /// knowledge-query tool: proves that passing a non-null <c>projectId</c> to the
+    /// session-aware <c>CreateAsync</c> overload actually gets <c>KnowledgeQueryTools</c> onto
+    /// the chat client's tool list, not just into <c>AgentOptions.Tools</c> where a keyword-based
+    /// retriever could silently drop it (see <c>ToolRetrievalOptions.AlwaysInclude</c> in
+    /// <see cref="MomosAgentLoopFactory"/>).
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_WithProjectId_GivesTheChatClientTheKnowledgeQueryTool()
+    {
+        var services = new ServiceCollection();
+        var chatClientProvider = new FakeChatClientProvider("hi");
+        services.AddSingleton<IChatClientProvider>(chatClientProvider);
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
+        services.AddSingleton<IExecutionRuntimeProvider>(new FakeExecutionRuntimeProvider());
+        services.AddSingleton<IHostApiClient>(new FakeHostApiClient([]));
+        services.AddIronHiveAgentEngine();
+        var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<ISessionAwareAgentLoopFactory>();
+        var session = new ExecutionSessionHandle("test-session");
+
+        var (agentLoop, _) = await factory.CreateAsync(new AgentLoopFactoryOptions(), session, projectId: Guid.NewGuid());
+        await agentLoop.RunAsync("look for problems in this repository");
+
+        var tools = chatClientProvider.LastClient?.LastOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.Contains(tools!, t => t.Name == nameof(KnowledgeQueryTools.QueryProjectKnowledge));
+    }
+
+    /// <summary>
+    /// Same setup, but through the plain <c>CreateAsync(options, cancellationToken)</c> overload
+    /// (no session, no <c>projectId</c>) -- proves the tool is genuinely conditional on a
+    /// project being known, not always present regardless of what the previous test's
+    /// assertion alone could show.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_WithoutAProjectId_DoesNotGiveTheChatClientTheKnowledgeQueryTool()
+    {
+        var services = new ServiceCollection();
+        var chatClientProvider = new FakeChatClientProvider("hi");
+        services.AddSingleton<IChatClientProvider>(chatClientProvider);
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
+        services.AddSingleton<IExecutionRuntimeProvider>(new FakeExecutionRuntimeProvider());
+        services.AddSingleton<IHostApiClient>(new FakeHostApiClient([]));
+        services.AddIronHiveAgentEngine();
+        var factory = services.BuildServiceProvider().GetRequiredService<IAgentLoopFactory>();
+
+        var agentLoop = await factory.CreateAsync();
+        await agentLoop.RunAsync("look for problems in this repository");
+
+        var tools = chatClientProvider.LastClient?.LastOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.DoesNotContain(tools!, t => t.Name == nameof(KnowledgeQueryTools.QueryProjectKnowledge));
+    }
+
     [Fact]
     public async Task RunAsync_TheChatClientActuallyReceivesTheCodeExecutionTool()
     {
