@@ -73,13 +73,19 @@ public static class WorkerInstallLayout
         };
         source.ResolveFileProvider();
 
-        // Inserted ahead of the environment-variable source instead of appended: later sources win,
-        // and an operator setting Momos__Worker__Host__ApiKey expects that to override the file on
-        // disk rather than be silently shadowed by it.
+        // Inserted ahead of the unprefixed environment-variable source (the one application settings
+        // like Momos__Worker__Host__ApiKey come through) instead of appended: later sources win, and
+        // an operator setting that env var expects it to override this file, while this file is
+        // meant to override every JSON source beneath it — including the version directory's own
+        // copy of it, which only exists after a self-update and is frozen as of the moment that
+        // update ran. A generic host also registers an earlier, DOTNET_-prefixed environment source
+        // for its own bootstrap settings; matching on the first EnvironmentVariablesConfigurationSource
+        // regardless of prefix would find that one instead and insert ahead of it, landing this file
+        // before every JSON source rather than after the ones it's meant to override.
         var insertAt = configuration.Sources.Count;
         for (var i = 0; i < configuration.Sources.Count; i++)
         {
-            if (configuration.Sources[i] is EnvironmentVariablesConfigurationSource)
+            if (configuration.Sources[i] is EnvironmentVariablesConfigurationSource { Prefix: null or "" })
             {
                 insertAt = i;
                 break;
