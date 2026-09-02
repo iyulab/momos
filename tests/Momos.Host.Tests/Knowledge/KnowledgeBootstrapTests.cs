@@ -44,8 +44,7 @@ public sealed class KnowledgeBootstrapTests
                 // not the file's creation itself — FluxIndex still derives and creates
                 // "<name>-entitygraph.db" beside the main database. Both files live on the
                 // same volume/mount as the main knowledge.db (no separate infra), so this is
-                // an accepted, harmless artifact rather than something to work around — see
-                // the implementation plan's Global Constraints note, updated to match.
+                // an accepted, harmless artifact rather than something to work around.
                 Assert.Equal(["knowledge-entitygraph.db", "knowledge.db"], databaseFilesCreated);
             }
             finally

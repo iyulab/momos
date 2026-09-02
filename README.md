@@ -41,6 +41,8 @@ Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)
 
 Worker→Host 통신도 인증이 **필수**다. Host는 `Momos:Host:WorkerAuth:ApiKey`, Worker는 그와 동일한 값을 `Momos:Worker:Host:ApiKey`에 채워야 하며, 둘 다 부팅 시 `OptionsValidationException`으로 검증한다. Worker는 이 값을 매 요청 `Authorization: Bearer {ApiKey}` 헤더로 보내고, Host는 `claim-next`/`report`/`fail` 엔드포인트에서만 이를 검사한다(프로젝트 등록·조회 등 나머지 API는 별개 통합 표면이라 대상이 아니다). GPUStack 설정과 마찬가지로 커밋하지 말고 환경 변수(`Momos__Host__WorkerAuth__ApiKey`, `Momos__Worker__Host__ApiKey`)로 주입한다.
 
+Host는 프로젝트 지식 레이어(등록 문서·과거 지적사항을 색인해 Worker의 에이전트 루프가 검색하는 RAG)도 갖고 있다. `Momos:Host:Knowledge:SqlitePath`(기본값 `knowledge.db`, `ConnectionStrings:MomosDb`와 별도 파일)만 있으면 바로 뜬다. 임베딩은 선택이다 — `Momos:Host:Knowledge:EmbeddingEndpoint`/`EmbeddingApiKey`/`EmbeddingModel`(기본 `qwen3-embedding-0.6b`)/`EmbeddingDimension`(기본 `1024`)을 GPUStack 값으로 채우면 실제 의미 기반 검색이 동작하고, 비워두면 의미 없는 벡터를 반환하는 인메모리 폴백으로 조용히 넘어간다(부팅은 실패하지 않는다) — 프로덕션에서는 반드시 채워야 지식 검색이 실질적으로 동작한다.
+
 ## Worker 설치
 
 사내(또는 파일럿) 머신에 `Momos.Worker`를 설치할 때는 [Releases](https://github.com/iyulab/momos/releases)에 올라오는 self-contained 바이너리와 설치 스크립트를 쓴다 — .NET 런타임을 미리 설치할 필요가 없다.

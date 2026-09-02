@@ -1,6 +1,7 @@
 using FluxIndex.Providers.OpenAI.Extensions;
 using FluxIndex.SDK;
 using FluxIndex.Storage.SQLite;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -28,12 +29,25 @@ public static class KnowledgeServiceCollectionExtensions
                             options.EmbeddingEndpoint, options.EmbeddingApiKey,
                             options.EmbeddingModel, options.EmbeddingDimension);
                     }
-                    // No EmbeddingEndpoint configured: FluxIndex falls back to its own
-                    // InMemoryEmbeddingService (see KnowledgeOptions.EmbeddingEndpoint doc).
+                    else
+                    {
+                        // No EmbeddingEndpoint configured: FluxIndex falls back to its own
+                        // InMemoryEmbeddingService (see KnowledgeOptions.EmbeddingEndpoint
+                        // doc) — real vectors, but not semantically meaningful. This is a
+                        // silent no-op for anyone querying the knowledge base in production,
+                        // so surface it loudly rather than let it pass unnoticed.
+                        sp.GetRequiredService<ILogger<FluxIndexKnowledgeIndex>>().LogWarning(
+                            "Momos:Host:Knowledge:EmbeddingEndpoint is not set — the project " +
+                            "knowledge index will use FluxIndex's in-memory embedding fallback, " +
+                            "whose vectors are not semantically meaningful. Set it (and " +
+                            "EmbeddingApiKey) to a real embedding endpoint for knowledge search " +
+                            "to work.");
+                    }
                 });
             // Confirmed empirically (KnowledgeBootstrapTests): these suppress schema
-            // provisioning but not the companion entity-graph file's creation — see the
-            // implementation plan's Global Constraints.
+            // provisioning but not the companion entity-graph file's creation — FluxIndex
+            // still derives and creates a "<name>-entitygraph.db" file beside the main
+            // database regardless. Harmless: it lives on the same volume as the main file.
             builder.Options.GraphStore.AutoMigrate = false;
             builder.Options.SemanticCache.AutoMigrate = false;
 

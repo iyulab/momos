@@ -8,8 +8,8 @@ public sealed class KnowledgeOptions
 
     /// <summary>
     /// Connection-string-style SQLite path for the knowledge index — deliberately a
-    /// separate file from <c>ConnectionStrings:MomosDb</c>, not a shared one (see the
-    /// implementation plan's Global Constraints). Defaults to a file alongside the working
+    /// separate file from <c>ConnectionStrings:MomosDb</c>, not a shared one, so the two
+    /// databases never contend for a single SQLite file lock. Defaults to a file alongside the working
     /// directory for local development; production sets this to <c>/data/knowledge.db</c>
     /// the same way <c>ConnectionStrings__MomosDb</c> is set in the Dockerfile.
     /// </summary>
