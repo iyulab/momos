@@ -91,4 +91,26 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         // 기본값(1)과 WorkerVersionInfo.ProtocolVersion(1)이 일치해야 한다.
         Assert.False(result.UpdateRequired);
     }
+
+    [Fact]
+    public async Task GetProjectAsync_DeserializesAppInstallFields()
+    {
+        var httpClient = _factory.CreateAuthorizedClient();
+        var createResponse = await httpClient.PostAsJsonAsync(
+            "/projects",
+            new CreateProjectRequest(
+                "acme", null, null, "purpose", "vision", "scope",
+                AppInstallerUri: "https://example.invalid/setup.exe",
+                AppInstallPlatform: "win-x64",
+                AppInstallArgs: null,
+                AppInstallLaunchCommand: "acme.exe"));
+        var created = await createResponse.Content.ReadFromJsonAsync<ProjectResponse>();
+
+        var project = await _client.GetProjectAsync(created!.Id, CancellationToken.None);
+
+        Assert.Equal("https://example.invalid/setup.exe", project.AppInstallerUri);
+        Assert.Equal("win-x64", project.AppInstallPlatform);
+        Assert.Null(project.AppInstallArgs);
+        Assert.Equal("acme.exe", project.AppInstallLaunchCommand);
+    }
 }

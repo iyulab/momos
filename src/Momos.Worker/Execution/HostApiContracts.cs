@@ -31,7 +31,11 @@ public sealed record ProjectInfo(
     string? DeploymentUrl,
     string Purpose,
     string Vision,
-    string Scope);
+    string Scope,
+    string? AppInstallerUri = null,
+    string? AppInstallPlatform = null,
+    string? AppInstallArgs = null,
+    string? AppInstallLaunchCommand = null);
 
 /// <summary>
 /// Mirrors <c>Momos.Host.Domain.FindingCategory</c>'s wire shape — see
