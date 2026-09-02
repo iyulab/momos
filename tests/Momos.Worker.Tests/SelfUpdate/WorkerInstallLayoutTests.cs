@@ -89,8 +89,13 @@ public sealed class WorkerInstallLayoutTests : IDisposable
             // set in the environment — the file has to land ahead of the unprefixed environment
             // source specifically, not just ahead of the earlier DOTNET_-prefixed bootstrap one.
             var fileIndex = IndexOfSource<JsonConfigurationSource>(builder);
+            var bootstrapEnvironmentIndex = IndexOfSource<EnvironmentVariablesConfigurationSource>(builder);
             var unprefixedEnvironmentIndex = IndexOfLastSource<EnvironmentVariablesConfigurationSource>(builder);
             Assert.True(fileIndex >= 0, "the installed settings file was never registered as a source");
+            // The discriminating check: a fix that matched the DOTNET_-prefixed bootstrap source
+            // instead of the unprefixed one would insert the file ahead of it too, at index 0 — this
+            // fails against that mistake even though the two checks below would not.
+            Assert.True(fileIndex > bootstrapEnvironmentIndex, "the installed settings file was registered ahead of the DOTNET_-prefixed bootstrap source, not just ahead of the unprefixed one");
             Assert.True(fileIndex < unprefixedEnvironmentIndex, "the installed settings file was registered after the unprefixed environment source");
             Assert.Equal("from-environment", configuration[key]);
         }
