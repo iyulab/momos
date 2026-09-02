@@ -39,6 +39,20 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
     }
 
     [Fact]
+    public async Task QueryKnowledgeAsync_ReturnsSnippetsFromHost()
+    {
+        var httpClient = _factory.CreateAuthorizedClient();
+        var projectId = await CreateProjectAsync();
+        await httpClient.PostAsJsonAsync(
+            $"/projects/{projectId}/knowledge/documents",
+            new { Title = "PRD", Content = "The checkout flow must support Apple Pay." });
+
+        var snippets = await _client.QueryKnowledgeAsync(projectId, "Apple Pay", CancellationToken.None);
+
+        Assert.Contains(snippets, s => s.Contains("Apple Pay"));
+    }
+
+    [Fact]
     public async Task FullRoundTrip_ClaimGetProjectSubmitReport_MatchesHostState()
     {
         var httpClient = _factory.CreateAuthorizedClient();

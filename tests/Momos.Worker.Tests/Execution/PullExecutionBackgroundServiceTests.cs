@@ -28,13 +28,19 @@ public sealed class PullExecutionBackgroundServiceTests
     private static (ISessionAwareAgentLoopFactory Factory, FakeExecutionRuntimeProvider ExecutionProvider) BuildFakeAgentLoopFactory(string reply) =>
         BuildFakeAgentLoopFactory(new FakeChatClientProvider(reply));
 
-    private static (ISessionAwareAgentLoopFactory Factory, FakeExecutionRuntimeProvider ExecutionProvider) BuildFakeAgentLoopFactory(IChatClientProvider chatClientProvider)
+    private static (ISessionAwareAgentLoopFactory Factory, FakeExecutionRuntimeProvider ExecutionProvider) BuildFakeAgentLoopFactory(
+        IChatClientProvider chatClientProvider, IHostApiClient? hostApiClient = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(chatClientProvider);
         services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
         var executionProvider = new FakeExecutionRuntimeProvider();
         services.AddSingleton<IExecutionRuntimeProvider>(executionProvider);
+        // MomosAgentLoopFactory (registered by AddIronHiveAgentEngine as
+        // ISessionAwareAgentLoopFactory) needs an IHostApiClient to build the
+        // knowledge-query tool -- none of this file's tests exercise that tool, so an
+        // empty fake is enough to satisfy the DI graph.
+        services.AddSingleton(hostApiClient ?? new FakeHostApiClient([]));
         services.AddIronHiveAgentEngine();
         var provider = services.BuildServiceProvider();
         return (provider.GetRequiredService<ISessionAwareAgentLoopFactory>(), executionProvider);

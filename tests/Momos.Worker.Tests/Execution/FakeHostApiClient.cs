@@ -68,4 +68,7 @@ internal sealed class FakeHostApiClient(
     }
 
     public Task WaitForOutcomeAsync(TimeSpan timeout) => _outcomeReceived.Task.WaitAsync(timeout);
+
+    public Task<IReadOnlyList<string>> QueryKnowledgeAsync(Guid projectId, string query, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
 }

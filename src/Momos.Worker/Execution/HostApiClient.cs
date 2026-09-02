@@ -45,4 +45,13 @@ public sealed class HostApiClient(HttpClient httpClient) : IHostApiClient
             $"/inspection-requests/{inspectionRequestId}/fail", new SubmitFailureRequest(reason), JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
+
+    public async Task<IReadOnlyList<string>> QueryKnowledgeAsync(Guid projectId, string query, CancellationToken cancellationToken)
+    {
+        var response = await httpClient.PostAsJsonAsync(
+            $"/projects/{projectId}/knowledge/query", new QueryKnowledgeRequest(query), JsonOptions, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<QueryKnowledgeResponse>(JsonOptions, cancellationToken);
+        return result?.Snippets.Select(s => s.Content).ToList() ?? [];
+    }
 }

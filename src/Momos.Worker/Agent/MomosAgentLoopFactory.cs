@@ -39,6 +39,7 @@ public sealed class MomosAgentLoopFactory(
     IErrorRecoveryService errorRecovery,
     IToolRetriever toolRetriever,
     IExecutionRuntimeProvider executionRuntimeProvider,
+    IHostApiClient hostApiClient,
     ILoggerFactory loggerFactory) : ISessionAwareAgentLoopFactory
 {
     public Task<IAgentLoop> CreateAsync(CancellationToken cancellationToken = default) =>
@@ -53,16 +54,16 @@ public sealed class MomosAgentLoopFactory(
         // ISessionAwareAgentLoopFactory) — this factory owns this session's lifetime.
         var session = await executionRuntimeProvider.CreateSessionAsync(
             new ExecutionSessionRequest("native"), cancellationToken);
-        var (agentLoop, _) = await BuildAgentLoopAsync(options, session, cancellationToken);
+        var (agentLoop, _) = await BuildAgentLoopAsync(options, session, projectId: null, cancellationToken);
         return new SessionScopedAgentLoop(agentLoop, executionRuntimeProvider, session);
     }
 
     public Task<(IAgentLoop Loop, FindingSink Findings)> CreateAsync(
-        AgentLoopFactoryOptions options, ExecutionSessionHandle session, CancellationToken cancellationToken = default) =>
-        BuildAgentLoopAsync(options, session, cancellationToken);
+        AgentLoopFactoryOptions options, ExecutionSessionHandle session, Guid? projectId = null, CancellationToken cancellationToken = default) =>
+        BuildAgentLoopAsync(options, session, projectId, cancellationToken);
 
     private async Task<(IAgentLoop Loop, FindingSink Findings)> BuildAgentLoopAsync(
-        AgentLoopFactoryOptions options, ExecutionSessionHandle session, CancellationToken cancellationToken)
+        AgentLoopFactoryOptions options, ExecutionSessionHandle session, Guid? projectId, CancellationToken cancellationToken)
     {
         // usageLimiter is a single process-wide instance (see
         // ServiceCollectionExtensions.AddIronHiveAgentEngine) tracked against by
@@ -82,19 +83,33 @@ public sealed class MomosAgentLoopFactory(
         var reportFindingTool = AIFunctionFactory.Create(
             new FindingReportingTools(findings).ReportFinding);
 
+        // AgentOptions.Tools is IList<AITool> — List<AIFunction> isn't assignment-compatible
+        // with it (IList<T> isn't covariant), so this is typed to the base AITool.
+        var tools = new List<AITool> { codeExecutionTool, reportFindingTool };
+        var alwaysIncludeToolNames = new List<string> { codeExecutionTool.Name, reportFindingTool.Name };
+        if (projectId is { } id)
+        {
+            var knowledgeQueryTool = AIFunctionFactory.Create(
+                new KnowledgeQueryTools(hostApiClient, id, loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge);
+            tools.Add(knowledgeQueryTool);
+            alwaysIncludeToolNames.Add(knowledgeQueryTool.Name);
+        }
+
         var agentOptions = new AgentOptions
         {
             SystemPrompt = options.SystemPrompt,
             ModelId = options.Model,
             Temperature = options.Temperature,
             MaxTokens = options.MaxTokens,
-            Tools = [codeExecutionTool, reportFindingTool],
+            Tools = tools,
             // Momos's tool retriever (KeywordToolRetriever) scores tools against the
             // prompt's keywords and drops anything under its relevance threshold —
-            // a filter meant for large, discoverable tool sets. Neither tool is optional
-            // or query-dependent: every inspection needs both, so they must always survive
+            // a filter meant for large, discoverable tool sets. None of these tools are
+            // optional or query-dependent from the retriever's point of view (even the
+            // knowledge-query tool, which is only situationally *useful*, must still be
+            // visible to the agent every time it's present) — they must always survive
             // retrieval regardless of what the prompt happens to say.
-            ToolRetrievalOptions = new ToolRetrievalOptions { AlwaysInclude = [codeExecutionTool.Name, reportFindingTool.Name] },
+            ToolRetrievalOptions = new ToolRetrievalOptions { AlwaysInclude = alwaysIncludeToolNames },
         };
 
         var agentLoop = new AgentLoop(chatClient, agentOptions, usageTracker, contextManager, errorRecovery, toolRetriever);

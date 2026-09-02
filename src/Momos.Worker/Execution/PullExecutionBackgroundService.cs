@@ -181,7 +181,8 @@ public sealed class PullExecutionBackgroundService(
             // No RepositoryUrl declared — an honest "nothing to check out" case, not a
             // failure: momos never assumes a repo it wasn't told about.
 
-            var (agentLoop, findings) = await agentLoopFactory.CreateAsync(new AgentLoopFactoryOptions(), session, cancellationToken);
+            var (agentLoop, findings) = await agentLoopFactory.CreateAsync(
+                new AgentLoopFactoryOptions(), session, projectId: request.ProjectId, cancellationToken);
             await agentLoop.RunAsync(BuildPrompt(project, request.Focus), cancellationToken);
 
             logger.LogInformation(
@@ -226,5 +227,8 @@ public sealed class PullExecutionBackgroundService(
         you actually reproduce a functional defect or UX inconsistency, call ReportFinding
         with the command output that shows it. If nothing turns up, say so and finish
         without calling ReportFinding — do not report a finding you did not reproduce.
+
+        Use QueryProjectKnowledge if you want context from this project's registered
+        documents or past inspection findings before deciding what to check.
         """;
 }

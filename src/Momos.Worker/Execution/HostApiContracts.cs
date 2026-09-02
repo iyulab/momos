@@ -59,3 +59,13 @@ public sealed record ClaimNextRequest(int ProtocolVersion, string WorkerVersion)
 /// <summary>Mirrors Host's ClaimNextResponse wire shape (Momos.Host.Contracts.ClaimNextResponse) —
 /// see ClaimedInspectionRequest's doc comment for why this is a local copy.</summary>
 public sealed record ClaimNextResult(ClaimedInspectionRequest? Request, bool UpdateRequired, string? RecommendedWorkerVersion);
+
+/// <summary>Mirrors Host's QueryKnowledgeRequest wire shape (Momos.Host.Contracts.QueryKnowledgeRequest) —
+/// see ClaimedInspectionRequest's doc comment for why this is a local copy.</summary>
+public sealed record QueryKnowledgeRequest(string Query, int MaxResults = 5);
+
+/// <summary>Mirrors Host's QueryKnowledgeResponse wire shape (Momos.Host.Contracts.QueryKnowledgeResponse).</summary>
+public sealed record QueryKnowledgeResponse(IReadOnlyList<KnowledgeSnippet> Snippets);
+
+/// <summary>Mirrors Host's KnowledgeSnippet wire shape (Momos.Host.Contracts.KnowledgeSnippet).</summary>
+public sealed record KnowledgeSnippet(string Content, double Score);

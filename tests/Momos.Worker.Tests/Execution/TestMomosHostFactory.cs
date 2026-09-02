@@ -15,10 +15,12 @@ public sealed class TestMomosHostFactory : WebApplicationFactory<global::Program
     public const string WorkerApiKey = "test-worker-key";
 
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"momos-worker-test-{Guid.NewGuid():N}.db");
+    private readonly string _knowledgeDbPath = Path.Combine(Path.GetTempPath(), $"momos-worker-test-knowledge-{Guid.NewGuid():N}.db");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         builder
             .UseSetting("ConnectionStrings:MomosDb", $"Data Source={_dbPath}")
+            .UseSetting("Momos:Host:Knowledge:SqlitePath", _knowledgeDbPath)
             .UseSetting("Momos:Host:WorkerAuth:ApiKey", WorkerApiKey);
 
     /// <summary>
@@ -36,10 +38,24 @@ public sealed class TestMomosHostFactory : WebApplicationFactory<global::Program
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing && File.Exists(_dbPath))
+        if (disposing)
         {
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            File.Delete(_dbPath);
+            DeleteIfExists(_dbPath);
+            DeleteIfExists(_knowledgeDbPath);
+            // FluxIndex derives a companion entity-graph database from the configured path
+            // (see Momos.Host.Tests.Knowledge.KnowledgeBootstrapTests) — clean it up too.
+            var knowledgeDir = Path.GetDirectoryName(_knowledgeDbPath)!;
+            var knowledgeNameNoExt = Path.GetFileNameWithoutExtension(_knowledgeDbPath);
+            DeleteIfExists(Path.Combine(knowledgeDir, $"{knowledgeNameNoExt}-entitygraph.db"));
+        }
+    }
+
+    private static void DeleteIfExists(string path)
+    {
+        if (File.Exists(path))
+        {
+            File.Delete(path);
         }
     }
 }

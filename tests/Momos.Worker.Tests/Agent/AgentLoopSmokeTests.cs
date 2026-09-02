@@ -23,6 +23,7 @@ public class AgentLoopSmokeTests
         services.AddSingleton<IChatClientProvider>(new FakeChatClientProvider("hello from momos"));
         services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
         services.AddSingleton<IExecutionRuntimeProvider>(new FakeExecutionRuntimeProvider());
+        services.AddSingleton<IHostApiClient>(new FakeHostApiClient([]));
         services.AddIronHiveAgentEngine();
         await using var provider = services.BuildServiceProvider();
 

@@ -24,6 +24,9 @@ public class MomosAgentLoopFactoryTests
         services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
         var executionProvider = new FakeExecutionRuntimeProvider();
         services.AddSingleton<IExecutionRuntimeProvider>(executionProvider);
+        // MomosAgentLoopFactory needs an IHostApiClient to build the knowledge-query tool --
+        // this file's tests don't exercise that tool, so an empty fake is enough.
+        services.AddSingleton<IHostApiClient>(new FakeHostApiClient([]));
         services.AddIronHiveAgentEngine();
         var provider = services.BuildServiceProvider();
         return (provider.GetRequiredService<IAgentLoopFactory>(), executionProvider);
@@ -90,6 +93,7 @@ public class MomosAgentLoopFactoryTests
         services.AddSingleton<IChatClientProvider>(chatClientProvider);
         services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
         services.AddSingleton<IExecutionRuntimeProvider>(new FakeExecutionRuntimeProvider());
+        services.AddSingleton<IHostApiClient>(new FakeHostApiClient([]));
         services.AddIronHiveAgentEngine();
         var factory = services.BuildServiceProvider().GetRequiredService<IAgentLoopFactory>();
         var agentLoop = await factory.CreateAsync();
@@ -131,6 +135,7 @@ public class MomosAgentLoopFactoryTests
             NextResult = new ExecutionCommandResult(true, "build succeeded", null, 100),
         };
         services.AddSingleton<IExecutionRuntimeProvider>(executionProvider);
+        services.AddSingleton<IHostApiClient>(new FakeHostApiClient([]));
         services.AddIronHiveAgentEngine();
         var factory = services.BuildServiceProvider().GetRequiredService<IAgentLoopFactory>();
         var agentLoop = await factory.CreateAsync();
@@ -175,6 +180,7 @@ public class MomosAgentLoopFactoryTests
         {
             NextResult = new ExecutionCommandResult(true, "build succeeded", null, 100),
         });
+        services.AddSingleton<IHostApiClient>(new FakeHostApiClient([]));
         services.AddIronHiveAgentEngine(new AgentLoopLimitsOptions { MaxSessionTokens = 10 });
         var factory = services.BuildServiceProvider().GetRequiredService<IAgentLoopFactory>();
         var agentLoop = await factory.CreateAsync();
