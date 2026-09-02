@@ -21,11 +21,27 @@ public static class ProjectEndpoints
                 });
             }
 
+            var hasInstallerUri = !string.IsNullOrWhiteSpace(request.AppInstallerUri);
+            var hasPlatform = !string.IsNullOrWhiteSpace(request.AppInstallPlatform);
+            var hasLaunchCommand = !string.IsNullOrWhiteSpace(request.AppInstallLaunchCommand);
+            if ((hasInstallerUri || hasPlatform || hasLaunchCommand)
+                && !(hasInstallerUri && hasPlatform && hasLaunchCommand))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["request"] = ["AppInstallerUri, AppInstallPlatform, and AppInstallLaunchCommand must all be provided together, or all omitted."],
+                });
+            }
+
             var project = new Project
             {
                 Name = request.Name,
                 RepositoryUrl = request.RepositoryUrl,
                 DeploymentUrl = request.DeploymentUrl,
+                AppInstallerUri = request.AppInstallerUri,
+                AppInstallPlatform = request.AppInstallPlatform,
+                AppInstallArgs = request.AppInstallArgs,
+                AppInstallLaunchCommand = request.AppInstallLaunchCommand,
                 Purpose = request.Purpose,
                 Vision = request.Vision,
                 Scope = request.Scope,

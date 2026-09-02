@@ -46,4 +46,42 @@ public sealed class ProjectEndpointsTests : IClassFixture<MomosHostFactory>
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [Fact]
+    public async Task PostThenGet_RoundTripsAProjectWithAppInstall()
+    {
+        var create = new CreateProjectRequest(
+            "acme", null, null, "purpose", "vision", "scope",
+            AppInstallerUri: "https://example.invalid/acme-setup.exe",
+            AppInstallPlatform: "win-x64",
+            AppInstallArgs: "/silent",
+            AppInstallLaunchCommand: "acme.exe");
+
+        var postResponse = await _client.PostAsJsonAsync("/projects", create);
+        Assert.Equal(HttpStatusCode.Created, postResponse.StatusCode);
+        var created = await postResponse.Content.ReadFromJsonAsync<ProjectResponse>();
+        Assert.NotNull(created);
+        Assert.Equal("https://example.invalid/acme-setup.exe", created.AppInstallerUri);
+        Assert.Equal("win-x64", created.AppInstallPlatform);
+        Assert.Equal("/silent", created.AppInstallArgs);
+        Assert.Equal("acme.exe", created.AppInstallLaunchCommand);
+
+        var getResponse = await _client.GetAsync($"/projects/{created.Id}");
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+        var fetched = await getResponse.Content.ReadFromJsonAsync<ProjectResponse>();
+        Assert.Equal("win-x64", fetched!.AppInstallPlatform);
+    }
+
+    [Fact]
+    public async Task Post_WithPartialAppInstallFields_Returns400()
+    {
+        var create = new CreateProjectRequest(
+            "acme", null, null, "purpose", "vision", "scope",
+            AppInstallerUri: "https://example.invalid/acme-setup.exe");
+            // AppInstallPlatform and AppInstallLaunchCommand deliberately omitted
+
+        var response = await _client.PostAsJsonAsync("/projects", create);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }

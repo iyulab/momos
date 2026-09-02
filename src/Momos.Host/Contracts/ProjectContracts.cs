@@ -8,7 +8,11 @@ public sealed record CreateProjectRequest(
     string? DeploymentUrl,
     string Purpose,
     string Vision,
-    string Scope);
+    string Scope,
+    string? AppInstallerUri = null,
+    string? AppInstallPlatform = null,
+    string? AppInstallArgs = null,
+    string? AppInstallLaunchCommand = null);
 
 public sealed record ProjectResponse(
     Guid Id,
@@ -18,7 +22,11 @@ public sealed record ProjectResponse(
     string Purpose,
     string Vision,
     string Scope,
-    DateTimeOffset CreatedAt)
+    DateTimeOffset CreatedAt,
+    string? AppInstallerUri = null,
+    string? AppInstallPlatform = null,
+    string? AppInstallArgs = null,
+    string? AppInstallLaunchCommand = null)
 {
     public static ProjectResponse FromEntity(Project project) => new(
         project.Id,
@@ -28,5 +36,9 @@ public sealed record ProjectResponse(
         project.Purpose,
         project.Vision,
         project.Scope,
-        project.CreatedAt);
+        project.CreatedAt,
+        project.AppInstallerUri,
+        project.AppInstallPlatform,
+        project.AppInstallArgs,
+        project.AppInstallLaunchCommand);
 }
