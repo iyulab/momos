@@ -27,7 +27,7 @@ if [ -n "$old_revisions" ]; then
   echo "3/6 기존 리비전을 비활성화 — SQLite 파일을 새 리비전과 동시에 물지 않도록 먼저 완전히 내린다"
   while IFS= read -r rev; do
     [ -z "$rev" ] && continue
-    az containerapp revision deactivate --revision "$rev" --resource-group "$RG" </dev/null >/dev/null
+    az containerapp revision deactivate --name "$APP" --revision "$rev" --resource-group "$RG" </dev/null >/dev/null
     echo "  비활성화됨: $rev"
   done <<< "$old_revisions"
 
