@@ -84,4 +84,23 @@ public sealed class ProjectEndpointsTests : IClassFixture<MomosHostFactory>
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Post_WithWhitespaceOnlyAppInstallFields_Returns201AndNormalizesToNull()
+    {
+        var create = new CreateProjectRequest(
+            "acme", null, null, "purpose", "vision", "scope",
+            AppInstallerUri: "   ",
+            AppInstallPlatform: "   ",
+            AppInstallLaunchCommand: "   ");
+
+        var response = await _client.PostAsJsonAsync("/projects", create);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<ProjectResponse>();
+        Assert.NotNull(created);
+        Assert.Null(created.AppInstallerUri);
+        Assert.Null(created.AppInstallPlatform);
+        Assert.Null(created.AppInstallLaunchCommand);
+    }
 }
