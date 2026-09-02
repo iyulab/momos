@@ -122,6 +122,33 @@ public sealed class PullExecutionBackgroundServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenClaimNextThrowsOperationCanceledButStoppingTokenIsNotCancelled_SurvivesAndClaimsOnTheNextPoll()
+    {
+        // Reproduces an HttpClient.Timeout expiring mid-request (e.g. Host briefly
+        // unreachable during a redeploy): that surfaces as an OperationCanceledException
+        // even though nobody asked this service to stop. A discriminating regression: with
+        // the old `when (ex is not OperationCanceledException)` filter this test fails —
+        // the exception escapes ExecuteAsync instead of being retried.
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)],
+            claimNextThrowsCanceledForFirstNCalls: 2);
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("looked around, nothing conclusive");
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            new FakeWorkerSelfUpdater(),
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Single(hostClient.SubmittedReports);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WithRepositoryUrl_ClonesItBeforeRunningTheAgentLoop()
     {
         var hostClient = new FakeHostApiClient(

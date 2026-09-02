@@ -8,6 +8,7 @@ internal sealed class FakeHostApiClient(
     IReadOnlyList<ClaimedInspectionRequest> claims,
     bool getProjectThrows = false,
     int claimNextThrowsForFirstNCalls = 0,
+    int claimNextThrowsCanceledForFirstNCalls = 0,
     string? repositoryUrl = null,
     int updateRequiredForFirstNCalls = 0,
     string? recommendedWorkerVersion = null) : IHostApiClient
@@ -28,6 +29,14 @@ internal sealed class FakeHostApiClient(
         if (_claimCallCount <= claimNextThrowsForFirstNCalls)
         {
             throw new HttpRequestException("connection refused");
+        }
+
+        if (_claimCallCount <= claimNextThrowsCanceledForFirstNCalls)
+        {
+            // Simulates an HttpClient.Timeout expiring mid-request: a TaskCanceledException
+            // (an OperationCanceledException) unrelated to the loop's own stoppingToken —
+            // it must be treated as a transient failure, not as a shutdown signal.
+            throw new TaskCanceledException("simulated HttpClient timeout");
         }
 
         if (_claimCallCount <= updateRequiredForFirstNCalls)

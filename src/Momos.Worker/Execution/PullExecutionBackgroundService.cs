@@ -74,7 +74,15 @@ public sealed class PullExecutionBackgroundService(
                     await Task.Delay(options.Value.PollInterval, stoppingToken);
                 }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // A deliberate shutdown, not a failure — let the while loop's own check end it.
+                // Checking the token (not just the exception type) matters: HttpClient.Timeout
+                // also throws OperationCanceledException (a TaskCanceledException) when a call
+                // hangs, and that one is a transient failure, not a shutdown signal, even though
+                // it is indistinguishable from one by type alone.
+            }
+            catch (Exception ex)
             {
                 // A BackgroundService that throws out of ExecuteAsync takes the whole
                 // host down — a transient Host-unreachable blip must not do that.
