@@ -40,10 +40,18 @@ builder.Services.AddKnowledgeIndex();
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    scope.ServiceProvider.GetRequiredService<MomosDbContext>().Database.Migrate();
-}
+// Retry budget kept well under Azure Container Apps' default ~4-minute startup probe grace
+// window (TCP probe, periodSeconds=1, failureThreshold=240 when no custom probe is defined) —
+// exhausting it without succeeding should fail fast into a visible crash, not get killed
+// mid-retry by the platform and look like the same crash loop this exists to fix.
+DatabaseMigrator.MigrateWithRetry(
+    migrate: () =>
+    {
+        using var scope = app.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<MomosDbContext>().Database.Migrate();
+    },
+    logger: app.Logger,
+    retryDelays: [TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(40)]);
 
 if (app.Environment.IsDevelopment())
 {

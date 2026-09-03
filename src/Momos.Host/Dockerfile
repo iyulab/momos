@@ -13,7 +13,9 @@ WORKDIR /app
 COPY --from=build /app .
 
 RUN mkdir -p /data
-ENV ConnectionStrings__MomosDb="Data Source=/data/momos.db"
+# Default Timeout=40: SQLite's own busy-wait (default 30s) plus DatabaseMigrator's app-level
+# retry gives migration more total patience for a lingering database lock to clear.
+ENV ConnectionStrings__MomosDb="Data Source=/data/momos.db;Default Timeout=40"
 ENV Momos__Host__Knowledge__SqlitePath="/data/knowledge.db"
 
 ENTRYPOINT ["dotnet", "Momos.Host.dll"]
