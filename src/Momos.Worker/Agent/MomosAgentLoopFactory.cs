@@ -90,7 +90,7 @@ public sealed class MomosAgentLoopFactory(
         if (projectId is { } id)
         {
             var knowledgeQueryTool = AIFunctionFactory.Create(
-                new KnowledgeQueryTools(hostApiClient, id, loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge);
+                new KnowledgeQueryTools(hostApiClient, id, new ToolCallTraceSink(), loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge);
             tools.Add(knowledgeQueryTool);
             alwaysIncludeToolNames.Add(knowledgeQueryTool.Name);
         }

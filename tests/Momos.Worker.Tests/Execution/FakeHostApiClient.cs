@@ -11,7 +11,9 @@ internal sealed class FakeHostApiClient(
     int claimNextThrowsCanceledForFirstNCalls = 0,
     string? repositoryUrl = null,
     int updateRequiredForFirstNCalls = 0,
-    string? recommendedWorkerVersion = null) : IHostApiClient
+    string? recommendedWorkerVersion = null,
+    IReadOnlyList<string>? queryKnowledgeResult = null,
+    bool queryKnowledgeThrows = false) : IHostApiClient
 {
     private int _claimIndex;
     private int _claimCallCount;
@@ -70,5 +72,7 @@ internal sealed class FakeHostApiClient(
     public Task WaitForOutcomeAsync(TimeSpan timeout) => _outcomeReceived.Task.WaitAsync(timeout);
 
     public Task<IReadOnlyList<string>> QueryKnowledgeAsync(Guid projectId, string query, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<string>>([]);
+        queryKnowledgeThrows
+            ? throw new HttpRequestException("simulated Host query failure")
+            : Task.FromResult(queryKnowledgeResult ?? []);
 }
