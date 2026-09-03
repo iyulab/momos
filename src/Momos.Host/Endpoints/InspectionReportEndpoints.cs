@@ -14,6 +14,7 @@ public static class InspectionReportEndpoints
         {
             var report = await db.InspectionReports
                 .Include(r => r.Findings.OrderBy(f => f.Order))
+                .Include(r => r.ToolCalls.OrderBy(t => t.Order))
                 .FirstOrDefaultAsync(r => r.InspectionRequestId == id, cancellationToken);
 
             return report is null
@@ -52,6 +53,20 @@ public static class InspectionReportEndpoints
                     Category = finding.Category,
                     Description = finding.Description,
                     Evidence = finding.Evidence,
+                    Order = order,
+                });
+            }
+
+            for (var order = 0; order < request.ToolCalls.Count; order++)
+            {
+                var call = request.ToolCalls[order];
+                report.ToolCalls.Add(new ToolCall
+                {
+                    InspectionReportId = report.Id,
+                    Tool = call.Tool,
+                    Summary = call.Summary,
+                    Success = call.Success,
+                    DurationMs = call.DurationMs,
                     Order = order,
                 });
             }

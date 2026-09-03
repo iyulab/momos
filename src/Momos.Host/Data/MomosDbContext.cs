@@ -9,6 +9,7 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
     public DbSet<InspectionRequest> InspectionRequests => Set<InspectionRequest>();
     public DbSet<InspectionReport> InspectionReports => Set<InspectionReport>();
     public DbSet<Finding> Findings => Set<Finding>();
+    public DbSet<ToolCall> ToolCalls => Set<ToolCall>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -37,6 +38,12 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
             .HasMany(r => r.Findings)
             .WithOne()
             .HasForeignKey(f => f.InspectionReportId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<InspectionReport>()
+            .HasMany(r => r.ToolCalls)
+            .WithOne()
+            .HasForeignKey(t => t.InspectionReportId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // Restrict, not Cascade: inspection history is an audit trail and should not

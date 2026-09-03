@@ -72,7 +72,7 @@ public sealed class WorkerAuthTests : IClassFixture<MomosHostFactory>
             .Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value);
 
         var response = await unauthenticated.PostAsJsonAsync(
-            $"/inspection-requests/{claimed!.Request!.Id}/report", new SubmitInspectionReportRequest([]));
+            $"/inspection-requests/{claimed!.Request!.Id}/report", new SubmitInspectionReportRequest([], []));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

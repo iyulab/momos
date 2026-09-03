@@ -154,11 +154,13 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var claimed = await ClaimNextAsync();
 
         var submission = new SubmitInspectionReportRequest(
-        [
-            new SubmitFindingRequest(FindingCategory.FunctionalDefect, "first", "e"),
-            new SubmitFindingRequest(FindingCategory.UxConsistency, "second", "e"),
-            new SubmitFindingRequest(FindingCategory.FunctionalDefect, "third", "e"),
-        ]);
+            Findings:
+            [
+                new SubmitFindingRequest(FindingCategory.FunctionalDefect, "first", "e"),
+                new SubmitFindingRequest(FindingCategory.UxConsistency, "second", "e"),
+                new SubmitFindingRequest(FindingCategory.FunctionalDefect, "third", "e"),
+            ],
+            ToolCalls: []);
         var response = await _client.PostAsJsonAsync($"/inspection-requests/{claimed!.Id}/report", submission);
         var created = await response.Content.ReadFromJsonAsync<InspectionReportResponse>(TestJsonOptions.Value);
         Assert.Equal(["first", "second", "third"], created!.Findings.Select(f => f.Description));
@@ -169,9 +171,39 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
     }
 
     [Fact]
+    public async Task Post_WithToolCalls_PersistsAndReturnsThemInSubmittedOrder()
+    {
+        var projectResponse = await _client.PostAsJsonAsync(
+            "/projects", new CreateProjectRequest("acme", null, null, "purpose", "vision", "scope"));
+        var project = await projectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
+        await _client.PostAsJsonAsync(
+            $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
+        var claimed = await ClaimNextAsync();
+
+        var submission = new SubmitInspectionReportRequest(
+            Findings: [],
+            ToolCalls:
+            [
+                new SubmitToolCallRequest("RunCommand", "ls -la", Success: true, DurationMs: 42),
+                new SubmitToolCallRequest("QueryProjectKnowledge", "login flow", Success: false, DurationMs: 8),
+            ]);
+        var response = await _client.PostAsJsonAsync($"/inspection-requests/{claimed!.Id}/report", submission);
+        var created = await response.Content.ReadFromJsonAsync<InspectionReportResponse>(TestJsonOptions.Value);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(["RunCommand", "QueryProjectKnowledge"], created!.ToolCalls.Select(t => t.Tool));
+        Assert.Equal([true, false], created.ToolCalls.Select(t => t.Success));
+        Assert.Equal([42, 8], created.ToolCalls.Select(t => t.DurationMs));
+
+        var fetched = await (await _client.GetAsync($"/inspection-requests/{claimed.Id}/report"))
+            .Content.ReadFromJsonAsync<InspectionReportResponse>(TestJsonOptions.Value);
+        Assert.Equal(["RunCommand", "QueryProjectKnowledge"], fetched!.ToolCalls.Select(t => t.Tool));
+    }
+
+    [Fact]
     public async Task Post_WithUnknownId_Returns404()
     {
-        var request = new SubmitInspectionReportRequest([]);
+        var request = new SubmitInspectionReportRequest([], []);
 
         var response = await _client.PostAsJsonAsync($"/inspection-requests/{Guid.NewGuid()}/report", request);
 
@@ -189,7 +221,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var inspectionRequest = await requestResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         var response = await _client.PostAsJsonAsync(
-            $"/inspection-requests/{inspectionRequest!.Id}/report", new SubmitInspectionReportRequest([]));
+            $"/inspection-requests/{inspectionRequest!.Id}/report", new SubmitInspectionReportRequest([], []));
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
@@ -205,9 +237,11 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var claimed = await ClaimNextAsync();
 
         var submission = new SubmitInspectionReportRequest(
-        [
-            new SubmitFindingRequest(FindingCategory.FunctionalDefect, "login button does nothing", "clicked 3x, no navigation"),
-        ]);
+            Findings:
+            [
+                new SubmitFindingRequest(FindingCategory.FunctionalDefect, "login button does nothing", "clicked 3x, no navigation"),
+            ],
+            ToolCalls: []);
         var response = await _client.PostAsJsonAsync($"/inspection-requests/{claimed!.Id}/report", submission);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -230,9 +264,11 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var claimed = await ClaimNextAsync();
 
         var submission = new SubmitInspectionReportRequest(
-        [
-            new SubmitFindingRequest(FindingCategory.FunctionalDefect, "Login button does nothing", "console: TypeError at login.js:42"),
-        ]);
+            Findings:
+            [
+                new SubmitFindingRequest(FindingCategory.FunctionalDefect, "Login button does nothing", "console: TypeError at login.js:42"),
+            ],
+            ToolCalls: []);
         var submit = await _client.PostAsJsonAsync($"/inspection-requests/{claimed!.Id}/report", submission);
         Assert.Equal(HttpStatusCode.Created, submit.StatusCode);
 
@@ -266,9 +302,11 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         var claimed = (await claimResponse.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value))!.Request!;
 
         var submission = new SubmitInspectionReportRequest(
-        [
-            new SubmitFindingRequest(FindingCategory.FunctionalDefect, "login button does nothing", "clicked 3x, no navigation"),
-        ]);
+            Findings:
+            [
+                new SubmitFindingRequest(FindingCategory.FunctionalDefect, "login button does nothing", "clicked 3x, no navigation"),
+            ],
+            ToolCalls: []);
         var response = await client.PostAsJsonAsync($"/inspection-requests/{claimed.Id}/report", submission);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);

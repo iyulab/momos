@@ -34,24 +34,42 @@ public sealed record FindingResponse(Guid Id, FindingCategory Category, string D
         finding.Evidence);
 }
 
+public sealed record ToolCallResponse(Guid Id, string Tool, string Summary, bool Success, int DurationMs)
+{
+    public static ToolCallResponse FromEntity(ToolCall call) => new(
+        call.Id,
+        call.Tool,
+        call.Summary,
+        call.Success,
+        call.DurationMs);
+}
+
 public sealed record InspectionReportResponse(
     Guid Id,
     Guid InspectionRequestId,
     DateTimeOffset CompletedAt,
-    IReadOnlyList<FindingResponse> Findings)
+    IReadOnlyList<FindingResponse> Findings,
+    IReadOnlyList<ToolCallResponse> ToolCalls)
 {
     public static InspectionReportResponse FromEntity(InspectionReport report) => new(
         report.Id,
         report.InspectionRequestId,
         report.CompletedAt,
-        report.Findings.Select(FindingResponse.FromEntity).ToList());
+        report.Findings.Select(FindingResponse.FromEntity).ToList(),
+        report.ToolCalls.Select(ToolCallResponse.FromEntity).ToList());
 }
 
 /// <summary>One finding as submitted by a Worker completing an inspection run.</summary>
 public sealed record SubmitFindingRequest(FindingCategory Category, string Description, string Evidence);
 
+/// <summary>One tool invocation as submitted by a Worker completing an inspection run — no
+/// <c>Order</c> field, the Host assigns it from submission order (mirrors <see cref="SubmitFindingRequest"/>).</summary>
+public sealed record SubmitToolCallRequest(string Tool, string Summary, bool Success, int DurationMs);
+
 /// <summary>A Worker's completed-run submission for one <see cref="InspectionRequest"/>.</summary>
-public sealed record SubmitInspectionReportRequest(IReadOnlyList<SubmitFindingRequest> Findings);
+public sealed record SubmitInspectionReportRequest(
+    IReadOnlyList<SubmitFindingRequest> Findings,
+    IReadOnlyList<SubmitToolCallRequest> ToolCalls);
 
 /// <summary>A Worker's failed-run report for one <see cref="InspectionRequest"/>.</summary>
 public sealed record FailInspectionRequestRequest(string Reason);

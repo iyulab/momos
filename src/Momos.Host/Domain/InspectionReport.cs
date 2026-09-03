@@ -9,4 +9,5 @@ public sealed class InspectionReport
     public required Guid InspectionRequestId { get; set; }
     public DateTimeOffset CompletedAt { get; init; } = DateTimeOffset.UtcNow;
     public ICollection<Finding> Findings { get; init; } = new List<Finding>();
+    public ICollection<ToolCall> ToolCalls { get; init; } = new List<ToolCall>();
 }
