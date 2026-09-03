@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/redeploy-host.sh"
+source "$SCRIPT_DIR/deploy-host.sh"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
@@ -26,4 +26,4 @@ result="$(resolve_image_digest "iyulabimages.azurecr.io/momos-host@sha256:alread
 [ "$result" = "iyulabimages.azurecr.io/momos-host@sha256:already-pinned" ] \
   || fail "resolve_image_digest: 이미 digest인 참조를 그대로 통과시키지 못함: $result"
 
-echo "OK: redeploy-host.sh 단위 테스트 통과"
+echo "OK: deploy-host.sh 단위 테스트 통과"

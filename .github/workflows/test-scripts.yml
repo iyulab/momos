@@ -8,8 +8,8 @@ on:
       - 'scripts/install-worker.test.sh'
       - 'scripts/install-worker.ps1'
       - 'scripts/install-worker.tests.ps1'
-      - 'scripts/redeploy-host.sh'
-      - 'scripts/redeploy-host.test.sh'
+      - 'scripts/deploy-host.sh'
+      - 'scripts/deploy-host.test.sh'
       - '.github/workflows/test-scripts.yml'
   pull_request:
     branches: [ main ]
@@ -18,8 +18,8 @@ on:
       - 'scripts/install-worker.test.sh'
       - 'scripts/install-worker.ps1'
       - 'scripts/install-worker.tests.ps1'
-      - 'scripts/redeploy-host.sh'
-      - 'scripts/redeploy-host.test.sh'
+      - 'scripts/deploy-host.sh'
+      - 'scripts/deploy-host.test.sh'
       - '.github/workflows/test-scripts.yml'
   workflow_dispatch:
 
@@ -39,9 +39,9 @@ jobs:
       - shell: pwsh
         run: ./scripts/install-worker.tests.ps1
 
-  test-redeploy-host:
-    name: Test redeploy-host.sh (bash)
+  test-deploy-host:
+    name: Test deploy-host.sh (bash)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: bash scripts/redeploy-host.test.sh
+      - run: bash scripts/deploy-host.test.sh
