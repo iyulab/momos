@@ -23,7 +23,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
     private async Task<InspectionRequestResponse> ClaimNextAsync()
     {
         var response = await _client.PostAsJsonAsync(
-            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 1, WorkerVersion: "0.1.0"));
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 2, WorkerVersion: "0.1.0"));
         var envelope = await response.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value);
         return envelope!.Request!;
     }
@@ -188,10 +188,11 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
                 new SubmitToolCallRequest("QueryProjectKnowledge", "login flow", Success: false, DurationMs: 8),
             ]);
         var response = await _client.PostAsJsonAsync($"/inspection-requests/{claimed!.Id}/report", submission);
-        var created = await response.Content.ReadFromJsonAsync<InspectionReportResponse>(TestJsonOptions.Value);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<InspectionReportResponse>(TestJsonOptions.Value);
         Assert.Equal(["RunCommand", "QueryProjectKnowledge"], created!.ToolCalls.Select(t => t.Tool));
+        Assert.Equal(["ls -la", "login flow"], created.ToolCalls.Select(t => t.Summary));
         Assert.Equal([true, false], created.ToolCalls.Select(t => t.Success));
         Assert.Equal([42, 8], created.ToolCalls.Select(t => t.DurationMs));
 
@@ -298,7 +299,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         await client.PostAsJsonAsync(
             $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
         var claimResponse = await client.PostAsJsonAsync(
-            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 1, WorkerVersion: "0.1.0"));
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 2, WorkerVersion: "0.1.0"));
         var claimed = (await claimResponse.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value))!.Request!;
 
         var submission = new SubmitInspectionReportRequest(

@@ -24,7 +24,7 @@ public sealed class WorkerAuthTests : IClassFixture<MomosHostFactory>
         var client = _factory.CreateDefaultClient();
 
         var response = await client.PostAsJsonAsync(
-            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 1, WorkerVersion: "0.1.0"));
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 2, WorkerVersion: "0.1.0"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -36,7 +36,7 @@ public sealed class WorkerAuthTests : IClassFixture<MomosHostFactory>
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "not-the-configured-key");
 
         var response = await client.PostAsJsonAsync(
-            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 1, WorkerVersion: "0.1.0"));
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 2, WorkerVersion: "0.1.0"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -68,7 +68,7 @@ public sealed class WorkerAuthTests : IClassFixture<MomosHostFactory>
         await authenticated.PostAsJsonAsync(
             $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest("focus", null));
         var claimed = await (await authenticated.PostAsJsonAsync(
-            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 1, WorkerVersion: "0.1.0")))
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 2, WorkerVersion: "0.1.0")))
             .Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value);
 
         var response = await unauthenticated.PostAsJsonAsync(

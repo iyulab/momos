@@ -13,7 +13,7 @@ public sealed class WorkerCompatibilityOptions
     /// The value is maintained by hand to match the protocol contract the Host ships with —
     /// nothing enforces the pairing, so bumping the wire contract requires bumping this too.
     /// </summary>
-    public int MinSupportedProtocolVersion { get; set; } = 1;
+    public int MinSupportedProtocolVersion { get; set; } = 2;
 
     /// <summary>Soft update hint returned only when it differs from the Worker's reported
     /// WorkerVersion. Null (the default) means "unset" — an operator sets this when cutting a

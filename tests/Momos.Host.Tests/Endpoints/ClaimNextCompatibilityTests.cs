@@ -32,7 +32,7 @@ public sealed class ClaimNextCompatibilityTests : IClassFixture<MomosHostFactory
         do
         {
             var r = await client.PostAsJsonAsync(
-                "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 1, WorkerVersion: "0.1.0"));
+                "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 2, WorkerVersion: "0.1.0"));
             drained = await r.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value);
         } while (drained!.Request is not null);
 

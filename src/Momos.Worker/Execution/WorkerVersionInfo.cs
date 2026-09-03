@@ -10,7 +10,7 @@ namespace Momos.Worker.Execution;
 /// </summary>
 public static class WorkerVersionInfo
 {
-    public const int ProtocolVersion = 1;
+    public const int ProtocolVersion = 2;
 
     /// <summary>이 빌드가 대응하는 worker-v* 릴리스 태그(예: "0.1.0"). csproj의 Version 프로퍼티에서
     /// 옴 — release-worker.yml은 `-p:Version=`으로 이를 채우고, 그 값이 없는 로컬 빌드는

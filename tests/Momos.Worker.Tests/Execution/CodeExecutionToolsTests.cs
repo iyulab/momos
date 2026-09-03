@@ -138,6 +138,21 @@ public class CodeExecutionToolsTests
     }
 
     [Fact]
+    public async Task RunCommand_ProviderThrows_StillRecordsAToolCallEntryAndRethrows()
+    {
+        var provider = new FakeExecutionRuntimeProvider { ExceptionToThrow = new InvalidOperationException("session died") };
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, NullLogger<CodeExecutionTools>.Instance);
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => tools.RunCommand("dotnet", ["build"]));
+
+        Assert.Equal("session died", thrown.Message);
+        var entry = Assert.Single(trace.Calls);
+        Assert.Equal(nameof(CodeExecutionTools.RunCommand), entry.Tool);
+        Assert.False(entry.Success);
+    }
+
+    [Fact]
     public async Task RunCommand_NoArgs_PassesEmptyArgsList()
     {
         var provider = new FakeExecutionRuntimeProvider();

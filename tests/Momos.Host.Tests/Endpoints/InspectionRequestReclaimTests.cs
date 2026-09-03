@@ -27,7 +27,7 @@ public sealed class InspectionRequestReclaimTests : IDisposable
 
     public void Dispose() => _factory.Dispose();
 
-    private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: 1, WorkerVersion: "0.1.0");
+    private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: 2, WorkerVersion: "0.1.0");
 
     private async Task<ClaimNextResponse> ClaimNextAsync()
     {
