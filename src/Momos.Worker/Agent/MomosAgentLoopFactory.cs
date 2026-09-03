@@ -78,7 +78,7 @@ public sealed class MomosAgentLoopFactory(
             : await chatClientFactory.CreateAsync(options.Provider, options.Model, cancellationToken);
 
         var codeExecutionTool = AIFunctionFactory.Create(
-            new CodeExecutionTools(executionRuntimeProvider, session, loggerFactory.CreateLogger<CodeExecutionTools>()).RunCommand);
+            new CodeExecutionTools(executionRuntimeProvider, session, new ToolCallTraceSink(), loggerFactory.CreateLogger<CodeExecutionTools>()).RunCommand);
         var findings = new FindingSink();
         var reportFindingTool = AIFunctionFactory.Create(
             new FindingReportingTools(findings).ReportFinding);

@@ -15,6 +15,7 @@ namespace Momos.Worker.Execution;
 public sealed class CodeExecutionTools(
     IExecutionRuntimeProvider runtimeProvider,
     ExecutionSessionHandle session,
+    ToolCallTraceSink trace,
     ILogger<CodeExecutionTools> logger)
 {
     [Description("Run a shell command inside the sandboxed inspection workspace and return its output.")]
@@ -35,14 +36,15 @@ public sealed class CodeExecutionTools(
 
         // Deliberately no output/error preview here — the inspected target is untrusted
         // and its command output can carry secrets (.env contents, credentials) that must
-        // not land in the Worker's own logs. The audit trail this log line provides is
-        // "what ran and whether it succeeded"; "what it showed" is a separate concern
-        // that belongs to a finding's Evidence field (ReportFinding), which the agent
-        // populates deliberately from output it decided was relevant — not everything
-        // that scrolled past.
+        // not land in the Worker's own logs, nor in the trace entry below (it is persisted
+        // on Host and returned by a public endpoint). The audit trail this log line and
+        // trace entry provide is "what ran and whether it succeeded"; "what it showed" is a
+        // separate concern that belongs to a finding's Evidence field (ReportFinding), which
+        // the agent populates deliberately from output it decided was relevant.
         logger.LogInformation(
             "RunCommand result: {Command} success={Success} ({DurationMs}ms)",
             command, result.Success, result.DurationMs);
+        trace.Add(new ToolCallEntry(nameof(RunCommand), $"{command} {string.Join(' ', args ?? [])}".TrimEnd(), result.Success, result.DurationMs));
 
         return result.Success
             ? result.Output ?? string.Empty

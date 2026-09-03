@@ -31,7 +31,8 @@ public class CodeExecutionToolsTests
             NextResult = new ExecutionCommandResult(true, "SECRET_API_KEY=sk-abcdef123456", null, 42),
         };
         var logger = new RecordingLogger();
-        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), logger);
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, logger);
 
         await tools.RunCommand("cat", [".env"]);
 
@@ -47,7 +48,8 @@ public class CodeExecutionToolsTests
             NextResult = new ExecutionCommandResult(false, null, "printenv: SECRET_TOKEN=xyz", 5),
         };
         var logger = new RecordingLogger();
-        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), logger);
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, logger);
 
         await tools.RunCommand("printenv");
 
@@ -59,7 +61,8 @@ public class CodeExecutionToolsTests
     {
         var provider = new FakeExecutionRuntimeProvider { NextResult = new ExecutionCommandResult(true, "build succeeded", null, 123) };
         var session = new ExecutionSessionHandle("session-1");
-        var tools = new CodeExecutionTools(provider, session, NullLogger<CodeExecutionTools>.Instance);
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, session, trace, NullLogger<CodeExecutionTools>.Instance);
 
         var output = await tools.RunCommand("dotnet", ["build"], "/workspace/repo");
 
@@ -72,10 +75,61 @@ public class CodeExecutionToolsTests
     }
 
     [Fact]
+    public async Task RunCommand_Success_RecordsAToolCallEntry()
+    {
+        var provider = new FakeExecutionRuntimeProvider { NextResult = new ExecutionCommandResult(true, "build succeeded", null, 123) };
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, NullLogger<CodeExecutionTools>.Instance);
+
+        await tools.RunCommand("dotnet", ["build"]);
+
+        var entry = Assert.Single(trace.Calls);
+        Assert.Equal(nameof(CodeExecutionTools.RunCommand), entry.Tool);
+        Assert.Contains("dotnet", entry.Summary);
+        Assert.Contains("build", entry.Summary);
+        Assert.True(entry.Success);
+        Assert.Equal(123, entry.DurationMs);
+    }
+
+    [Fact]
+    public async Task RunCommand_Failure_StillRecordsAToolCallEntryWithSuccessFalse()
+    {
+        var provider = new FakeExecutionRuntimeProvider { NextResult = new ExecutionCommandResult(false, null, "no such file", 5) };
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, NullLogger<CodeExecutionTools>.Instance);
+
+        await tools.RunCommand("dotnet", ["build"]);
+
+        var entry = Assert.Single(trace.Calls);
+        Assert.False(entry.Success);
+        Assert.Equal(5, entry.DurationMs);
+    }
+
+    [Fact]
+    public async Task RunCommand_Success_DoesNotPutCommandOutputInTheTraceEntry()
+    {
+        // Same secret-leak concern as RunCommand_Success_DoesNotLogCommandOutput above --
+        // the trace is persisted on Host and returned by a public GET endpoint, so it must
+        // hold the same class of information (what ran) as the existing log line, never the
+        // command's output.
+        var provider = new FakeExecutionRuntimeProvider
+        {
+            NextResult = new ExecutionCommandResult(true, "SECRET_API_KEY=sk-abcdef123456", null, 42),
+        };
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, NullLogger<CodeExecutionTools>.Instance);
+
+        await tools.RunCommand("cat", [".env"]);
+
+        Assert.DoesNotContain("SECRET_API_KEY", Assert.Single(trace.Calls).Summary);
+    }
+
+    [Fact]
     public async Task RunCommand_Failure_ReturnsFailureMessageWithError()
     {
         var provider = new FakeExecutionRuntimeProvider { NextResult = new ExecutionCommandResult(false, null, "no such file", 5) };
-        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), NullLogger<CodeExecutionTools>.Instance);
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, NullLogger<CodeExecutionTools>.Instance);
 
         var output = await tools.RunCommand("dotnet", ["build"]);
 
@@ -87,7 +141,8 @@ public class CodeExecutionToolsTests
     public async Task RunCommand_NoArgs_PassesEmptyArgsList()
     {
         var provider = new FakeExecutionRuntimeProvider();
-        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), NullLogger<CodeExecutionTools>.Instance);
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, NullLogger<CodeExecutionTools>.Instance);
 
         await tools.RunCommand("ls");
 
@@ -99,7 +154,8 @@ public class CodeExecutionToolsTests
     {
         var provider = new FakeExecutionRuntimeProvider { NextResult = new ExecutionCommandResult(true, "42 tests passed", null, 10) };
         var session = new ExecutionSessionHandle("session-1");
-        var tool = AIFunctionFactory.Create(new CodeExecutionTools(provider, session, NullLogger<CodeExecutionTools>.Instance).RunCommand);
+        var trace = new ToolCallTraceSink();
+        var tool = AIFunctionFactory.Create(new CodeExecutionTools(provider, session, trace, NullLogger<CodeExecutionTools>.Instance).RunCommand);
 
         var result = await tool.InvokeAsync(new AIFunctionArguments
         {
