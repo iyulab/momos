@@ -18,7 +18,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddDbContext<MomosDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("MomosDb")
+    options.UseNpgsql(builder.Configuration.GetConnectionString("MomosDb")
         ?? throw new InvalidOperationException("ConnectionStrings:MomosDb is required.")));
 builder.Services
     .AddOptions<InspectionClaimOptions>()
@@ -39,19 +39,6 @@ builder.Services
 builder.Services.AddKnowledgeIndex();
 
 var app = builder.Build();
-
-// Retry budget kept well under Azure Container Apps' default ~4-minute startup probe grace
-// window (TCP probe, periodSeconds=1, failureThreshold=240 when no custom probe is defined) —
-// exhausting it without succeeding should fail fast into a visible crash, not get killed
-// mid-retry by the platform and look like the same crash loop this exists to fix.
-DatabaseMigrator.MigrateWithRetry(
-    migrate: () =>
-    {
-        using var scope = app.Services.CreateScope();
-        scope.ServiceProvider.GetRequiredService<MomosDbContext>().Database.Migrate();
-    },
-    logger: app.Logger,
-    retryDelays: [TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(40)]);
 
 if (app.Environment.IsDevelopment())
 {
