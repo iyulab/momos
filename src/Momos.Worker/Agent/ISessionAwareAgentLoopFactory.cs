@@ -16,8 +16,10 @@ public interface ISessionAwareAgentLoopFactory : IAgentLoopFactory
 {
     /// <summary>
     /// Builds a loop against a session the caller owns, plus the <see cref="FindingSink"/>
-    /// the loop's <see cref="FindingReportingTools"/> tool reports into — read it after
-    /// <see cref="IAgentLoop.RunAsync(string,System.Threading.CancellationToken)"/> completes.
+    /// the loop's <see cref="FindingReportingTools"/> tool reports into, and the
+    /// <see cref="ToolCallTraceSink"/> its code-execution/knowledge-query tools report into —
+    /// read both after <see cref="IAgentLoop.RunAsync(string,System.Threading.CancellationToken)"/>
+    /// completes.
     /// </summary>
     /// <param name="projectId">
     /// When set, the built loop also gets a <see cref="Momos.Worker.Execution.KnowledgeQueryTools"/>
@@ -25,7 +27,7 @@ public interface ISessionAwareAgentLoopFactory : IAgentLoopFactory
     /// own type, not Momos's, so this travels as a separate parameter on Momos's own interface
     /// method rather than as a new property on that type.
     /// </param>
-    Task<(IAgentLoop Loop, FindingSink Findings)> CreateAsync(
+    Task<(IAgentLoop Loop, FindingSink Findings, ToolCallTraceSink ToolCalls)> CreateAsync(
         AgentLoopFactoryOptions options,
         ExecutionSessionHandle session,
         Guid? projectId = null,

@@ -107,7 +107,7 @@ public class MomosAgentLoopFactoryTests
         var factory = provider.GetRequiredService<ISessionAwareAgentLoopFactory>();
         var session = new ExecutionSessionHandle("test-session");
 
-        var (agentLoop, _) = await factory.CreateAsync(new AgentLoopFactoryOptions(), session, projectId: Guid.NewGuid());
+        var (agentLoop, _, _) = await factory.CreateAsync(new AgentLoopFactoryOptions(), session, projectId: Guid.NewGuid());
         await agentLoop.RunAsync("look for problems in this repository");
 
         var tools = chatClientProvider.LastClient?.LastOptions?.Tools;

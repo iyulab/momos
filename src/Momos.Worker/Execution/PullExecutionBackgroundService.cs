@@ -181,14 +181,17 @@ public sealed class PullExecutionBackgroundService(
             // No RepositoryUrl declared — an honest "nothing to check out" case, not a
             // failure: momos never assumes a repo it wasn't told about.
 
-            var (agentLoop, findings) = await agentLoopFactory.CreateAsync(
+            var (agentLoop, findings, toolCalls) = await agentLoopFactory.CreateAsync(
                 new AgentLoopFactoryOptions(), session, projectId: request.ProjectId, cancellationToken);
             await agentLoop.RunAsync(BuildPrompt(project, request.Focus), cancellationToken);
 
             logger.LogInformation(
                 "Inspection for request {RequestId} completed with {FindingCount} finding(s)",
                 request.Id, findings.Findings.Count);
-            await hostApiClient.SubmitReportAsync(request.Id, findings.Findings, [], cancellationToken);
+            var toolCallPayloads = toolCalls.Calls
+                .Select(c => new ToolCallPayload(c.Tool, c.Summary, c.Success, c.DurationMs))
+                .ToList();
+            await hostApiClient.SubmitReportAsync(request.Id, findings.Findings, toolCallPayloads, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -321,6 +321,38 @@ public sealed class PullExecutionBackgroundServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_SubmitsTheToolCallTraceAlongsideFindings()
+    {
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)]);
+        var toolCall = new FunctionCallContent(
+            "call-1",
+            nameof(CodeExecutionTools.RunCommand),
+            new Dictionary<string, object?> { ["command"] = "dotnet", ["args"] = new[] { "build" } });
+        var chatClientProvider = new FakeChatClientProvider(
+            responsesBeforeFinal: [new ChatResponse(new ChatMessage(ChatRole.Assistant, [toolCall]))],
+            finalResponse: new ChatResponse(new ChatMessage(ChatRole.Assistant, "no issues found")));
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory(chatClientProvider);
+        executionProvider.NextResult = new ExecutionCommandResult(true, "build succeeded", null, 100);
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            new FakeWorkerSelfUpdater(),
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        var report = Assert.Single(hostClient.SubmittedReports);
+        var call = Assert.Single(report.ToolCalls);
+        Assert.Equal(nameof(CodeExecutionTools.RunCommand), call.Tool);
+        Assert.True(call.Success);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenClaimNextFailsRepeatedly_DowngradesToACriticalLogAtTheThresholdAndThenSuppresses()
     {
         var hostClient = new FakeHostApiClient([], claimNextThrowsForFirstNCalls: 5);

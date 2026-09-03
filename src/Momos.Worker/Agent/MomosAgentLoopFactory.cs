@@ -54,15 +54,15 @@ public sealed class MomosAgentLoopFactory(
         // ISessionAwareAgentLoopFactory) — this factory owns this session's lifetime.
         var session = await executionRuntimeProvider.CreateSessionAsync(
             new ExecutionSessionRequest("native"), cancellationToken);
-        var (agentLoop, _) = await BuildAgentLoopAsync(options, session, projectId: null, cancellationToken);
+        var (agentLoop, _, _) = await BuildAgentLoopAsync(options, session, projectId: null, cancellationToken);
         return new SessionScopedAgentLoop(agentLoop, executionRuntimeProvider, session);
     }
 
-    public Task<(IAgentLoop Loop, FindingSink Findings)> CreateAsync(
+    public Task<(IAgentLoop Loop, FindingSink Findings, ToolCallTraceSink ToolCalls)> CreateAsync(
         AgentLoopFactoryOptions options, ExecutionSessionHandle session, Guid? projectId = null, CancellationToken cancellationToken = default) =>
         BuildAgentLoopAsync(options, session, projectId, cancellationToken);
 
-    private async Task<(IAgentLoop Loop, FindingSink Findings)> BuildAgentLoopAsync(
+    private async Task<(IAgentLoop Loop, FindingSink Findings, ToolCallTraceSink ToolCalls)> BuildAgentLoopAsync(
         AgentLoopFactoryOptions options, ExecutionSessionHandle session, Guid? projectId, CancellationToken cancellationToken)
     {
         // usageLimiter is a single process-wide instance (see
@@ -77,8 +77,9 @@ public sealed class MomosAgentLoopFactory(
             ? await chatClientFactory.CreateAsync(options.Model, cancellationToken)
             : await chatClientFactory.CreateAsync(options.Provider, options.Model, cancellationToken);
 
+        var toolCalls = new ToolCallTraceSink();
         var codeExecutionTool = AIFunctionFactory.Create(
-            new CodeExecutionTools(executionRuntimeProvider, session, new ToolCallTraceSink(), loggerFactory.CreateLogger<CodeExecutionTools>()).RunCommand);
+            new CodeExecutionTools(executionRuntimeProvider, session, toolCalls, loggerFactory.CreateLogger<CodeExecutionTools>()).RunCommand);
         var findings = new FindingSink();
         var reportFindingTool = AIFunctionFactory.Create(
             new FindingReportingTools(findings).ReportFinding);
@@ -90,7 +91,7 @@ public sealed class MomosAgentLoopFactory(
         if (projectId is { } id)
         {
             var knowledgeQueryTool = AIFunctionFactory.Create(
-                new KnowledgeQueryTools(hostApiClient, id, new ToolCallTraceSink(), loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge);
+                new KnowledgeQueryTools(hostApiClient, id, toolCalls, loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge);
             tools.Add(knowledgeQueryTool);
             alwaysIncludeToolNames.Add(knowledgeQueryTool.Name);
         }
@@ -113,6 +114,6 @@ public sealed class MomosAgentLoopFactory(
         };
 
         var agentLoop = new AgentLoop(chatClient, agentOptions, usageTracker, contextManager, errorRecovery, toolRetriever);
-        return (agentLoop, findings);
+        return (agentLoop, findings, toolCalls);
     }
 }
