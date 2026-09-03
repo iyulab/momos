@@ -1,4 +1,4 @@
-name: Test Install Scripts
+name: Test Scripts
 
 on:
   push:
@@ -8,7 +8,9 @@ on:
       - 'scripts/install-worker.test.sh'
       - 'scripts/install-worker.ps1'
       - 'scripts/install-worker.tests.ps1'
-      - '.github/workflows/test-install-scripts.yml'
+      - 'scripts/redeploy-host.sh'
+      - 'scripts/redeploy-host.test.sh'
+      - '.github/workflows/test-scripts.yml'
   pull_request:
     branches: [ main ]
     paths:
@@ -16,21 +18,30 @@ on:
       - 'scripts/install-worker.test.sh'
       - 'scripts/install-worker.ps1'
       - 'scripts/install-worker.tests.ps1'
-      - '.github/workflows/test-install-scripts.yml'
+      - 'scripts/redeploy-host.sh'
+      - 'scripts/redeploy-host.test.sh'
+      - '.github/workflows/test-scripts.yml'
   workflow_dispatch:
 
 jobs:
-  test-bash:
+  test-install-worker-bash:
     name: Test install-worker.sh (bash)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/install-worker.test.sh
 
-  test-powershell:
+  test-install-worker-powershell:
     name: Test install-worker.ps1 (pwsh)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - shell: pwsh
         run: ./scripts/install-worker.tests.ps1
+
+  test-redeploy-host:
+    name: Test redeploy-host.sh (bash)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/redeploy-host.test.sh
