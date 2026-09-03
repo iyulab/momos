@@ -39,10 +39,24 @@ public static class WorkerInstallLayout
     {
         for (var candidate = new DirectoryInfo(Path.GetFullPath(baseDirectory)); candidate is not null; candidate = candidate.Parent)
         {
-            if (string.Equals(candidate.Name, VersionsDirectoryName, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(candidate.Name, PointerDirectoryName, StringComparison.OrdinalIgnoreCase))
+            var matchedName = string.Equals(candidate.Name, VersionsDirectoryName, StringComparison.OrdinalIgnoreCase) ? VersionsDirectoryName
+                : string.Equals(candidate.Name, PointerDirectoryName, StringComparison.OrdinalIgnoreCase) ? PointerDirectoryName
+                : null;
+            if (matchedName is null || candidate.Parent is null)
             {
-                return candidate.Parent?.FullName;
+                continue;
+            }
+
+            // A directory literally named "installs" or "current" can occur by coincidence
+            // somewhere in an unrelated ancestor chain. A genuine install root always has both
+            // names as siblings — the install scripts create the pointer alongside the versions
+            // directory at install time — so require the other one to actually be there too
+            // before accepting the match, instead of matching on the name alone.
+            var root = candidate.Parent.FullName;
+            var otherName = matchedName == VersionsDirectoryName ? PointerDirectoryName : VersionsDirectoryName;
+            if (Directory.Exists(Path.Combine(root, otherName)))
+            {
+                return root;
             }
         }
 

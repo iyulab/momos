@@ -82,11 +82,13 @@ main() {
     # SIGTERM + 유예시간만큼 더 살아 있다. 그 구간에 새 리비전을 띄우면 두 리비전이 같은 SQLite
     # 파일을 동시에 물게 되어, 이 스크립트가 존재하는 이유 자체가 사라진다. 그래서 접수가 아니라
     # replica 수가 실제로 0이 된 것을 확인한 뒤에만 다음 단계로 넘어간다.
-    echo "5/7 비활성화한 리비전의 replica가 실제로 0이 될 때까지 대기 (상한 ${DRAIN_TIMEOUT_SECONDS}초)"
-    local drain_deadline
-    drain_deadline=$(( $(date +%s) + DRAIN_TIMEOUT_SECONDS ))
+    echo "5/7 비활성화한 리비전의 replica가 실제로 0이 될 때까지 대기 (리비전별 상한 ${DRAIN_TIMEOUT_SECONDS}초)"
     while IFS= read -r rev; do
       [ -z "$rev" ] && continue
+      # 리비전마다 새로 계산 — 루프 밖에서 한 번만 계산하면 여러 리비전이 한 예산을 나눠 쓰게 되어,
+      # 앞선 리비전이 느리게 내려가면 뒤 리비전은 자기 몫의 유예 없이 조기 타임아웃될 수 있다.
+      local drain_deadline
+      drain_deadline=$(( $(date +%s) + DRAIN_TIMEOUT_SECONDS ))
       while :; do
         # 완전히 내려간 리비전은 0을 주거나 아예 값을 주지 않는다(tsv에서 null은 빈 문자열,
         # 파이썬 None이 그대로 나오는 경우도 있다) — 셋 다 "내려갔다"로 취급한다.

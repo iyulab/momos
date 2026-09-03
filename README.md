@@ -73,6 +73,8 @@ iwr https://raw.githubusercontent.com/iyulab/momos/main/scripts/install-worker.p
 
 새 버전은 `worker-v*` 형태의 태그(예: `worker-v0.1.0`)로 릴리스된다 — Host(컨테이너 배포)와는 독립된 버전 계열이다.
 
+설치 스크립트로 최신 바이너리를 받는 것과, Worker가 새 버전을 스스로 내려받아 교체하는 것은 별개다 — 후자는 `Momos:Worker:SelfUpdate:Enabled`(기본값 `false`)로 켠다. 꺼져 있으면 Worker는 업데이트가 있음을 로그에 남길 뿐 아무것도 하지 않는다. 켜면 업데이트를 스테이징한 뒤 스스로 종료하는데, 종료 후 다시 뜨는 것은 전적으로 그 프로세스를 감시하는 쪽(Windows Service, systemd 등, 위 "Worker 설치" 참고)의 재시작 몫이다 — 그런 감시가 없는 머신에서 켜두면 첫 업데이트 힌트에 Worker가 영영 내려간다. 그래서 이 값은 Host 쪽 설정으로 원격 전환할 수 없고, 서비스 등록이 끝난 뒤 운영자가 그 머신에서 직접 켜는 배포 결정으로 남아 있다.
+
 ## 문서
 
 - [범위](docs/scope.md) — In / Out

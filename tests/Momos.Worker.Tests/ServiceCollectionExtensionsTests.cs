@@ -3,6 +3,7 @@ using CodeBeaker.Core.Interfaces;
 using CodeBeaker.Core.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Momos.Worker.Execution;
 
 namespace Momos.Worker.Tests;
 
@@ -90,6 +91,26 @@ public class ServiceCollectionExtensionsTests
 
             sourceRepo.Delete(recursive: true);
         }
+    }
+
+    /// <summary>
+    /// <see cref="Momos.Worker.SelfUpdate.WorkerSelfUpdater"/> carries instance state
+    /// (a last-suppressed-notice cache) that is only correct if exactly one instance
+    /// backs the process — resolving a second one would let the same warning repeat
+    /// forever instead of once. The registration must reflect that, not rely on
+    /// <see cref="PullExecutionBackgroundService"/> happening to be the only consumer.
+    /// </summary>
+    [Fact]
+    public void AddMomosWorker_ResolvesTheSameWorkerSelfUpdaterInstanceEveryTime()
+    {
+        var services = new ServiceCollection();
+        services.AddMomosWorker(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
+
+        var first = provider.GetRequiredService<IWorkerSelfUpdater>();
+        var second = provider.GetRequiredService<IWorkerSelfUpdater>();
+
+        Assert.Same(first, second);
     }
 
     private static async Task RunGitAsync(string workingDirectory, params string[] args)

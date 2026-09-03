@@ -23,6 +23,10 @@ public sealed class WorkerInstallLayoutTests : IDisposable
         // Trailing separator included on purpose: AppContext.BaseDirectory always carries one.
         var baseDirectory = Path.Combine(_installRoot, WorkerInstallLayout.VersionsDirectoryName, "0.2.0")
             + Path.DirectorySeparatorChar;
+        // The "current" sibling has to actually exist — a genuine install root always has both,
+        // and ResolveInstallRoot now requires it to tell a real install apart from a directory
+        // that merely happens to be named "installs".
+        Directory.CreateDirectory(Path.Combine(_installRoot, WorkerInstallLayout.PointerDirectoryName));
 
         Assert.Equal(_installRoot, WorkerInstallLayout.ResolveInstallRoot(baseDirectory));
     }
@@ -32,6 +36,7 @@ public sealed class WorkerInstallLayoutTests : IDisposable
     {
         var baseDirectory = Path.Combine(_installRoot, WorkerInstallLayout.PointerDirectoryName)
             + Path.DirectorySeparatorChar;
+        Directory.CreateDirectory(Path.Combine(_installRoot, WorkerInstallLayout.VersionsDirectoryName));
 
         Assert.Equal(_installRoot, WorkerInstallLayout.ResolveInstallRoot(baseDirectory));
     }
@@ -45,9 +50,21 @@ public sealed class WorkerInstallLayoutTests : IDisposable
     }
 
     [Fact]
+    public void ResolveInstallRoot_WithAnAncestorCoincidentallyNamedInstalls_ReturnsNull()
+    {
+        // A directory literally named "installs" can occur by chance somewhere in an unrelated
+        // ancestor chain (e.g. a user's own project called "installs"). Without a "current"
+        // sibling next to it, it must not be mistaken for a genuine Worker install root.
+        var coincidentalInstalls = Path.Combine(_installRoot, "installs", "sub", "bin") + Path.DirectorySeparatorChar;
+
+        Assert.Null(WorkerInstallLayout.ResolveInstallRoot(coincidentalInstalls));
+    }
+
+    [Fact]
     public void AddInstalledSettings_FromAVersionDirectory_ReadsTheSettingsFileOneLevelUp()
     {
         WriteInstalledSettings("""{"Momos":{"Worker":{"Host":{"BaseUrl":"https://host.example.invalid"}}}}""");
+        Directory.CreateDirectory(Path.Combine(_installRoot, WorkerInstallLayout.PointerDirectoryName));
         var baseDirectory = Path.Combine(_installRoot, WorkerInstallLayout.VersionsDirectoryName, "0.2.0")
             + Path.DirectorySeparatorChar;
 
@@ -71,6 +88,7 @@ public sealed class WorkerInstallLayoutTests : IDisposable
         const string variable = "Momos__Worker__Test__InstalledSettingsProbe";
         const string key = "Momos:Worker:Test:InstalledSettingsProbe";
         WriteInstalledSettings("""{"Momos":{"Worker":{"Test":{"InstalledSettingsProbe":"from-file"}}}}""");
+        Directory.CreateDirectory(Path.Combine(_installRoot, WorkerInstallLayout.VersionsDirectoryName));
 
         Environment.SetEnvironmentVariable(variable, "from-environment");
         Environment.SetEnvironmentVariable("DOTNET_SOME_BOOTSTRAP_SETTING", "irrelevant");
@@ -118,6 +136,7 @@ public sealed class WorkerInstallLayoutTests : IDisposable
 
         var versionDirectory = Path.Combine(_installRoot, WorkerInstallLayout.VersionsDirectoryName, "0.2.0");
         Directory.CreateDirectory(versionDirectory);
+        Directory.CreateDirectory(Path.Combine(_installRoot, WorkerInstallLayout.PointerDirectoryName));
         var versionDirectoryCopy = Path.Combine(versionDirectory, WorkerInstallLayout.SettingsFileName);
         File.WriteAllText(versionDirectoryCopy, """{"Momos":{"Worker":{"Test":{"InstalledSettingsProbe":"from-version-directory-copy"}}}}""");
 

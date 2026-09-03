@@ -13,6 +13,7 @@ using IronHive.Agent.Tracking;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
 using Momos.Worker.Execution;
@@ -77,12 +78,22 @@ public static class ServiceCollectionExtensions
         services
             .AddOptions<WorkerSelfUpdateOptions>()
             .Bind(configuration.GetSection(WorkerSelfUpdateOptions.SectionName));
-        services.AddHttpClient<IWorkerSelfUpdater, WorkerSelfUpdater>(client =>
+
+        // A named client, not AddHttpClient<TClient, TImplementation> — that helper always
+        // registers the typed client transient, but WorkerSelfUpdater carries instance state
+        // (a last-suppressed-notice cache) that is only correct with exactly one instance per
+        // process. Registering it explicitly as a singleton makes that an actual guarantee
+        // rather than an accident of PullExecutionBackgroundService being its only consumer.
+        services.AddHttpClient(nameof(WorkerSelfUpdater), client =>
         {
             // GitHub's REST API rejects requests with no User-Agent header (returns 403) —
             // unlike IHostApiClient's HttpClient above, this one talks to api.github.com.
             client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("momos-worker", WorkerVersionInfo.Version));
         });
+        services.AddSingleton<IWorkerSelfUpdater>(sp => new WorkerSelfUpdater(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(WorkerSelfUpdater)),
+            sp.GetRequiredService<IOptions<WorkerSelfUpdateOptions>>(),
+            sp.GetRequiredService<ILogger<WorkerSelfUpdater>>()));
 
         services.AddHostedService<PullExecutionBackgroundService>();
 
