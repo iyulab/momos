@@ -7,14 +7,12 @@ public sealed class KnowledgeOptions
     public const string SectionName = "Momos:Host:Knowledge";
 
     /// <summary>
-    /// Connection-string-style SQLite path for the knowledge index — deliberately a
-    /// separate file from <c>ConnectionStrings:MomosDb</c>, not a shared one, so the two
-    /// databases never contend for a single SQLite file lock. Defaults to a file alongside the working
-    /// directory for local development; production sets this to <c>/data/knowledge.db</c>
-    /// the same way <c>ConnectionStrings__MomosDb</c> is set in the Dockerfile.
+    /// PostgreSQL 연결 문자열 — momos.db(EF Core)와 별도 데이터베이스(momos_knowledge)를
+    /// 가리킨다. 같은 서버라도 데이터베이스를 분리해 두 컴포넌트가 스키마를 공유하지 않게
+    /// 한다(momos.db와 분리해 두던 기존 SQLite 시절의 의도를 그대로 유지).
     /// </summary>
     [Required]
-    public string SqlitePath { get; set; } = "knowledge.db";
+    public string ConnectionString { get; set; } = "";
 
     /// <summary>
     /// GPUStack's OpenAI-compatible base URL. Optional: when unset, no embedding service is

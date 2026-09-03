@@ -10,6 +10,7 @@
     </PackageReference>
     <PackageReference Include="FluxIndex.SDK" />
     <PackageReference Include="FluxIndex.Storage.SQLite" />
+    <PackageReference Include="FluxIndex.Storage.PostgreSQL" />
     <PackageReference Include="FluxIndex.Providers.OpenAI" />
   </ItemGroup>
 
