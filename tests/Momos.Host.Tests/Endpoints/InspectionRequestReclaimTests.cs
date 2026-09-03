@@ -13,19 +13,32 @@ namespace Momos.Host.Tests.Endpoints;
 /// instead of relying on a real-time delay racing the claim-next round trip (that raced under
 /// load — see git history on this file).
 /// </summary>
-public sealed class InspectionRequestReclaimTests : IDisposable
+public sealed class InspectionRequestReclaimTests : IAsyncLifetime
 {
     private readonly FakeTimeProvider _time = new();
     private readonly MomosHostFactory _factory;
-    private readonly HttpClient _client;
+    private HttpClient _client = null!;
 
     public InspectionRequestReclaimTests()
     {
         _factory = new MomosHostFactory { TimeProvider = _time };
+    }
+
+    // Not an IClassFixture, so xUnit won't drive the factory's own IAsyncLifetime — this class
+    // owns that lifecycle itself: start the factory's containers before the client is created,
+    // and tear them down (async containers, then the base WebApplicationFactory's own sync
+    // disposal) after each test.
+    public async Task InitializeAsync()
+    {
+        await _factory.InitializeAsync();
         _client = _factory.CreateAuthorizedClient();
     }
 
-    public void Dispose() => _factory.Dispose();
+    public async Task DisposeAsync()
+    {
+        await ((IAsyncLifetime)_factory).DisposeAsync();
+        _factory.Dispose();
+    }
 
     private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: 2, WorkerVersion: "0.1.0");
 

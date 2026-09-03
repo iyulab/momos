@@ -1,21 +1,30 @@
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Testcontainers.PostgreSql;
 
 namespace Momos.Host.Tests;
 
 /// <summary>
-/// Boots the real <c>Momos.Host</c> pipeline (migrations included) against a
-/// throwaway SQLite file per factory instance.
+/// Boots the real <c>Momos.Host</c> pipeline (migrations included) against a throwaway
+/// PostgreSQL container per factory instance — the same engine production runs, so EF
+/// translation differences (see MomosDbContextTests) can't hide behind a different test-only
+/// provider.
 /// </summary>
-public sealed class MomosHostFactory : WebApplicationFactory<Program>
+public sealed class MomosHostFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     /// <summary>Matches the worker-auth key this factory configures the Host with.</summary>
     public const string WorkerApiKey = "test-worker-key";
 
-    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"momos-host-test-{Guid.NewGuid():N}.db");
-    private readonly string _knowledgeDbPath = Path.Combine(Path.GetTempPath(), $"momos-knowledge-test-{Guid.NewGuid():N}.db");
+    private readonly PostgreSqlContainer _dbContainer = new PostgreSqlBuilder("postgres:16-alpine")
+        .WithDatabase("momos")
+        .Build();
+
+    private readonly PostgreSqlContainer _knowledgeContainer = new PostgreSqlBuilder("pgvector/pgvector:pg16")
+        .WithDatabase("momos_knowledge")
+        .Build();
 
     /// <summary>
     /// Overridable so a reclaim test can shrink it far below the production default and
@@ -33,10 +42,20 @@ public sealed class MomosHostFactory : WebApplicationFactory<Program>
     /// </summary>
     public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
 
+    public async Task InitializeAsync()
+    {
+        await _dbContainer.StartAsync();
+        await _knowledgeContainer.StartAsync();
+
+        using var scope = Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<Momos.Host.Data.MomosDbContext>()
+            .Database.MigrateAsync();
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         builder
-            .UseSetting("ConnectionStrings:MomosDb", $"Data Source={_dbPath}")
-            .UseSetting("Momos:Host:Knowledge:SqlitePath", _knowledgeDbPath)
+            .UseSetting("ConnectionStrings:MomosDb", _dbContainer.GetConnectionString())
+            .UseSetting("Momos:Host:Knowledge:ConnectionString", _knowledgeContainer.GetConnectionString())
             .UseSetting("Momos:Host:InspectionClaim:ReclaimTimeout", InspectionClaimReclaimTimeout.ToString())
             .UseSetting("Momos:Host:WorkerAuth:ApiKey", WorkerApiKey)
             .ConfigureServices(services => services.AddSingleton(TimeProvider));
@@ -53,31 +72,9 @@ public sealed class MomosHostFactory : WebApplicationFactory<Program>
         return client;
     }
 
-    protected override void Dispose(bool disposing)
+    async Task IAsyncLifetime.DisposeAsync()
     {
-        base.Dispose(disposing);
-        if (disposing)
-        {
-            // SQLite connection pooling can keep a native handle on the file open even
-            // after every connection is disposed; clear pools before deleting so the
-            // file isn't still locked (observed on Windows).
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            DeleteIfExists(_dbPath);
-            DeleteIfExists(_knowledgeDbPath);
-            // FluxIndex derives a companion entity-graph database from the configured
-            // path (see KnowledgeBootstrapTests) — clean it up too so test runs don't
-            // leak temp files.
-            var knowledgeDir = Path.GetDirectoryName(_knowledgeDbPath)!;
-            var knowledgeNameNoExt = Path.GetFileNameWithoutExtension(_knowledgeDbPath);
-            DeleteIfExists(Path.Combine(knowledgeDir, $"{knowledgeNameNoExt}-entitygraph.db"));
-        }
-    }
-
-    private static void DeleteIfExists(string path)
-    {
-        if (File.Exists(path))
-        {
-            File.Delete(path);
-        }
+        await _dbContainer.DisposeAsync();
+        await _knowledgeContainer.DisposeAsync();
     }
 }
