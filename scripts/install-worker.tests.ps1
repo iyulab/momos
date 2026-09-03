@@ -78,3 +78,14 @@ New-Item -ItemType Junction -Path $currentLink -Target (Join-Path $tmp7 'install
 if (-not (Test-Path (Join-Path $currentLink 'Momos.Worker.exe'))) { throw 'current junction을 통해 바이너리에 접근 불가' }
 Remove-Item -Recurse -Force $tmp7
 Write-Host 'OK: install-worker.ps1 레이아웃 테스트 통과'
+
+# Get-ServiceFailureActionsArg: sc.exe가 기대하는 정확한 토큰 형식
+$defaultActions = Get-ServiceFailureActionsArg
+if ($defaultActions -ne 'restart/5000/restart/5000/restart/30000') {
+    throw "Get-ServiceFailureActionsArg 기본값이 예상과 다름: $defaultActions"
+}
+$customActions = Get-ServiceFailureActionsArg -DelaysMs @(1000, 2000)
+if ($customActions -ne 'restart/1000/restart/2000') {
+    throw "Get-ServiceFailureActionsArg 커스텀 지연이 예상과 다름: $customActions"
+}
+Write-Host 'OK: install-worker.ps1 서비스 실패 액션 테스트 통과'

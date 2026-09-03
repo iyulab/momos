@@ -134,6 +134,59 @@ configure_worker() {
   fi
 }
 
+# "Restart=always" 등 systemd 유닛 텍스트 자체 — 파일에 쓰는 부분과 분리해서 순수 문자열로
+# 테스트할 수 있게 했다.
+render_systemd_unit() {
+  local install_dir="$1" run_user="$2"
+  cat <<UNIT
+[Unit]
+Description=Momos Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${run_user}
+ExecStart=${install_dir}/current/Momos.Worker
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+}
+
+# Windows 쪽(install-worker.ps1)은 기본값이 "등록함"(옵트아웃)인데 여기는 기본값이 "건너뜀"(옵트인)이다
+# — 비대칭은 의도적이다. sudo는 tty/비밀번호 프롬프트가 없는 환경(curl | bash로 파이프된 무인 설치)에서
+# 조용히 멈추거나 set -e 아래서 스크립트 전체를 죽일 수 있는데, 이 스크립트가 이미 그 계열의 결함(tty
+# 감지 회귀)을 한 번 겪었다 — 관리자 PowerShell은 이미 "사용자가 의식적으로 권한 상승을 각오한" 맥락인
+# Windows New-Service와 달리, 여기서는 그 전제를 세울 수 없어 명시적 옵트인으로 막는다.
+install_worker_service() {
+  local install_dir="$1"
+  local unit_path="/etc/systemd/system/momos-worker.service"
+
+  if [ "${MOMOS_WORKER_INSTALL_SERVICE:-}" != "1" ]; then
+    echo "systemd 서비스 등록을 건너뜁니다(MOMOS_WORKER_INSTALL_SERVICE=1로 opt-in) — 실행: $install_dir/current/Momos.Worker"
+    return 0
+  fi
+
+  if [ "$(id -u)" -ne 0 ] && ! command -v sudo >/dev/null 2>&1; then
+    echo "root 권한도 sudo도 없어 systemd 서비스 등록을 건너뜁니다 — 위 유닛 내용을 직접 $unit_path 에 만드세요." >&2
+    return 0
+  fi
+
+  local sudo_cmd=()
+  [ "$(id -u)" -ne 0 ] && sudo_cmd=(sudo)
+
+  render_systemd_unit "$install_dir" "$(id -un)" | "${sudo_cmd[@]}" tee "$unit_path" > /dev/null
+  "${sudo_cmd[@]}" systemctl daemon-reload
+  "${sudo_cmd[@]}" systemctl enable momos-worker.service
+  if ! systemctl is-active --quiet momos-worker.service; then
+    "${sudo_cmd[@]}" systemctl start momos-worker.service
+  fi
+  echo "서비스 실행 중: momos-worker.service"
+}
+
 fetch_and_extract() {
   local rid="$1" tag="$2" install_dir="$3"
   local asset_name="momos-worker-${rid}.tar.gz"
@@ -170,9 +223,9 @@ main() {
   tag="$(resolve_release_tag "$VERSION")"
   fetch_and_extract "$rid" "$tag" "$INSTALL_DIR"
   configure_worker "$INSTALL_DIR"
+  install_worker_service "$INSTALL_DIR"
 
   echo "설치 완료: $INSTALL_DIR"
-  echo "실행: $INSTALL_DIR/current/Momos.Worker"
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then

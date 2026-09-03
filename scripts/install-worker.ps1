@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$TestMode
+    [switch]$TestMode,
+    [switch]$SkipServiceInstall
 )
 
 $ErrorActionPreference = 'Stop'
@@ -90,6 +91,55 @@ function Invoke-WorkerConfiguration {
     }
 }
 
+function Test-IsElevated {
+    ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+# "restart/<ms>/restart/<ms>/restart/<ms>" — the exact token `sc.exe failure ... actions=` expects.
+# Escalating delays (not a flat retry) give a transient failure (a lock that clears in seconds) a
+# fast recovery while still backing off if the process is failing repeatedly on start.
+function Get-ServiceFailureActionsArg {
+    param([int[]]$DelaysMs = @(5000, 5000, 30000))
+    ($DelaysMs | ForEach-Object { "restart/$_" }) -join '/'
+}
+
+function Install-WorkerService {
+    param([string]$InstallDir, [string]$ServiceName = 'MomosWorker')
+
+    if (-not (Test-IsElevated)) {
+        Write-Host "관리자 권한이 없어 Windows 서비스 등록을 건너뜁니다 — 관리자 PowerShell에서 이 스크립트를 다시 실행하면 상시 서비스로 등록됩니다."
+        return
+    }
+
+    # 'current'는 self-update가 재배치하는 심볼릭 링크/junction이다 — 서비스는 이 안정 경로를
+    # 가리키므로, self-update가 버전을 바꿔도 서비스 등록 자체를 다시 할 필요가 없다(다음 재시작부터
+    # 새 버전이 뜬다). WorkerSelfUpdater.UpdateAsync가 Environment.Exit로 프로세스를 끝내면 아래
+    # sc.exe failure가 건 복구 액션이 SCM에서 재시작을 트리거한다 — Environment.Exit이 SCM에는
+    # "정상 종료"가 아니라 실제 종료로 보고된다는 것을 이 머신에서 별도 테스트 서비스로 직접
+    # 검증했다(문서화된 사례는 호스트가 가로채는 미처리 예외에 대한 것이라 이 경로와는 다름).
+    $exePath = Join-Path $InstallDir 'current\Momos.Worker.exe'
+
+    if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+        Write-Host "서비스가 이미 등록돼 있습니다: $ServiceName (재등록하지 않음 — 'current' 링크만 갱신하면 다음 재시작부터 새 버전이 실행됨)"
+    }
+    else {
+        New-Service -Name $ServiceName -BinaryPathName $exePath -DisplayName 'Momos Worker' `
+            -Description 'Momos inspection Worker — Momos Host의 검사 신청을 pull 방식으로 실행한다.' `
+            -StartupType Automatic | Out-Null
+        Write-Host "서비스 등록 완료: $ServiceName"
+    }
+
+    # reset= 86400: 24시간 동안 추가 실패가 없으면 실패 카운트를 리셋 — 오래전 실패 하나 때문에
+    # 다음 실패가 곧바로 "3번째 실패" 취급을 받아 백오프가 필요 이상으로 길어지는 걸 막는다.
+    & sc.exe failure $ServiceName reset= 86400 actions= (Get-ServiceFailureActionsArg) | Out-Null
+
+    if ((Get-Service -Name $ServiceName).Status -ne 'Running') {
+        Start-Service -Name $ServiceName
+    }
+    Write-Host "서비스 실행 중: $ServiceName"
+}
+
 function Install-MomosWorker {
     $installDir = if ($env:MOMOS_WORKER_INSTALL_DIR) { $env:MOMOS_WORKER_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'MomosWorker' }
     $version = if ($env:MOMOS_WORKER_VERSION) { $env:MOMOS_WORKER_VERSION } else { 'latest' }
@@ -127,8 +177,14 @@ function Install-MomosWorker {
 
     Invoke-WorkerConfiguration -InstallDir $installDir
 
+    if ($SkipServiceInstall -or $env:MOMOS_WORKER_SKIP_SERVICE_INSTALL) {
+        Write-Host "서비스 등록을 건너뜁니다(-SkipServiceInstall / MOMOS_WORKER_SKIP_SERVICE_INSTALL) — 실행: $installDir\current\Momos.Worker.exe"
+    }
+    else {
+        Install-WorkerService -InstallDir $installDir
+    }
+
     Write-Host "설치 완료: $installDir"
-    Write-Host "실행: $installDir\current\Momos.Worker.exe"
 }
 
 if (-not $TestMode) {

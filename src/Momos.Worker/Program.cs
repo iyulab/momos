@@ -22,6 +22,11 @@ internal static class WorkerProgram
         // default content-root-relative lookup alone would never find it.
         WorkerInstallLayout.AddInstalledSettings(builder.Configuration, AppContext.BaseDirectory);
 
+        // Each call is a no-op unless the process is actually running under that platform's
+        // service manager (SCM / systemd) — safe to register both unconditionally on every OS.
+        builder.Services.AddWindowsService();
+        builder.Services.AddSystemd();
+
         builder.Services.AddMomosWorker(builder.Configuration);
 
         var host = builder.Build();

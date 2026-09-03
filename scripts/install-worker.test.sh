@@ -120,3 +120,19 @@ else
 fi
 
 echo "OK: install-worker.sh 레이아웃 테스트 통과"
+
+# render_systemd_unit: 순수 문자열 렌더링이라 OS 무관하게 검증 가능
+unit_text="$(render_systemd_unit "/opt/momos-worker" "worker-user")"
+echo "$unit_text" | grep -qF "ExecStart=/opt/momos-worker/current/Momos.Worker" || fail "render_systemd_unit: ExecStart 경로 누락"
+echo "$unit_text" | grep -qF "User=worker-user" || fail "render_systemd_unit: User 지시자 누락"
+echo "$unit_text" | grep -qF "Restart=always" || fail "render_systemd_unit: Restart=always 누락(상주 재시작 보장의 핵심)"
+
+# install_worker_service: 기본값(MOMOS_WORKER_INSTALL_SERVICE 미설정)은 opt-in 전이라 아무 시스템
+# 호출도 하지 않고 조용히 건너뛰어야 한다 — systemctl/sudo가 전혀 없는 환경에서도 안전해야 함.
+tmp8="$(mktemp -d)"
+unset MOMOS_WORKER_INSTALL_SERVICE
+output="$(install_worker_service "$tmp8" 2>&1)"
+echo "$output" | grep -qF "건너뜁니다" || fail "install_worker_service: opt-in 전인데 건너뛴다는 안내가 없음"
+rm -rf "$tmp8"
+
+echo "OK: install-worker.sh systemd 유닛 테스트 통과"
