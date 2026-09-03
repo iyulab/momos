@@ -104,6 +104,21 @@ function Get-ServiceFailureActionsArg {
     ($DelaysMs | ForEach-Object { "restart/$_" }) -join '/'
 }
 
+# New-Service가 -Credential 없이 등록하면 항상 LocalSystem(NT AUTHORITY\SYSTEM) 계정으로 실행된다
+# — Write-WorkerConfig가 상속을 끊고 설치한 사용자에게만 ACE를 주기 때문에(청크 위 주석 참고),
+# SYSTEM은 그 파일에 접근 권한이 전혀 없다. 계정을 바꾸면(-Credential) 이 함수도 함께 바꿔야 한다.
+function Grant-ServiceAccountConfigAccess {
+    param([string]$InstallDir, [string]$Account = 'NT AUTHORITY\SYSTEM')
+
+    $configPath = Join-Path $InstallDir 'appsettings.Production.json'
+    if (-not (Test-Path $configPath)) { return }
+
+    $acl = Get-Acl $configPath
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($Account, 'Read', 'Allow')
+    $acl.AddAccessRule($rule)
+    Set-Acl -Path $configPath -AclObject $acl
+}
+
 function Install-WorkerService {
     param([string]$InstallDir, [string]$ServiceName = 'MomosWorker')
 
@@ -120,15 +135,25 @@ function Install-WorkerService {
     # 검증했다(문서화된 사례는 호스트가 가로채는 미처리 예외에 대한 것이라 이 경로와는 다름).
     $exePath = Join-Path $InstallDir 'current\Momos.Worker.exe'
 
+    # 실행 경로를 큰따옴표로 감싼다 — $InstallDir(기본값 $env:LOCALAPPDATA)에 공백이 들어간
+    # 사용자명이면(예: "John Doe") 감싸지 않은 서비스 경로를 SCM이 잘못 토큰화할 수 있다
+    # (CWE-428, "unquoted service path").
+    $quotedExePath = '"' + $exePath + '"'
+
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
         Write-Host "서비스가 이미 등록돼 있습니다: $ServiceName (재등록하지 않음 — 'current' 링크만 갱신하면 다음 재시작부터 새 버전이 실행됨)"
     }
     else {
-        New-Service -Name $ServiceName -BinaryPathName $exePath -DisplayName 'Momos Worker' `
+        New-Service -Name $ServiceName -BinaryPathName $quotedExePath -DisplayName 'Momos Worker' `
             -Description 'Momos inspection Worker — Momos Host의 검사 신청을 pull 방식으로 실행한다.' `
             -StartupType Automatic | Out-Null
         Write-Host "서비스 등록 완료: $ServiceName"
     }
+
+    # 이미 등록돼 있던 재실행에서도 매번 다시 부여한다 — idempotent하고(Set-Acl은 덮어쓰기가 아니라
+    # 규칙 추가라 중복 호출해도 안전), 설정 파일이 이번 실행에서 처음 생겼든 예전부터 있었든 항상
+    # SYSTEM이 읽을 수 있는 상태를 보장한다.
+    Grant-ServiceAccountConfigAccess -InstallDir $InstallDir
 
     # reset= 86400: 24시간 동안 추가 실패가 없으면 실패 카운트를 리셋 — 오래전 실패 하나 때문에
     # 다음 실패가 곧바로 "3번째 실패" 취급을 받아 백오프가 필요 이상으로 길어지는 걸 막는다.

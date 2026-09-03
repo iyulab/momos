@@ -89,3 +89,31 @@ if ($customActions -ne 'restart/1000/restart/2000') {
     throw "Get-ServiceFailureActionsArg 커스텀 지연이 예상과 다름: $customActions"
 }
 Write-Host 'OK: install-worker.ps1 서비스 실패 액션 테스트 통과'
+
+# Grant-ServiceAccountConfigAccess: New-Service가 기본으로 쓰는 LocalSystem이 설정 파일을 읽을 수
+# 있어야 한다 — Write-WorkerConfig가 상속을 끊고 설치한 사용자에게만 ACE를 주기 때문에, 이 함수 없이는
+# SYSTEM으로 실행되는 서비스가 부팅 시 자기 설정을 못 읽는다(실측: New-Service로 등록한 서비스가
+# 크래시루프 — icacls로 확인해보니 SYSTEM ACE가 아예 없었음).
+$tmp9 = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
+New-Item -ItemType Directory -Path $tmp9 | Out-Null
+try {
+    Write-WorkerConfig -Dir $tmp9 -BaseUrl 'https://host.example' -ApiKey 'k' `
+        -GpuStackEndpoint 'https://gpu.example' -GpuStackApiKey 'k2' -GpuStackModel 'm'
+    $configPath9 = Join-Path $tmp9 'appsettings.Production.json'
+
+    $aclBefore = Get-Acl $configPath9
+    $hasSystemBefore = $aclBefore.Access | Where-Object { $_.IdentityReference -like '*SYSTEM*' }
+    if ($hasSystemBefore) { throw 'Grant-ServiceAccountConfigAccess 테스트 전제 실패: Write-WorkerConfig가 이미 SYSTEM ACE를 주고 있음(테스트를 다시 설계해야 함)' }
+
+    Grant-ServiceAccountConfigAccess -InstallDir $tmp9
+    $aclAfter = Get-Acl $configPath9
+    $systemRule = $aclAfter.Access | Where-Object { $_.IdentityReference -like '*SYSTEM*' -and $_.FileSystemRights -match 'Read' }
+    if (-not $systemRule) { throw 'Grant-ServiceAccountConfigAccess: SYSTEM에 Read ACE가 부여되지 않음' }
+
+    # idempotent 확인: 두 번 호출해도 에러 없이 끝나야 한다(재실행 시나리오)
+    Grant-ServiceAccountConfigAccess -InstallDir $tmp9
+}
+finally {
+    Remove-Item -Recurse -Force $tmp9
+}
+Write-Host 'OK: install-worker.ps1 SYSTEM 계정 설정파일 접근권한 테스트 통과'
