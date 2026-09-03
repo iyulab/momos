@@ -53,9 +53,9 @@ internal sealed class FakeHostApiClient(
             ? throw new InvalidOperationException("boom")
             : Task.FromResult(new ProjectInfo(projectId, "acme", repositoryUrl, null, "purpose", "vision", "scope"));
 
-    public Task SubmitReportAsync(Guid inspectionRequestId, IReadOnlyList<FindingPayload> findings, CancellationToken cancellationToken)
+    public Task SubmitReportAsync(Guid inspectionRequestId, IReadOnlyList<FindingPayload> findings, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken)
     {
-        SubmittedReports.Add(new SubmitReportRequest(findings));
+        SubmittedReports.Add(new SubmitReportRequest(findings, toolCalls));
         _outcomeReceived.TrySetResult();
         return Task.CompletedTask;
     }

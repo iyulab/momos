@@ -69,11 +69,34 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         Assert.Equal("acme", project.Name);
 
         await _client.SubmitReportAsync(
-            result.Request.Id, [new FindingPayload(Category: 0, Description: "d", Evidence: "e")], CancellationToken.None);
+            result.Request.Id, [new FindingPayload(Category: 0, Description: "d", Evidence: "e")], [], CancellationToken.None);
 
         var afterResponse = await httpClient.GetAsync($"/inspection-requests/{result.Request.Id}");
         var after = await afterResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Completed, after!.Status);
+    }
+
+    [Fact]
+    public async Task SubmitReportAsync_WithToolCalls_PersistsThemOnHost()
+    {
+        var httpClient = _factory.CreateAuthorizedClient();
+        var projectId = await CreateProjectAsync();
+        await httpClient.PostAsJsonAsync(
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest("focus on login", null));
+        var result = await _client.ClaimNextAsync(CancellationToken.None);
+
+        await _client.SubmitReportAsync(
+            result.Request!.Id,
+            findings: [],
+            toolCalls: [new ToolCallPayload("RunCommand", "ls -la", Success: true, DurationMs: 42)],
+            CancellationToken.None);
+
+        var report = await (await httpClient.GetAsync($"/inspection-requests/{result.Request.Id}/report"))
+            .Content.ReadFromJsonAsync<Momos.Host.Contracts.InspectionReportResponse>();
+        Assert.Single(report!.ToolCalls);
+        Assert.Equal("RunCommand", report.ToolCalls[0].Tool);
+        Assert.True(report.ToolCalls[0].Success);
+        Assert.Equal(42, report.ToolCalls[0].DurationMs);
     }
 
     [Fact]

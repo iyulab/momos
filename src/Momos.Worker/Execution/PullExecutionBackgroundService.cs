@@ -188,7 +188,7 @@ public sealed class PullExecutionBackgroundService(
             logger.LogInformation(
                 "Inspection for request {RequestId} completed with {FindingCount} finding(s)",
                 request.Id, findings.Findings.Count);
-            await hostApiClient.SubmitReportAsync(request.Id, findings.Findings, cancellationToken);
+            await hostApiClient.SubmitReportAsync(request.Id, findings.Findings, [], cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

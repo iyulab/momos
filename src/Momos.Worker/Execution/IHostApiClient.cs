@@ -9,7 +9,7 @@ public interface IHostApiClient
 
     Task<ProjectInfo> GetProjectAsync(Guid projectId, CancellationToken cancellationToken);
 
-    Task SubmitReportAsync(Guid inspectionRequestId, IReadOnlyList<FindingPayload> findings, CancellationToken cancellationToken);
+    Task SubmitReportAsync(Guid inspectionRequestId, IReadOnlyList<FindingPayload> findings, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken);
 
     Task SubmitFailureAsync(Guid inspectionRequestId, string reason, CancellationToken cancellationToken);
 

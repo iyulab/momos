@@ -32,10 +32,10 @@ public sealed class HostApiClient(HttpClient httpClient) : IHostApiClient
         return project ?? throw new InvalidOperationException($"Host returned an empty body for project {projectId}.");
     }
 
-    public async Task SubmitReportAsync(Guid inspectionRequestId, IReadOnlyList<FindingPayload> findings, CancellationToken cancellationToken)
+    public async Task SubmitReportAsync(Guid inspectionRequestId, IReadOnlyList<FindingPayload> findings, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken)
     {
         var response = await httpClient.PostAsJsonAsync(
-            $"/inspection-requests/{inspectionRequestId}/report", new SubmitReportRequest(findings), JsonOptions, cancellationToken);
+            $"/inspection-requests/{inspectionRequestId}/report", new SubmitReportRequest(findings, toolCalls), JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 

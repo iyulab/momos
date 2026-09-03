@@ -50,7 +50,12 @@ public enum FindingCategory
 
 public sealed record FindingPayload(FindingCategory Category, string Description, string Evidence);
 
-public sealed record SubmitReportRequest(IReadOnlyList<FindingPayload> Findings);
+/// <summary>Mirrors Host's SubmitToolCallRequest wire shape (Momos.Host.Contracts.SubmitToolCallRequest) —
+/// see <see cref="ClaimedInspectionRequest"/>'s doc comment for why this is a local copy. No
+/// <c>Order</c> field — Host assigns it from submission order, same as <see cref="FindingPayload"/>.</summary>
+public sealed record ToolCallPayload(string Tool, string Summary, bool Success, int DurationMs);
+
+public sealed record SubmitReportRequest(IReadOnlyList<FindingPayload> Findings, IReadOnlyList<ToolCallPayload> ToolCalls);
 
 public sealed record SubmitFailureRequest(string Reason);
 
