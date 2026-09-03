@@ -325,12 +325,16 @@ public sealed class PullExecutionBackgroundServiceTests
     {
         var hostClient = new FakeHostApiClient(
             [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)]);
-        var toolCall = new FunctionCallContent(
+        var runCommandCall = new FunctionCallContent(
             "call-1",
             nameof(CodeExecutionTools.RunCommand),
             new Dictionary<string, object?> { ["command"] = "dotnet", ["args"] = new[] { "build" } });
+        var queryKnowledgeCall = new FunctionCallContent(
+            "call-2",
+            nameof(KnowledgeQueryTools.QueryProjectKnowledge),
+            new Dictionary<string, object?> { ["query"] = "known issues" });
         var chatClientProvider = new FakeChatClientProvider(
-            responsesBeforeFinal: [new ChatResponse(new ChatMessage(ChatRole.Assistant, [toolCall]))],
+            responsesBeforeFinal: [new ChatResponse(new ChatMessage(ChatRole.Assistant, [runCommandCall, queryKnowledgeCall]))],
             finalResponse: new ChatResponse(new ChatMessage(ChatRole.Assistant, "no issues found")));
         var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory(chatClientProvider);
         executionProvider.NextResult = new ExecutionCommandResult(true, "build succeeded", null, 100);
@@ -346,10 +350,13 @@ public sealed class PullExecutionBackgroundServiceTests
         await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
         await service.StopAsync(CancellationToken.None);
 
+        // Both tool calls landing in the same report is only possible if
+        // CodeExecutionTools and KnowledgeQueryTools shared one ToolCallTraceSink --
+        // two separate sinks would each capture only its own tool's entry.
         var report = Assert.Single(hostClient.SubmittedReports);
-        var call = Assert.Single(report.ToolCalls);
-        Assert.Equal(nameof(CodeExecutionTools.RunCommand), call.Tool);
-        Assert.True(call.Success);
+        Assert.Equal(2, report.ToolCalls.Count);
+        Assert.Contains(report.ToolCalls, c => c.Tool == nameof(CodeExecutionTools.RunCommand) && c.Success);
+        Assert.Contains(report.ToolCalls, c => c.Tool == nameof(KnowledgeQueryTools.QueryProjectKnowledge));
     }
 
     [Fact]
