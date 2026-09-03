@@ -78,7 +78,7 @@ public sealed class ProjectEndpointsTests : IClassFixture<MomosHostFactory>
         var create = new CreateProjectRequest(
             "acme", null, null, "purpose", "vision", "scope",
             AppInstallerUri: "https://example.invalid/acme-setup.exe");
-            // AppInstallPlatform and AppInstallLaunchCommand deliberately omitted
+        // AppInstallPlatform and AppInstallLaunchCommand deliberately omitted
 
         var response = await _client.PostAsJsonAsync("/projects", create);
 

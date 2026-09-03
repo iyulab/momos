@@ -8,10 +8,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Momos.Worker depends on CodeBeaker.* packages that are currently only
-  # available from a local NuGet feed (not published to nuget.org yet), so it
-  # can't restore on a hosted runner — this job is scoped to Momos.Host until
-  # that publish happens.
   scan-host:
     name: Scan Momos.Host for vulnerable packages
     runs-on: ubuntu-latest
@@ -36,6 +32,43 @@ jobs:
         report=$(dotnet list src/Momos.Host/Momos.Host.csproj package --vulnerable --include-transitive 2>&1)
         status=$?
         report2=$(dotnet list tests/Momos.Host.Tests/Momos.Host.Tests.csproj package --vulnerable --include-transitive 2>&1)
+        status2=$?
+        set -e
+        echo "$report"
+        echo "$report2"
+        if [ $status -ne 0 ] || [ $status2 -ne 0 ]; then
+          echo "::error::dotnet list package --vulnerable failed to run — treating an unreadable scan as a failure, not a pass."
+          exit 1
+        fi
+        if echo "$report"$'\n'"$report2" | grep -q "has the following vulnerable packages"; then
+          echo "::error::Vulnerable NuGet package(s) detected — see the report above."
+          exit 1
+        fi
+
+  scan-worker:
+    name: Scan Momos.Worker for vulnerable packages
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        global-json-file: global.json
+
+    - name: Restore Momos.Worker
+      run: |
+        dotnet restore src/Momos.Worker/Momos.Worker.csproj
+        dotnet restore tests/Momos.Worker.Tests/Momos.Worker.Tests.csproj
+
+    - name: Check for vulnerable NuGet packages
+      run: |
+        set +e
+        report=$(dotnet list src/Momos.Worker/Momos.Worker.csproj package --vulnerable --include-transitive 2>&1)
+        status=$?
+        report2=$(dotnet list tests/Momos.Worker.Tests/Momos.Worker.Tests.csproj package --vulnerable --include-transitive 2>&1)
         status2=$?
         set -e
         echo "$report"
