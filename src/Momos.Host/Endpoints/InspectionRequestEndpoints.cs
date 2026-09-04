@@ -86,21 +86,16 @@ public static class InspectionRequestEndpoints
             // double-claiming it. If that happens, retry against whatever is left.
             while (true)
             {
-                // SQLite's EF Core provider refuses to translate ordering/range comparisons
-                // ('<', ORDER BY) over DateTimeOffset (offset-aware string comparison isn't
-                // guaranteed instant-correct) — only exact equality is safe in SQL. So both the
-                // oldest-first pick and the reclaim-eligibility check happen client-side over a
-                // (small) Pending+Running projection rather than in SQL.
-                var candidates = await db.InspectionRequests
-                    .Where(r => r.Status == InspectionRequestStatus.Pending || r.Status == InspectionRequestStatus.Running)
-                    .Select(r => new { r.Id, r.SubmittedAt, r.Status, r.ClaimedAt })
-                    .ToListAsync(cancellationToken);
-
-                var candidate = candidates
+                // Npgsql translates DateTimeOffset ordering/range comparisons natively (the
+                // column is timestamp with time zone), so the oldest-first pick and the
+                // reclaim-eligibility check both run server-side instead of materializing the
+                // whole Pending+Running set on every worker poll.
+                var candidate = await db.InspectionRequests
                     .Where(r => r.Status == InspectionRequestStatus.Pending
                         || (r.Status == InspectionRequestStatus.Running && r.ClaimedAt < reclaimCutoff))
                     .OrderBy(r => r.SubmittedAt)
-                    .FirstOrDefault();
+                    .Select(r => new { r.Id, r.SubmittedAt, r.Status, r.ClaimedAt })
+                    .FirstOrDefaultAsync(cancellationToken);
 
                 if (candidate is null)
                 {
