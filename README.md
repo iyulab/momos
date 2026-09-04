@@ -19,7 +19,7 @@ Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)
 
 ## 설정
 
-`Momos.Host`는 `ConnectionStrings:MomosDb`(PostgreSQL 연결 문자열) 하나만 있으면 바로 뜬다 — `localhost`를 가리키는 기본값이 커밋돼 있어(아래 "로컬 데이터베이스" 참고) 로컬에 해당 컨테이너만 띄우면 별도 설정 없이 동작한다.
+`Momos.Host`는 `ConnectionStrings:MomosDb`(PostgreSQL 연결 문자열) 하나만 있으면 바로 뜬다 — `localhost`를 가리키는 Development 기본값이 `appsettings.Development.json`에 커밋돼 있어(아래 "로컬 데이터베이스" 참고) 로컬에 해당 컨테이너만 띄우면 별도 설정 없이 동작한다. Production 환경에서는 이 기본값이 적용되지 않으므로 반드시 환경 변수/시크릿으로 채워야 한다.
 
 `Momos.Worker`는 에이전트 루프가 쓸 LLM 프로바이더 설정이 **필수**다. 현재 지원 프로바이더는 GPUStack(OpenAI 호환 self-hosted 엔드포인트)이며, 아래 세 값을 채우지 않으면 부팅 시 `OptionsValidationException`으로 즉시 실패한다:
 
@@ -59,9 +59,15 @@ docker run -d --name momos-pg-knowledge-dev -e POSTGRES_PASSWORD=devpw -e POSTGR
 
 테스트 스위트는 `Testcontainers.PostgreSql`로 컨테이너를 직접 관리하므로 위 수동 기동은 앱을 직접 `dotnet run`으로 띄울 때만 필요하다(Docker 데몬은 테스트에도 필요).
 
+컨테이너를 띄운 뒤에는 마이그레이션을 수동으로 적용해야 한다 — 이 브랜치부터 마이그레이션 실행이 앱 시작 시점에서 빠졌으므로, 갓 띄운 PostgreSQL은 스키마가 없는 빈 데이터베이스다:
+
+```bash
+dotnet tool restore && dotnet ef database update --project src/Momos.Host
+```
+
 ### 알려진 제한사항
 
-지식/임베딩 검색과 관련된 일부 테스트는 FluxIndex의 PostgreSQL storage 기본 임베딩 차원(1536)과 이 프로젝트가 설정한 임베딩 차원 간 불일치로 인해 현재 실패한다 — 알려진 문제이며 후속 수정으로 추적 중이다.
+프로젝트 지식(RAG) 색인 기능이 PostgreSQL 백엔드에서 현재 동작하지 않는다 — FluxIndex의 PostgreSQL storage 기본 임베딩 차원(1536)과 이 프로젝트가 설정한 임베딩 차원(1024) 간 불일치로 `POST /projects/{id}/knowledge`가 모든 요청에서 실패한다. 관련 테스트 4건은 `Skip`으로 표시돼 있어 CI는 green을 유지하지만, 기능 자체는 막혀 있다 — 후속 수정으로 추적 중이다.
 
 ## Worker 설치
 
