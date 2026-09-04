@@ -53,6 +53,8 @@ main() {
   local APP="${MOMOS_HOST_APP_NAME:-momos-host}"
   local IMAGE="${1:?사용법: deploy-host.sh <image-ref>}"
   local DB_CONNECTION="${MOMOS_HOST_DB_CONNECTION:?MOMOS_HOST_DB_CONNECTION 환경변수(마이그레이션 대상 Postgres 연결 문자열)가 필요합니다.}"
+  local DB_SECRET_NAME="${MOMOS_HOST_DB_SECRET_NAME:-momos-db-connection}"
+  local KNOWLEDGE_SECRET_NAME="${MOMOS_HOST_KNOWLEDGE_SECRET_NAME:-momos-knowledge-connection}"
 
   echo "1/4 이미지 참조를 digest로 고정 (가변 태그면 지금 시점의 digest로 resolve)"
   IMAGE="$(resolve_image_digest "$IMAGE")"
@@ -64,8 +66,16 @@ main() {
     --project "$(dirname "${BASH_SOURCE[0]}")/../src/Momos.Host" \
     --connection "$DB_CONNECTION"
 
-  echo "3/4 새 이미지로 표준 롤링 배포 (Container Apps 기본 zero-downtime 롤아웃)"
-  az containerapp update --name "$APP" --resource-group "$RG" --image "$IMAGE" >/dev/null
+  echo "3/4 새 이미지로 표준 롤링 배포하며 동일 호출에서 DB 연결 문자열도 함께 갱신"
+  echo "     (이미지와 환경변수를 별도 호출로 나누면 그 사이 리비전이 잘못된 연결 설정으로 트래픽을 받는다)"
+  az containerapp update \
+    --name "$APP" \
+    --resource-group "$RG" \
+    --image "$IMAGE" \
+    --set-env-vars \
+      "ConnectionStrings__MomosDb=secretref:${DB_SECRET_NAME}" \
+      "Momos__Host__Knowledge__ConnectionString=secretref:${KNOWLEDGE_SECRET_NAME}" \
+    >/dev/null
 
   echo "4/4 완료: $APP 이(가) $IMAGE (으)로 배포되었습니다."
 }
