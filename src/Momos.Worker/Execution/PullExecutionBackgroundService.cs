@@ -127,6 +127,10 @@ public sealed class PullExecutionBackgroundService(
     private async Task RunInspectionAsync(ClaimedInspectionRequest request, CancellationToken cancellationToken)
     {
         ExecutionSessionHandle? session = null;
+        // Declared outside the try so a failure can still report what was attempted before it —
+        // assigned as soon as the agent loop factory returns it, so it stays null only for a
+        // failure that happened before the sink even existed (e.g. chat-client setup).
+        ToolCallTraceSink? toolCalls = null;
         try
         {
             var project = await hostApiClient.GetProjectAsync(request.ProjectId, cancellationToken);
@@ -181,8 +185,9 @@ public sealed class PullExecutionBackgroundService(
             // No RepositoryUrl declared — an honest "nothing to check out" case, not a
             // failure: momos never assumes a repo it wasn't told about.
 
-            var (agentLoop, findings, toolCalls) = await agentLoopFactory.CreateAsync(
+            var (agentLoop, findings, toolCallSink) = await agentLoopFactory.CreateAsync(
                 new AgentLoopFactoryOptions(), session, projectId: request.ProjectId, cancellationToken);
+            toolCalls = toolCallSink;
             await agentLoop.RunAsync(BuildPrompt(project, request.Focus), cancellationToken);
 
             logger.LogInformation(
@@ -202,7 +207,21 @@ public sealed class PullExecutionBackgroundService(
             // to ExecuteAsync's catch and the request is left Running — the claim-next
             // reclaim lease (InspectionClaimOptions.ReclaimTimeout) picks it back up once
             // it expires, so no separate retry/backoff is needed for that case either.
-            logger.LogError(ex, "Inspection run failed for request {RequestId}", request.Id);
+            // The trace itself isn't sent to Host yet (see
+            // claudedocs/issues/ISSUE-momos-20260903-failed-inspection-trace-discarded.md —
+            // that needs a schema decision), but logging what was attempted before the
+            // failure is a pure Worker-local improvement and doesn't need to wait on it.
+            if (toolCalls is { Calls.Count: > 0 })
+            {
+                logger.LogError(
+                    ex,
+                    "Inspection run failed for request {RequestId} after {ToolCallCount} tool call(s), last: {LastTool} ({LastToolSuccess})",
+                    request.Id, toolCalls.Calls.Count, toolCalls.Calls[^1].Tool, toolCalls.Calls[^1].Success ? "succeeded" : "failed");
+            }
+            else
+            {
+                logger.LogError(ex, "Inspection run failed for request {RequestId}", request.Id);
+            }
             await hostApiClient.SubmitFailureAsync(request.Id, ex.Message, cancellationToken);
         }
         finally
