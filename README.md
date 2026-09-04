@@ -19,7 +19,7 @@ Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)
 
 ## 설정
 
-`Momos.Host`는 `ConnectionStrings:MomosDb`(SQLite 파일 경로) 하나만 있으면 바로 뜬다 — 기본값이 커밋돼 있어 별도 설정 없이 동작한다.
+`Momos.Host`는 `ConnectionStrings:MomosDb`(PostgreSQL 연결 문자열) 하나만 있으면 바로 뜬다 — `localhost`를 가리키는 기본값이 커밋돼 있어(아래 "로컬 데이터베이스" 참고) 로컬에 해당 컨테이너만 띄우면 별도 설정 없이 동작한다.
 
 `Momos.Worker`는 에이전트 루프가 쓸 LLM 프로바이더 설정이 **필수**다. 현재 지원 프로바이더는 GPUStack(OpenAI 호환 self-hosted 엔드포인트)이며, 아래 세 값을 채우지 않으면 부팅 시 `OptionsValidationException`으로 즉시 실패한다:
 
@@ -41,7 +41,27 @@ Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)
 
 Worker→Host 통신도 인증이 **필수**다. Host는 `Momos:Host:WorkerAuth:ApiKey`, Worker는 그와 동일한 값을 `Momos:Worker:Host:ApiKey`에 채워야 하며, 둘 다 부팅 시 `OptionsValidationException`으로 검증한다. Worker는 이 값을 매 요청 `Authorization: Bearer {ApiKey}` 헤더로 보내고, Host는 `claim-next`/`report`/`fail` 엔드포인트에서만 이를 검사한다(프로젝트 등록·조회 등 나머지 API는 별개 통합 표면이라 대상이 아니다). GPUStack 설정과 마찬가지로 커밋하지 말고 환경 변수(`Momos__Host__WorkerAuth__ApiKey`, `Momos__Worker__Host__ApiKey`)로 주입한다.
 
-Host는 프로젝트 지식 레이어(등록 문서·과거 지적사항을 색인해 Worker의 에이전트 루프가 검색하는 RAG)도 갖고 있다. `Momos:Host:Knowledge:SqlitePath`(기본값 `knowledge.db`, `ConnectionStrings:MomosDb`와 별도 파일)만 있으면 바로 뜬다. 임베딩은 선택이다 — `Momos:Host:Knowledge:EmbeddingEndpoint`/`EmbeddingApiKey`/`EmbeddingModel`(기본 `qwen3-embedding-0.6b`)/`EmbeddingDimension`(기본 `1024`)을 GPUStack 값으로 채우면 실제 의미 기반 검색이 동작하고, 비워두면 의미 없는 벡터를 반환하는 인메모리 폴백으로 조용히 넘어간다(부팅은 실패하지 않는다) — 프로덕션에서는 반드시 채워야 지식 검색이 실질적으로 동작한다.
+Host는 프로젝트 지식 레이어(등록 문서·과거 지적사항을 색인해 Worker의 에이전트 루프가 검색하는 RAG)도 갖고 있다. `Momos:Host:Knowledge:ConnectionString`(PostgreSQL, pgvector 확장 필요)만 있으면 바로 뜬다. 임베딩은 선택이다 — `Momos:Host:Knowledge:EmbeddingEndpoint`/`EmbeddingApiKey`/`EmbeddingModel`(기본 `qwen3-embedding-0.6b`)/`EmbeddingDimension`(기본 `1024`)을 GPUStack 값으로 채우면 실제 의미 기반 검색이 동작하고, 비워두면 의미 없는 벡터를 반환하는 인메모리 폴백으로 조용히 넘어간다(부팅은 실패하지 않는다) — 프로덕션에서는 반드시 채워야 지식 검색이 실질적으로 동작한다.
+
+### 로컬 데이터베이스
+
+`Momos.Host`는 PostgreSQL을 사용한다 — 로컬 개발 시 다음처럼 컨테이너 하나로 기동할 수 있다:
+
+```bash
+docker run -d --name momos-pg-dev -e POSTGRES_PASSWORD=devpw -e POSTGRES_DB=momos -p 5432:5432 postgres:16-alpine
+```
+
+지식 레이어(`Momos:Host:Knowledge:ConnectionString`)는 pgvector 확장이 필요해 별도 이미지가 필요하다:
+
+```bash
+docker run -d --name momos-pg-knowledge-dev -e POSTGRES_PASSWORD=devpw -e POSTGRES_DB=momos_knowledge -p 5433:5432 pgvector/pgvector:pg16
+```
+
+테스트 스위트는 `Testcontainers.PostgreSql`로 컨테이너를 직접 관리하므로 위 수동 기동은 앱을 직접 `dotnet run`으로 띄울 때만 필요하다(Docker 데몬은 테스트에도 필요).
+
+### 알려진 제한사항
+
+지식/임베딩 검색과 관련된 일부 테스트는 FluxIndex의 PostgreSQL storage 기본 임베딩 차원(1536)과 이 프로젝트가 설정한 임베딩 차원 간 불일치로 인해 현재 실패한다 — 알려진 문제이며 후속 수정으로 추적 중이다.
 
 ## Worker 설치
 
