@@ -1,33 +1,43 @@
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Testcontainers.PostgreSql;
 
 namespace Momos.Worker.Tests.Execution;
 
 /// <summary>
-/// Boots the real <c>Momos.Host</c> pipeline in-process against a throwaway SQLite
-/// file, so <see cref="Momos.Worker.Execution.HostApiClient"/> can be exercised
-/// against the actual wire contract without a second OS process.
+/// Boots the real <c>Momos.Host</c> pipeline in-process against real PostgreSQL containers, so
+/// <see cref="Momos.Worker.Execution.HostApiClient"/> can be exercised against the actual wire
+/// contract without a second OS process.
 /// </summary>
-public sealed class TestMomosHostFactory : WebApplicationFactory<global::Program>
+public sealed class TestMomosHostFactory : WebApplicationFactory<global::Program>, IAsyncLifetime
 {
-    /// <summary>The Host's configured worker key — see <see cref="CreateAuthorizedClient()"/>.</summary>
     public const string WorkerApiKey = "test-worker-key";
 
-    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"momos-worker-test-{Guid.NewGuid():N}.db");
-    private readonly string _knowledgeDbPath = Path.Combine(Path.GetTempPath(), $"momos-worker-test-knowledge-{Guid.NewGuid():N}.db");
+    private readonly PostgreSqlContainer _dbContainer = new PostgreSqlBuilder("postgres:16-alpine")
+        .Build();
+
+    private readonly PostgreSqlContainer _knowledgeContainer = new PostgreSqlBuilder("pgvector/pgvector:pg16")
+        .Build();
+
+    public async Task InitializeAsync()
+    {
+        await _dbContainer.StartAsync();
+        await _knowledgeContainer.StartAsync();
+
+        using var scope = Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<Momos.Host.Data.MomosDbContext>()
+            .Database.MigrateAsync();
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         builder
-            .UseSetting("ConnectionStrings:MomosDb", $"Data Source={_dbPath}")
-            .UseSetting("Momos:Host:Knowledge:SqlitePath", _knowledgeDbPath)
+            .UseSetting("ConnectionStrings:MomosDb", _dbContainer.GetConnectionString())
+            .UseSetting("Momos:Host:Knowledge:ConnectionString", _knowledgeContainer.GetConnectionString())
             .UseSetting("Momos:Host:WorkerAuth:ApiKey", WorkerApiKey);
 
-    /// <summary>
-    /// A client carrying the configured worker key, so a real <see cref="HostApiClient"/>
-    /// built from it authenticates against the booted-up Host without callers setting the
-    /// header themselves.
-    /// </summary>
     public HttpClient CreateAuthorizedClient()
     {
         var client = CreateClient();
@@ -35,27 +45,9 @@ public sealed class TestMomosHostFactory : WebApplicationFactory<global::Program
         return client;
     }
 
-    protected override void Dispose(bool disposing)
+    async Task IAsyncLifetime.DisposeAsync()
     {
-        base.Dispose(disposing);
-        if (disposing)
-        {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            DeleteIfExists(_dbPath);
-            DeleteIfExists(_knowledgeDbPath);
-            // FluxIndex derives a companion entity-graph database from the configured path
-            // (see Momos.Host.Tests.Knowledge.KnowledgeBootstrapTests) — clean it up too.
-            var knowledgeDir = Path.GetDirectoryName(_knowledgeDbPath)!;
-            var knowledgeNameNoExt = Path.GetFileNameWithoutExtension(_knowledgeDbPath);
-            DeleteIfExists(Path.Combine(knowledgeDir, $"{knowledgeNameNoExt}-entitygraph.db"));
-        }
-    }
-
-    private static void DeleteIfExists(string path)
-    {
-        if (File.Exists(path))
-        {
-            File.Delete(path);
-        }
+        await _dbContainer.DisposeAsync();
+        await _knowledgeContainer.DisposeAsync();
     }
 }
