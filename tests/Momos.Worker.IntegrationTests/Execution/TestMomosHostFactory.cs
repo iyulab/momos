@@ -36,6 +36,7 @@ public sealed class TestMomosHostFactory : WebApplicationFactory<global::Program
         builder
             .UseSetting("ConnectionStrings:MomosDb", _dbContainer.GetConnectionString())
             .UseSetting("Momos:Host:Knowledge:ConnectionString", _knowledgeContainer.GetConnectionString())
+            .UseSetting("Momos:Host:Knowledge:EmbeddingDimension", "384")
             .UseSetting("Momos:Host:WorkerAuth:ApiKey", WorkerApiKey);
 
     public HttpClient CreateAuthorizedClient()

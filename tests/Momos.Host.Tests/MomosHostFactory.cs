@@ -56,6 +56,7 @@ public sealed class MomosHostFactory : WebApplicationFactory<Program>, IAsyncLif
         builder
             .UseSetting("ConnectionStrings:MomosDb", _dbContainer.GetConnectionString())
             .UseSetting("Momos:Host:Knowledge:ConnectionString", _knowledgeContainer.GetConnectionString())
+            .UseSetting("Momos:Host:Knowledge:EmbeddingDimension", "384")
             .UseSetting("Momos:Host:InspectionClaim:ReclaimTimeout", InspectionClaimReclaimTimeout.ToString())
             .UseSetting("Momos:Host:WorkerAuth:ApiKey", WorkerApiKey)
             .ConfigureServices(services => services.AddSingleton(TimeProvider));

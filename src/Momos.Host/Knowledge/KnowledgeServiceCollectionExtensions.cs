@@ -20,6 +20,10 @@ public static class KnowledgeServiceCollectionExtensions
                 .ConfigureServices(s =>
                 {
                     s.AddLogging(b => b.AddProvider(NullLoggerProvider.Instance));
+                    // AddPostgreSQLStorage() below registers its own Configure<PostgreSQLOptions>
+                    // after this, which would overwrite a Configure() call here — PostConfigure
+                    // runs after all Configure calls and wins.
+                    s.PostConfigure<PostgreSQLOptions>(o => o.EmbeddingDimensions = options.EmbeddingDimension);
                     if (!string.IsNullOrEmpty(options.EmbeddingEndpoint))
                     {
                         s.AddOpenAICompatibleEmbedding(

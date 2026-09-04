@@ -38,7 +38,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         Assert.False(result.UpdateRequired);
     }
 
-    [Fact(Skip = "Known issue: FluxIndex vector-dimension mismatch (PostgreSQLOptions.EmbeddingDimensions defaults to 1536, project uses 1024) breaks knowledge indexing on PostgreSQL. See claudedocs/issues/ISSUE-momos-20260904-knowledge-vector-dimension-mismatch.md.")]
+    [Fact]
     public async Task QueryKnowledgeAsync_ReturnsSnippetsFromHost()
     {
         var httpClient = _factory.CreateAuthorizedClient();
