@@ -13,8 +13,7 @@ namespace Momos.Host.Tests.Data;
 /// </summary>
 public sealed class MomosDbContextTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .Build();
 
     private MomosDbContext _db = null!;

@@ -90,7 +90,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
         return (await response.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value))!;
     }
 
-    // The class fixture's SQLite DB is shared (and test order unspecified) across every
+    // The class fixture's PostgreSQL DB is shared (and test order unspecified) across every
     // [Fact] in this class — drain whatever other tests left Pending before asserting an
     // empty-queue precondition, rather than requiring DB isolation this suite doesn't have.
     private async Task DrainClaimQueueAsync()

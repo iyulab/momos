@@ -21,7 +21,7 @@ public sealed class Finding
 
     /// <summary>
     /// Position within the report as submitted by the Worker (0-based). Findings are
-    /// returned ordered by this field — SQLite/EF give no ordering guarantee for an
+    /// returned ordered by this field — PostgreSQL/EF give no ordering guarantee for an
     /// unordered <c>Include</c>, and a report can now legitimately carry more than one.
     /// </summary>
     public int Order { get; set; }

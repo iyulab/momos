@@ -77,7 +77,7 @@ public static class InspectionReportEndpoints
 
             // The report is already committed above — indexing it into the knowledge base
             // is a best-effort side effect, not part of the submission's success criteria.
-            // A failure here (embedding endpoint unreachable, SQLite lock contention, etc.)
+            // A failure here (embedding endpoint unreachable, database connection timeout, etc.)
             // must not turn an already-persisted report into an apparent 500 to the Worker,
             // which would retry against a request that no longer accepts submissions
             // (Status is already Completed) and see a confusing 409 instead.

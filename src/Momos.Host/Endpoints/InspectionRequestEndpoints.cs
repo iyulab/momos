@@ -81,9 +81,11 @@ public static class InspectionRequestEndpoints
             var reclaimCutoff = timeProvider.GetUtcNow() - claimOptions.Value.ReclaimTimeout;
 
             // Conditional ExecuteUpdate (not a read-then-write) so the eligibility recheck and
-            // the transition to Running happen as one statement — SQLite serializes writes, so
-            // a second concurrent claim against the same row affects zero rows instead of
-            // double-claiming it. If that happens, retry against whatever is left.
+            // the transition to Running happen as one statement — under PostgreSQL's default
+            // READ COMMITTED isolation, ExecuteUpdate re-evaluates the WHERE predicate against
+            // the current row before applying, so a second concurrent claim against the same row
+            // affects zero rows instead of double-claiming it. If that happens, retry against
+            // whatever is left.
             while (true)
             {
                 // Npgsql translates DateTimeOffset ordering/range comparisons natively (the

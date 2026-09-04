@@ -97,7 +97,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
             $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
         var inspectionRequest = await requestResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
-        // Insert deliberately out of intended order — SQLite/EF give no ordering
+        // Insert deliberately out of intended order — PostgreSQL/EF give no ordering
         // guarantee for an unordered Include, so a test that only ever inserts
         // findings in their intended order could pass by insertion-sequence
         // coincidence rather than by the Order column actually being honored.

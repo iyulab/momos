@@ -7,9 +7,9 @@ public sealed class KnowledgeOptions
     public const string SectionName = "Momos:Host:Knowledge";
 
     /// <summary>
-    /// PostgreSQL 연결 문자열 — momos.db(EF Core)와 별도 데이터베이스(momos_knowledge)를
-    /// 가리킨다. 같은 서버라도 데이터베이스를 분리해 두 컴포넌트가 스키마를 공유하지 않게
-    /// 한다(momos.db와 분리해 두던 기존 SQLite 시절의 의도를 그대로 유지).
+    /// PostgreSQL 연결 문자열 — EF Core가 쓰는 momos 데이터베이스와 별도인
+    /// momos_knowledge 데이터베이스를 가리킨다. 같은 서버라도 데이터베이스를 분리해
+    /// 두 컴포넌트가 스키마를 공유하지 않게 한다.
     /// </summary>
     [Required]
     public string ConnectionString { get; set; } = "";
