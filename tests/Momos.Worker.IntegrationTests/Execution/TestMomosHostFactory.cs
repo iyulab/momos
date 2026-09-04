@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
 
-namespace Momos.Worker.Tests.Execution;
+namespace Momos.Worker.IntegrationTests.Execution;
 
 /// <summary>
 /// Boots the real <c>Momos.Host</c> pipeline in-process against real PostgreSQL containers, so

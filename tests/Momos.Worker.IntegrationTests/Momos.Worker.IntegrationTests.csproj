@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <!-- TODO(upstream: claudedocs/issues/ISSUE-code-beaker-20260904-docker-dotnet-enhanced-collision.md): this project's Testcontainers.PostgreSql + Momos.Worker ProjectReference combination still carries the Docker.DotNet/Docker.DotNet.Enhanced filename collision (dormant here — nothing in this project resolves ISessionManager/constructs DockerRuntime). Reclaim once code-beaker migrates to Docker.DotNet.Enhanced. -->
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Momos.Host reference is test-only, to drive the real Host API in-process
+         (WebApplicationFactory) for a wire-contract e2e check. The shipped
+         Momos.Worker has no reference to Momos.Host — they're separate deployables. -->
+    <ProjectReference Include="..\..\src\Momos.Worker\Momos.Worker.csproj" />
+    <ProjectReference Include="..\..\src\Momos.Host\Momos.Host.csproj" />
+  </ItemGroup>
+
+</Project>

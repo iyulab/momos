@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Momos.Worker.Tests.Execution;
+namespace Momos.Worker.IntegrationTests.Execution;
 
 /// <summary>
 /// Matches the Host's own <c>ConfigureHttpJsonOptions</c> (Momos.Host/Program.cs) —

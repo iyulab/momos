@@ -62,6 +62,7 @@ jobs:
       run: |
         dotnet restore src/Momos.Worker/Momos.Worker.csproj
         dotnet restore tests/Momos.Worker.Tests/Momos.Worker.Tests.csproj
+        dotnet restore tests/Momos.Worker.IntegrationTests/Momos.Worker.IntegrationTests.csproj
 
     - name: Check for vulnerable NuGet packages
       run: |
@@ -70,14 +71,17 @@ jobs:
         status=$?
         report2=$(dotnet list tests/Momos.Worker.Tests/Momos.Worker.Tests.csproj package --vulnerable --include-transitive 2>&1)
         status2=$?
+        report3=$(dotnet list tests/Momos.Worker.IntegrationTests/Momos.Worker.IntegrationTests.csproj package --vulnerable --include-transitive 2>&1)
+        status3=$?
         set -e
         echo "$report"
         echo "$report2"
-        if [ $status -ne 0 ] || [ $status2 -ne 0 ]; then
+        echo "$report3"
+        if [ $status -ne 0 ] || [ $status2 -ne 0 ] || [ $status3 -ne 0 ]; then
           echo "::error::dotnet list package --vulnerable failed to run — treating an unreadable scan as a failure, not a pass."
           exit 1
         fi
-        if echo "$report"$'\n'"$report2" | grep -q "has the following vulnerable packages"; then
+        if echo "$report"$'\n'"$report2"$'\n'"$report3" | grep -q "has the following vulnerable packages"; then
           echo "::error::Vulnerable NuGet package(s) detected — see the report above."
           exit 1
         fi

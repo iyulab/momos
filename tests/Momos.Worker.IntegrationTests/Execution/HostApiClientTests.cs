@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 using Momos.Host.Contracts;
 using Momos.Worker.Execution;
 
-namespace Momos.Worker.Tests.Execution;
+namespace Momos.Worker.IntegrationTests.Execution;
 
 public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
 {
