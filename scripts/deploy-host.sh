@@ -6,6 +6,11 @@ set -euo pipefail
 # tolerates multiple revisions connecting concurrently, migrations run once before
 # the rolling deployment starts, then Container Apps' standard zero-downtime rollout
 # takes over.
+#
+# 사전 요구사항: 이 스크립트는 az CLI뿐 아니라 .NET SDK도 필요하다(마이그레이션을 로컬에서
+# 직접 실행한다). 적용되는 마이그레이션은 배포하는 이미지가 아니라 이 스크립트를 실행하는
+# 머신에 체크아웃된 소스에서 나온다 — 실행하는 사람이 체크아웃을 배포 대상 이미지와 같은
+# 커밋으로 맞출 책임이 있다(현재 이를 강제하는 자동 검사는 없다).
 
 # 아래 세 개는 az cli 호출과 분리한 순수 문자열 파싱이라 단위 테스트 가능하다.
 is_digest_reference() {
@@ -62,6 +67,8 @@ main() {
 
   echo "2/4 트래픽 전환 전 마이그레이션 실행 — PostgreSQL은 다중 리비전이 동시에 연결돼도"
   echo "     문제가 없으므로(SQLite의 SMB 파일 락과 달리) 이 단계를 신규 리비전 기동과 분리해도 안전하다"
+  dotnet tool restore --tool-manifest "$(dirname "${BASH_SOURCE[0]}")/../.config/dotnet-tools.json"
+  export ConnectionStrings__MomosDb="$DB_CONNECTION"
   dotnet ef database update \
     --project "$(dirname "${BASH_SOURCE[0]}")/../src/Momos.Host" \
     --connection "$DB_CONNECTION"
