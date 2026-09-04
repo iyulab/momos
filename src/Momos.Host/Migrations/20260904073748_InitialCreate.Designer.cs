@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Momos.Host.Migrations
 {
     [DbContext(typeof(MomosDbContext))]
-    [Migration("20260903224151_InitialCreate")]
+    [Migration("20260904073748_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -27,9 +27,9 @@ namespace Momos.Host.Migrations
 
             modelBuilder.Entity("Momos.Host.Domain.Finding", b =>
                 {
-                    b.Property<string>("Id")
+                    b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("character varying(36)");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Category")
                         .IsRequired()
@@ -43,9 +43,8 @@ namespace Momos.Host.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("InspectionReportId")
-                        .IsRequired()
-                        .HasColumnType("character varying(36)");
+                    b.Property<Guid>("InspectionReportId")
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Order")
                         .HasColumnType("integer");
@@ -59,16 +58,15 @@ namespace Momos.Host.Migrations
 
             modelBuilder.Entity("Momos.Host.Domain.InspectionReport", b =>
                 {
-                    b.Property<string>("Id")
+                    b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("character varying(36)");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("InspectionRequestId")
-                        .IsRequired()
-                        .HasColumnType("character varying(36)");
+                    b.Property<Guid>("InspectionRequestId")
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -80,9 +78,9 @@ namespace Momos.Host.Migrations
 
             modelBuilder.Entity("Momos.Host.Domain.InspectionRequest", b =>
                 {
-                    b.Property<string>("Id")
+                    b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("character varying(36)");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("ClaimedAt")
                         .HasColumnType("timestamp with time zone");
@@ -96,9 +94,8 @@ namespace Momos.Host.Migrations
                     b.Property<string>("Focus")
                         .HasColumnType("text");
 
-                    b.Property<string>("ProjectId")
-                        .IsRequired()
-                        .HasColumnType("character varying(36)");
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -116,9 +113,9 @@ namespace Momos.Host.Migrations
 
             modelBuilder.Entity("Momos.Host.Domain.Project", b =>
                 {
-                    b.Property<string>("Id")
+                    b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("character varying(36)");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("AppInstallArgs")
                         .HasColumnType("text");
@@ -164,16 +161,15 @@ namespace Momos.Host.Migrations
 
             modelBuilder.Entity("Momos.Host.Domain.ToolCall", b =>
                 {
-                    b.Property<string>("Id")
+                    b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("character varying(36)");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("DurationMs")
                         .HasColumnType("integer");
 
-                    b.Property<string>("InspectionReportId")
-                        .IsRequired()
-                        .HasColumnType("character varying(36)");
+                    b.Property<Guid>("InspectionReportId")
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Order")
                         .HasColumnType("integer");

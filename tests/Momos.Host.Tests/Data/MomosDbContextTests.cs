@@ -65,7 +65,7 @@ public sealed class MomosDbContextTests : IAsyncLifetime
         await _db.SaveChangesAsync();
 
         var raw = await _db.Database.SqlQuery<string>(
-            $"SELECT \"Status\" FROM \"InspectionRequests\" WHERE \"Id\" = {request.Id.ToString()}").ToListAsync();
+            $"SELECT \"Status\" FROM \"InspectionRequests\" WHERE \"Id\" = {request.Id}").ToListAsync();
 
         Assert.Equal("Running", Assert.Single(raw));
     }

@@ -11,17 +11,6 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
     public DbSet<Finding> Findings => Set<Finding>();
     public DbSet<ToolCall> ToolCalls => Set<ToolCall>();
 
-    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
-    {
-        // Forces Guid columns to a string representation rather than PostgreSQL's native
-        // uuid type. Originally added to work around SQLite's uppercase Guid-to-TEXT mapping,
-        // which didn't match Guid.ToString()'s lowercase output and made hand-written raw SQL
-        // that interpolates a C# Guid silently fail to match the stored value. That specific
-        // mismatch doesn't exist on PostgreSQL, but this conversion is still what makes the
-        // stored representation match Guid.ToString()'s lowercase form for any raw-SQL use.
-        configurationBuilder.Properties<Guid>().HaveConversion<string>();
-    }
-
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<InspectionRequest>()

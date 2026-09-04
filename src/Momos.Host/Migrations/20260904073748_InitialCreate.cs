@@ -15,7 +15,7 @@ namespace Momos.Host.Migrations
                 name: "Projects",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "character varying(36)", nullable: false),
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
                     Name = table.Column<string>(type: "text", nullable: false),
                     RepositoryUrl = table.Column<string>(type: "text", nullable: true),
                     DeploymentUrl = table.Column<string>(type: "text", nullable: true),
@@ -37,8 +37,8 @@ namespace Momos.Host.Migrations
                 name: "InspectionRequests",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "character varying(36)", nullable: false),
-                    ProjectId = table.Column<string>(type: "character varying(36)", nullable: false),
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    ProjectId = table.Column<Guid>(type: "uuid", nullable: false),
                     Focus = table.Column<string>(type: "text", nullable: true),
                     CommitRef = table.Column<string>(type: "text", nullable: true),
                     SubmittedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
@@ -61,8 +61,8 @@ namespace Momos.Host.Migrations
                 name: "InspectionReports",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "character varying(36)", nullable: false),
-                    InspectionRequestId = table.Column<string>(type: "character varying(36)", nullable: false),
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    InspectionRequestId = table.Column<Guid>(type: "uuid", nullable: false),
                     CompletedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
@@ -80,8 +80,8 @@ namespace Momos.Host.Migrations
                 name: "Findings",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "character varying(36)", nullable: false),
-                    InspectionReportId = table.Column<string>(type: "character varying(36)", nullable: false),
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    InspectionReportId = table.Column<Guid>(type: "uuid", nullable: false),
                     Category = table.Column<string>(type: "text", nullable: false),
                     Description = table.Column<string>(type: "text", nullable: false),
                     Evidence = table.Column<string>(type: "text", nullable: false),
@@ -102,8 +102,8 @@ namespace Momos.Host.Migrations
                 name: "ToolCalls",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "character varying(36)", nullable: false),
-                    InspectionReportId = table.Column<string>(type: "character varying(36)", nullable: false),
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    InspectionReportId = table.Column<Guid>(type: "uuid", nullable: false),
                     Tool = table.Column<string>(type: "text", nullable: false),
                     Summary = table.Column<string>(type: "text", nullable: false),
                     Success = table.Column<bool>(type: "boolean", nullable: false),
