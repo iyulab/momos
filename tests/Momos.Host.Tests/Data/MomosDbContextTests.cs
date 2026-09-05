@@ -129,4 +129,64 @@ public sealed class MomosDbContextTests : IAsyncLifetime
 
         Assert.Empty(await _db.Findings.ToListAsync());
     }
+
+    [Fact]
+    public async Task ToolCallsAttachToTheRequestAndSurviveWithNoReport()
+    {
+        Guid requestId;
+        using (var seedDb = NewContext())
+        {
+            var project = new Project { Name = "p", Purpose = "x", Vision = "x", Scope = "x" };
+            seedDb.Projects.Add(project);
+            var request = new InspectionRequest { ProjectId = project.Id, Status = InspectionRequestStatus.Failed };
+            request.ToolCalls.Add(new ToolCall
+            {
+                InspectionRequestId = request.Id,
+                Tool = "RunCommand",
+                Summary = "dotnet test",
+                Success = false,
+                DurationMs = 500,
+            });
+            seedDb.InspectionRequests.Add(request);
+            await seedDb.SaveChangesAsync();
+            requestId = request.Id;
+        }
+
+        // No InspectionReport was ever created for this (failed) request — the tool call
+        // must still be readable, which is the entire point of hanging it off the request.
+        var toolCall = await _db.ToolCalls.SingleAsync(t => t.InspectionRequestId == requestId);
+        Assert.Equal("RunCommand", toolCall.Tool);
+        Assert.False(toolCall.Success);
+    }
+
+    [Fact]
+    public async Task DeletingARequestCascadesToItsToolCalls()
+    {
+        Guid requestId;
+        using (var seedDb = NewContext())
+        {
+            var project = new Project { Name = "p", Purpose = "x", Vision = "x", Scope = "x" };
+            seedDb.Projects.Add(project);
+            var request = new InspectionRequest { ProjectId = project.Id };
+            request.ToolCalls.Add(new ToolCall
+            {
+                InspectionRequestId = request.Id,
+                Tool = "RunCommand",
+                Summary = "dotnet build",
+                Success = true,
+            });
+            seedDb.InspectionRequests.Add(request);
+            await seedDb.SaveChangesAsync();
+            requestId = request.Id;
+        }
+
+        using (var deleteDb = NewContext())
+        {
+            var request = await deleteDb.InspectionRequests.SingleAsync(r => r.Id == requestId);
+            deleteDb.InspectionRequests.Remove(request);
+            await deleteDb.SaveChangesAsync();
+        }
+
+        Assert.Empty(await _db.ToolCalls.Where(t => t.InspectionRequestId == requestId).ToListAsync());
+    }
 }

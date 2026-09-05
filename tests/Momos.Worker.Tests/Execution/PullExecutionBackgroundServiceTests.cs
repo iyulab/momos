@@ -360,6 +360,43 @@ public sealed class PullExecutionBackgroundServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenTheAgentLoopFailsAfterAToolCall_SubmitsTheTraceAlongsideTheFailure()
+    {
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)]);
+        var runCommandCall = new FunctionCallContent(
+            "call-1",
+            nameof(CodeExecutionTools.RunCommand),
+            new Dictionary<string, object?> { ["command"] = "dotnet", ["args"] = new[] { "build" } });
+        var chatClientProvider = new FakeChatClientProvider(
+            responsesBeforeFinal: [new ChatResponse(new ChatMessage(ChatRole.Assistant, [runCommandCall]))],
+            finalException: new InvalidOperationException("simulated LLM-provider failure"));
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory(chatClientProvider);
+        executionProvider.NextResult = new ExecutionCommandResult(true, "build succeeded", null, 100);
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            new FakeWorkerSelfUpdater(),
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        // Before this fix, the tool call made before the failure was discarded entirely
+        // (see claudedocs/issues/ISSUE-momos-20260903-failed-inspection-trace-discarded.md) —
+        // it must now travel alongside the failure report.
+        Assert.Empty(hostClient.SubmittedReports);
+        var failure = Assert.Single(hostClient.SubmittedFailures);
+        Assert.Contains("simulated LLM-provider failure", failure.Reason);
+        var toolCall = Assert.Single(failure.ToolCalls);
+        Assert.Equal(nameof(CodeExecutionTools.RunCommand), toolCall.Tool);
+        Assert.True(toolCall.Success);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenClaimNextFailsRepeatedly_DowngradesToACriticalLogAtTheThresholdAndThenSuppresses()
     {
         var hostClient = new FakeHostApiClient([], claimNextThrowsForFirstNCalls: 5);

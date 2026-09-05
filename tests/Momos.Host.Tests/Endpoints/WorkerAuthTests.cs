@@ -83,7 +83,7 @@ public sealed class WorkerAuthTests : IClassFixture<MomosHostFactory>
         var unauthenticated = _factory.CreateDefaultClient();
 
         var response = await unauthenticated.PostAsJsonAsync(
-            $"/inspection-requests/{Guid.NewGuid()}/fail", new FailInspectionRequestRequest("boom"));
+            $"/inspection-requests/{Guid.NewGuid()}/fail", new FailInspectionRequestRequest("boom", []));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

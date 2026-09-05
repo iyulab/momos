@@ -148,6 +148,23 @@ public static class InspectionRequestEndpoints
                     detail: $"Cannot fail an inspection request in status '{inspectionRequest.Status}'.");
             }
 
+            // Added to the DbSet directly — see InspectionReportEndpoints' matching
+            // comment for why inspectionRequest.ToolCalls.Add(...) alone would UPDATE
+            // instead of INSERT here.
+            for (var order = 0; order < request.ToolCalls.Count; order++)
+            {
+                var call = request.ToolCalls[order];
+                db.ToolCalls.Add(new ToolCall
+                {
+                    InspectionRequestId = id,
+                    Tool = call.Tool,
+                    Summary = call.Summary,
+                    Success = call.Success,
+                    DurationMs = call.DurationMs,
+                    Order = order,
+                });
+            }
+
             inspectionRequest.Status = InspectionRequestStatus.Failed;
             inspectionRequest.FailureReason = request.Reason;
             await db.SaveChangesAsync(cancellationToken);

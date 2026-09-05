@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Momos.Host.Contracts;
 using Momos.Worker.Execution;
 
@@ -110,12 +112,41 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         var result = await _client.ClaimNextAsync(CancellationToken.None);
         Assert.NotNull(result.Request);
 
-        await _client.SubmitFailureAsync(result.Request!.Id, "agent loop crashed", CancellationToken.None);
+        await _client.SubmitFailureAsync(result.Request!.Id, "agent loop crashed", [], CancellationToken.None);
 
         var afterResponse = await httpClient.GetAsync($"/inspection-requests/{result.Request.Id}");
         var after = await afterResponse.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Failed, after!.Status);
         Assert.Equal("agent loop crashed", after.FailureReason);
+    }
+
+    [Fact]
+    public async Task SubmitFailureAsync_WithToolCalls_PersistsThemOnHost()
+    {
+        var projectId = await CreateProjectAsync();
+        var httpClient = _factory.CreateAuthorizedClient();
+        await httpClient.PostAsJsonAsync(
+            $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null));
+        var result = await _client.ClaimNextAsync(CancellationToken.None);
+
+        await _client.SubmitFailureAsync(
+            result.Request!.Id,
+            "agent loop crashed",
+            [new ToolCallPayload("RunCommand", "dotnet test", Success: true, DurationMs: 1200)],
+            CancellationToken.None);
+
+        // No InspectionReport exists for a failed request — the trace is verified by
+        // reading straight from the database, not via the report endpoint (which 404s).
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Momos.Host.Data.MomosDbContext>();
+        var toolCalls = await db.ToolCalls
+            .Where(t => t.InspectionRequestId == result.Request.Id)
+            .ToListAsync();
+        var toolCall = Assert.Single(toolCalls);
+        Assert.Equal("RunCommand", toolCall.Tool);
+        Assert.Equal("dotnet test", toolCall.Summary);
+        Assert.True(toolCall.Success);
+        Assert.Equal(1200, toolCall.DurationMs);
     }
 
     [Fact]

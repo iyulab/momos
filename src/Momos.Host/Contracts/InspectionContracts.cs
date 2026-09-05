@@ -51,12 +51,16 @@ public sealed record InspectionReportResponse(
     IReadOnlyList<FindingResponse> Findings,
     IReadOnlyList<ToolCallResponse> ToolCalls)
 {
-    public static InspectionReportResponse FromEntity(InspectionReport report) => new(
+    /// <summary><paramref name="toolCalls"/> is passed separately, not read off <paramref name="report"/> —
+    /// the trace belongs to the <see cref="InspectionRequest"/>, not the report (see
+    /// <see cref="InspectionReport"/>'s doc comment), so the caller joins it in by
+    /// <see cref="Domain.InspectionReport.InspectionRequestId"/>.</summary>
+    public static InspectionReportResponse FromEntity(InspectionReport report, IReadOnlyList<ToolCall> toolCalls) => new(
         report.Id,
         report.InspectionRequestId,
         report.CompletedAt,
         report.Findings.Select(FindingResponse.FromEntity).ToList(),
-        report.ToolCalls.Select(ToolCallResponse.FromEntity).ToList());
+        toolCalls.Select(ToolCallResponse.FromEntity).ToList());
 }
 
 /// <summary>One finding as submitted by a Worker completing an inspection run.</summary>
@@ -71,8 +75,10 @@ public sealed record SubmitInspectionReportRequest(
     IReadOnlyList<SubmitFindingRequest> Findings,
     IReadOnlyList<SubmitToolCallRequest> ToolCalls);
 
-/// <summary>A Worker's failed-run report for one <see cref="InspectionRequest"/>.</summary>
-public sealed record FailInspectionRequestRequest(string Reason);
+/// <summary>A Worker's failed-run report for one <see cref="InspectionRequest"/> — carries
+/// whatever tool calls the agent loop made before it failed (possibly none, if it failed
+/// before the loop ever started), so the trace is not discarded along with the run.</summary>
+public sealed record FailInspectionRequestRequest(string Reason, IReadOnlyList<SubmitToolCallRequest> ToolCalls);
 
 /// <summary>A Worker's claim-next call, carrying the protocol/build versions it speaks so the
 /// Host can refuse work to a too-old Worker before handing out an <see cref="InspectionRequest"/>.</summary>

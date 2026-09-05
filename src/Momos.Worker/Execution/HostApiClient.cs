@@ -39,10 +39,10 @@ public sealed class HostApiClient(HttpClient httpClient) : IHostApiClient
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task SubmitFailureAsync(Guid inspectionRequestId, string reason, CancellationToken cancellationToken)
+    public async Task SubmitFailureAsync(Guid inspectionRequestId, string reason, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken)
     {
         var response = await httpClient.PostAsJsonAsync(
-            $"/inspection-requests/{inspectionRequestId}/fail", new SubmitFailureRequest(reason), JsonOptions, cancellationToken);
+            $"/inspection-requests/{inspectionRequestId}/fail", new SubmitFailureRequest(reason, toolCalls), JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 

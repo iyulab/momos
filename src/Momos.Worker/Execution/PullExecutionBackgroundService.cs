@@ -207,22 +207,21 @@ public sealed class PullExecutionBackgroundService(
             // to ExecuteAsync's catch and the request is left Running — the claim-next
             // reclaim lease (InspectionClaimOptions.ReclaimTimeout) picks it back up once
             // it expires, so no separate retry/backoff is needed for that case either.
-            // The trace itself isn't sent to Host yet (see
-            // claudedocs/issues/ISSUE-momos-20260903-failed-inspection-trace-discarded.md —
-            // that needs a schema decision), but logging what was attempted before the
-            // failure is a pure Worker-local improvement and doesn't need to wait on it.
-            if (toolCalls is { Calls.Count: > 0 })
+            var toolCallPayloads = toolCalls?.Calls
+                .Select(c => new ToolCallPayload(c.Tool, c.Summary, c.Success, c.DurationMs))
+                .ToList() ?? [];
+            if (toolCallPayloads.Count > 0)
             {
                 logger.LogError(
                     ex,
                     "Inspection run failed for request {RequestId} after {ToolCallCount} tool call(s), last: {LastTool} ({LastToolSuccess})",
-                    request.Id, toolCalls.Calls.Count, toolCalls.Calls[^1].Tool, toolCalls.Calls[^1].Success ? "succeeded" : "failed");
+                    request.Id, toolCallPayloads.Count, toolCallPayloads[^1].Tool, toolCallPayloads[^1].Success ? "succeeded" : "failed");
             }
             else
             {
                 logger.LogError(ex, "Inspection run failed for request {RequestId}", request.Id);
             }
-            await hostApiClient.SubmitFailureAsync(request.Id, ex.Message, cancellationToken);
+            await hostApiClient.SubmitFailureAsync(request.Id, ex.Message, toolCallPayloads, cancellationToken);
         }
         finally
         {

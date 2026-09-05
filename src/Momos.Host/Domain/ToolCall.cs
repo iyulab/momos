@@ -1,15 +1,16 @@
 namespace Momos.Host.Domain;
 
 /// <summary>
-/// One tool invocation an agent loop made while producing an <see cref="InspectionReport"/> —
-/// a shell command run or a knowledge query, recorded regardless of outcome. Never carries raw
-/// command output/error text (that can contain secrets from the inspected target); only a short
-/// summary of what was invoked travels here.
+/// One tool invocation an agent loop made while running an <see cref="InspectionRequest"/> —
+/// a shell command run or a knowledge query, recorded regardless of run outcome (including a
+/// run that ends in failure, before any <see cref="InspectionReport"/> exists). Never carries
+/// raw command output/error text (that can contain secrets from the inspected target); only a
+/// short summary of what was invoked travels here.
 /// </summary>
 public sealed class ToolCall
 {
     public Guid Id { get; init; } = Guid.NewGuid();
-    public required Guid InspectionReportId { get; set; }
+    public required Guid InspectionRequestId { get; set; }
     public required string Tool { get; set; }
     public required string Summary { get; set; }
     public bool Success { get; set; }

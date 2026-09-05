@@ -13,7 +13,8 @@ namespace Momos.Worker.Tests.Agent;
 public sealed class FakeChatClient : IChatClient
 {
     private readonly Queue<ChatResponse> _scriptedResponses;
-    private readonly ChatResponse _finalResponse;
+    private readonly ChatResponse? _finalResponse;
+    private readonly Exception? _finalException;
 
     public FakeChatClient(string reply)
         : this([], new ChatResponse(new ChatMessage(ChatRole.Assistant, reply)))
@@ -24,6 +25,16 @@ public sealed class FakeChatClient : IChatClient
     {
         _scriptedResponses = new Queue<ChatResponse>(responsesBeforeFinal);
         _finalResponse = finalResponse;
+    }
+
+    /// <summary>Throws <paramref name="finalException"/> once every scripted
+    /// <paramref name="responsesBeforeFinal"/> entry is consumed, instead of returning a
+    /// final response — simulates an LLM-provider failure that happens after the agent
+    /// loop already made one or more tool calls.</summary>
+    public FakeChatClient(IEnumerable<ChatResponse> responsesBeforeFinal, Exception finalException)
+    {
+        _scriptedResponses = new Queue<ChatResponse>(responsesBeforeFinal);
+        _finalException = finalException;
     }
 
     /// <summary>The <see cref="ChatOptions"/> passed on the most recent call — lets tests
@@ -37,8 +48,14 @@ public sealed class FakeChatClient : IChatClient
         CancellationToken cancellationToken = default)
     {
         LastOptions = options;
-        var response = _scriptedResponses.Count > 0 ? _scriptedResponses.Dequeue() : _finalResponse;
-        return Task.FromResult(response);
+        if (_scriptedResponses.Count > 0)
+        {
+            return Task.FromResult(_scriptedResponses.Dequeue());
+        }
+
+        return _finalException is not null
+            ? Task.FromException<ChatResponse>(_finalException)
+            : Task.FromResult(_finalResponse!);
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -47,7 +64,20 @@ public sealed class FakeChatClient : IChatClient
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         LastOptions = options;
-        var response = _scriptedResponses.Count > 0 ? _scriptedResponses.Dequeue() : _finalResponse;
+        ChatResponse response;
+        if (_scriptedResponses.Count > 0)
+        {
+            response = _scriptedResponses.Dequeue();
+        }
+        else if (_finalException is not null)
+        {
+            throw _finalException;
+        }
+        else
+        {
+            response = _finalResponse!;
+        }
+
         await Task.Yield();
         foreach (var message in response.Messages)
         {

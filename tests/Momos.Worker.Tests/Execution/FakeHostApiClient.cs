@@ -20,7 +20,7 @@ internal sealed class FakeHostApiClient(
     private readonly TaskCompletionSource _outcomeReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public List<SubmitReportRequest> SubmittedReports { get; } = [];
-    public List<(Guid Id, string Reason)> SubmittedFailures { get; } = [];
+    public List<(Guid Id, string Reason, IReadOnlyList<ToolCallPayload> ToolCalls)> SubmittedFailures { get; } = [];
 
     /// <summary>Total <see cref="ClaimNextAsync"/> calls so far, successful or throwing — lets a test condition-wait on the pull loop having reached a given iteration instead of sleeping an arbitrary duration.</summary>
     public int ClaimCallCount => _claimCallCount;
@@ -62,9 +62,9 @@ internal sealed class FakeHostApiClient(
         return Task.CompletedTask;
     }
 
-    public Task SubmitFailureAsync(Guid inspectionRequestId, string reason, CancellationToken cancellationToken)
+    public Task SubmitFailureAsync(Guid inspectionRequestId, string reason, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken)
     {
-        SubmittedFailures.Add((inspectionRequestId, reason));
+        SubmittedFailures.Add((inspectionRequestId, reason, toolCalls));
         _outcomeReceived.TrySetResult();
         return Task.CompletedTask;
     }

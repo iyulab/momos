@@ -1,15 +1,23 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Momos.Host.Contracts;
+using Momos.Host.Data;
 using Momos.Host.Domain;
 
 namespace Momos.Host.Tests.Endpoints;
 
 public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFactory>
 {
+    private readonly MomosHostFactory _factory;
     private readonly HttpClient _client;
 
-    public InspectionRequestEndpointsTests(MomosHostFactory factory) => _client = factory.CreateAuthorizedClient();
+    public InspectionRequestEndpointsTests(MomosHostFactory factory)
+    {
+        _factory = factory;
+        _client = factory.CreateAuthorizedClient();
+    }
 
     private async Task<Guid> CreateProjectAsync(string? repositoryUrl = null)
     {
@@ -145,7 +153,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
     public async Task Fail_WithUnknownId_Returns404()
     {
         var response = await _client.PostAsJsonAsync(
-            $"/inspection-requests/{Guid.NewGuid()}/fail", new FailInspectionRequestRequest("boom"));
+            $"/inspection-requests/{Guid.NewGuid()}/fail", new FailInspectionRequestRequest("boom", []));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -159,7 +167,7 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
             .Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
 
         var response = await _client.PostAsJsonAsync(
-            $"/inspection-requests/{created!.Id}/fail", new FailInspectionRequestRequest("boom"));
+            $"/inspection-requests/{created!.Id}/fail", new FailInspectionRequestRequest("boom", []));
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -173,11 +181,40 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
         var claimed = await ClaimNextAsync();
 
         var response = await _client.PostAsJsonAsync(
-            $"/inspection-requests/{claimed.Request!.Id}/fail", new FailInspectionRequestRequest("agent loop crashed"));
+            $"/inspection-requests/{claimed.Request!.Id}/fail", new FailInspectionRequestRequest("agent loop crashed", []));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var failed = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
         Assert.Equal(InspectionRequestStatus.Failed, failed!.Status);
         Assert.Equal("agent loop crashed", failed.FailureReason);
+    }
+
+    [Fact]
+    public async Task Fail_WithToolCalls_PersistsThemAgainstTheRequest()
+    {
+        var projectId = await CreateProjectAsync();
+        await _client.PostAsJsonAsync($"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null));
+        var claimed = await ClaimNextAsync();
+
+        var response = await _client.PostAsJsonAsync(
+            $"/inspection-requests/{claimed.Request!.Id}/fail",
+            new FailInspectionRequestRequest(
+                "agent loop crashed",
+                [new SubmitToolCallRequest("RunCommand", "dotnet build", Success: true, DurationMs: 900)]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // No InspectionReport exists for a failed request — GET .../report would 404.
+        // The trace is verified straight from the database instead.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MomosDbContext>();
+        var toolCalls = await db.ToolCalls
+            .Where(t => t.InspectionRequestId == claimed.Request.Id)
+            .ToListAsync();
+        var toolCall = Assert.Single(toolCalls);
+        Assert.Equal("RunCommand", toolCall.Tool);
+        Assert.Equal("dotnet build", toolCall.Summary);
+        Assert.True(toolCall.Success);
+        Assert.Equal(900, toolCall.DurationMs);
     }
 }

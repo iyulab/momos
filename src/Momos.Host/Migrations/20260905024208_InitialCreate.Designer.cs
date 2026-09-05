@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Momos.Host.Migrations
 {
     [DbContext(typeof(MomosDbContext))]
-    [Migration("20260904073748_InitialCreate")]
+    [Migration("20260905024208_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -168,7 +168,7 @@ namespace Momos.Host.Migrations
                     b.Property<int>("DurationMs")
                         .HasColumnType("integer");
 
-                    b.Property<Guid>("InspectionReportId")
+                    b.Property<Guid>("InspectionRequestId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Order")
@@ -187,7 +187,7 @@ namespace Momos.Host.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("InspectionReportId");
+                    b.HasIndex("InspectionRequestId");
 
                     b.ToTable("ToolCalls");
                 });
@@ -221,9 +221,9 @@ namespace Momos.Host.Migrations
 
             modelBuilder.Entity("Momos.Host.Domain.ToolCall", b =>
                 {
-                    b.HasOne("Momos.Host.Domain.InspectionReport", null)
+                    b.HasOne("Momos.Host.Domain.InspectionRequest", null)
                         .WithMany("ToolCalls")
-                        .HasForeignKey("InspectionReportId")
+                        .HasForeignKey("InspectionRequestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -231,7 +231,10 @@ namespace Momos.Host.Migrations
             modelBuilder.Entity("Momos.Host.Domain.InspectionReport", b =>
                 {
                     b.Navigation("Findings");
+                });
 
+            modelBuilder.Entity("Momos.Host.Domain.InspectionRequest", b =>
+                {
                     b.Navigation("ToolCalls");
                 });
 #pragma warning restore 612, 618

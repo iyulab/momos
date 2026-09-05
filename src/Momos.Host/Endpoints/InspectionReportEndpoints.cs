@@ -14,12 +14,22 @@ public static class InspectionReportEndpoints
         {
             var report = await db.InspectionReports
                 .Include(r => r.Findings.OrderBy(f => f.Order))
-                .Include(r => r.ToolCalls.OrderBy(t => t.Order))
                 .FirstOrDefaultAsync(r => r.InspectionRequestId == id, cancellationToken);
 
-            return report is null
-                ? Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Inspection report not found.")
-                : Results.Ok(InspectionReportResponse.FromEntity(report));
+            if (report is null)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Inspection report not found.");
+            }
+
+            // Joined by InspectionRequestId, not an Include off `report` — ToolCall hangs off
+            // InspectionRequest now (see InspectionReport's doc comment), a separate query since
+            // EF Core has no navigation from InspectionReport to sibling ToolCall rows.
+            var toolCalls = await db.ToolCalls
+                .Where(t => t.InspectionRequestId == id)
+                .OrderBy(t => t.Order)
+                .ToListAsync(cancellationToken);
+
+            return Results.Ok(InspectionReportResponse.FromEntity(report, toolCalls));
         })
             .WithName("GetInspectionReport")
             .Produces<InspectionReportResponse>()
@@ -57,18 +67,25 @@ public static class InspectionReportEndpoints
                 });
             }
 
+            // Added to the DbSet directly, not to inspectionRequest.ToolCalls — that
+            // navigation isn't loaded on this tracked-but-not-Added entity, so a new
+            // ToolCall discovered only via graph fixup would have its already-populated
+            // Id read as "this key already exists" and get UPDATEd instead of INSERTed.
+            var toolCalls = new List<ToolCall>();
             for (var order = 0; order < request.ToolCalls.Count; order++)
             {
                 var call = request.ToolCalls[order];
-                report.ToolCalls.Add(new ToolCall
+                var toolCall = new ToolCall
                 {
-                    InspectionReportId = report.Id,
+                    InspectionRequestId = id,
                     Tool = call.Tool,
                     Summary = call.Summary,
                     Success = call.Success,
                     DurationMs = call.DurationMs,
                     Order = order,
-                });
+                };
+                toolCalls.Add(toolCall);
+                db.ToolCalls.Add(toolCall);
             }
 
             db.InspectionReports.Add(report);
@@ -102,7 +119,7 @@ public static class InspectionReportEndpoints
                 }
             }
 
-            return Results.Created($"/inspection-requests/{id}/report", InspectionReportResponse.FromEntity(report));
+            return Results.Created($"/inspection-requests/{id}/report", InspectionReportResponse.FromEntity(report, toolCalls));
         })
             .WithName("SubmitInspectionReport")
             .AddEndpointFilter<WorkerApiKeyFilter>()

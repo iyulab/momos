@@ -77,6 +77,29 @@ namespace Momos.Host.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "ToolCalls",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    InspectionRequestId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Tool = table.Column<string>(type: "text", nullable: false),
+                    Summary = table.Column<string>(type: "text", nullable: false),
+                    Success = table.Column<bool>(type: "boolean", nullable: false),
+                    DurationMs = table.Column<int>(type: "integer", nullable: false),
+                    Order = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ToolCalls", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ToolCalls_InspectionRequests_InspectionRequestId",
+                        column: x => x.InspectionRequestId,
+                        principalTable: "InspectionRequests",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Findings",
                 columns: table => new
                 {
@@ -92,29 +115,6 @@ namespace Momos.Host.Migrations
                     table.PrimaryKey("PK_Findings", x => x.Id);
                     table.ForeignKey(
                         name: "FK_Findings_InspectionReports_InspectionReportId",
-                        column: x => x.InspectionReportId,
-                        principalTable: "InspectionReports",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "ToolCalls",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    InspectionReportId = table.Column<Guid>(type: "uuid", nullable: false),
-                    Tool = table.Column<string>(type: "text", nullable: false),
-                    Summary = table.Column<string>(type: "text", nullable: false),
-                    Success = table.Column<bool>(type: "boolean", nullable: false),
-                    DurationMs = table.Column<int>(type: "integer", nullable: false),
-                    Order = table.Column<int>(type: "integer", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ToolCalls", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_ToolCalls_InspectionReports_InspectionReportId",
                         column: x => x.InspectionReportId,
                         principalTable: "InspectionReports",
                         principalColumn: "Id",
@@ -138,9 +138,9 @@ namespace Momos.Host.Migrations
                 column: "ProjectId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ToolCalls_InspectionReportId",
+                name: "IX_ToolCalls_InspectionRequestId",
                 table: "ToolCalls",
-                column: "InspectionReportId");
+                column: "InspectionRequestId");
         }
 
         /// <inheritdoc />

@@ -37,4 +37,8 @@ public sealed class InspectionRequest
     /// ReclaimTimeout) — not a general last-activity timestamp.
     /// </summary>
     public DateTimeOffset? ClaimedAt { get; set; }
+
+    /// <summary>Every tool call the agent loop made while running this request, regardless of
+    /// whether the run ended in an <see cref="InspectionReport"/> or a failure.</summary>
+    public ICollection<ToolCall> ToolCalls { get; init; } = new List<ToolCall>();
 }

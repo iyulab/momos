@@ -31,10 +31,10 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
             .HasForeignKey(f => f.InspectionReportId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<InspectionReport>()
+        modelBuilder.Entity<InspectionRequest>()
             .HasMany(r => r.ToolCalls)
             .WithOne()
-            .HasForeignKey(t => t.InspectionReportId)
+            .HasForeignKey(t => t.InspectionRequestId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // Restrict, not Cascade: inspection history is an audit trail and should not

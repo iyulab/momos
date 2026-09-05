@@ -57,7 +57,9 @@ public sealed record ToolCallPayload(string Tool, string Summary, bool Success, 
 
 public sealed record SubmitReportRequest(IReadOnlyList<FindingPayload> Findings, IReadOnlyList<ToolCallPayload> ToolCalls);
 
-public sealed record SubmitFailureRequest(string Reason);
+/// <summary>Mirrors Host's FailInspectionRequestRequest wire shape (Momos.Host.Contracts.FailInspectionRequestRequest) —
+/// see <see cref="ClaimedInspectionRequest"/>'s doc comment for why this is a local copy.</summary>
+public sealed record SubmitFailureRequest(string Reason, IReadOnlyList<ToolCallPayload> ToolCalls);
 
 public sealed record ClaimNextRequest(int ProtocolVersion, string WorkerVersion);
 

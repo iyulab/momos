@@ -11,7 +11,7 @@ public interface IHostApiClient
 
     Task SubmitReportAsync(Guid inspectionRequestId, IReadOnlyList<FindingPayload> findings, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken);
 
-    Task SubmitFailureAsync(Guid inspectionRequestId, string reason, CancellationToken cancellationToken);
+    Task SubmitFailureAsync(Guid inspectionRequestId, string reason, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<string>> QueryKnowledgeAsync(Guid projectId, string query, CancellationToken cancellationToken);
 }

@@ -16,6 +16,11 @@ public sealed class FakeChatClientProvider : IChatClientProvider
     {
     }
 
+    public FakeChatClientProvider(IEnumerable<ChatResponse> responsesBeforeFinal, Exception finalException)
+        : this(() => new FakeChatClient(responsesBeforeFinal, finalException))
+    {
+    }
+
     private FakeChatClientProvider(Func<FakeChatClient> clientFactory)
     {
         _clientFactory = clientFactory;
