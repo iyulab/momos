@@ -71,7 +71,25 @@ dotnet tool restore && dotnet ef database update --project src/Momos.Host
 
 ## Worker 설치
 
-사내(또는 파일럿) 머신에 `Momos.Worker`를 설치할 때는 [Releases](https://github.com/iyulab/momos/releases)에 올라오는 self-contained 바이너리와 설치 스크립트를 쓴다 — .NET 런타임을 미리 설치할 필요가 없다.
+> **첫 릴리스는 아직 게시되지 않았다.** 이 절이 안내하는 설치 스크립트는 GitHub Releases에서
+> 바이너리를 내려받으므로, 릴리스가 하나도 없는 지금 실행하면 내려받을 대상을 찾지 못하고 실패한다.
+> 그때까지는 아래 「소스에서 빌드」를 쓴다.
+
+릴리스가 게시된 뒤에는 [Releases](https://github.com/iyulab/momos/releases)에 올라오는 self-contained 바이너리와 설치 스크립트를 쓴다 — .NET 런타임을 미리 설치할 필요가 없다.
+
+### 소스에서 빌드 (릴리스 게시 전)
+
+```bash
+git clone https://github.com/iyulab/momos.git
+cd momos
+dotnet publish src/Momos.Worker -c Release -o <설치할 경로>
+```
+
+이 경로는 릴리스 바이너리와 달리 self-contained가 아니라 빌드에 .NET SDK가, 실행에 같은 세대의 .NET 런타임이 필요하다(`global.json`이 고정한 SDK 버전을 따른다).
+
+아래 설치 스크립트가 물어보는 값들은 이 경우 Worker의 설정 파일이나 같은 이름의 환경변수로 직접 넣는다.
+
+### 설치 스크립트 (릴리스 게시 후)
 
 **Linux (x86_64):**
 ```bash
