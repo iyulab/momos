@@ -9,3 +9,6 @@ obj/
 *.db
 *.db-shm
 *.db-wal
+
+# 엄브렐러 워크스페이스의 비공개 작업 문서 — 이 리포에 커밋하지 않는다
+claudedocs/
