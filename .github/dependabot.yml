@@ -23,6 +23,15 @@ updates:
       microsoft-extensions:
         patterns:
           - "Microsoft.Extensions.*"
+    ignore:
+      # These three move together as a test-platform migration, not a version bump:
+      # the 4.x visualstudio runner belongs to the xunit v3 line (this repo is on
+      # v2), that line requires Microsoft.Testing.Platform, and the coverlet
+      # collector is replaced rather than upgraded when leaving VSTest. Scheduling
+      # that migration is a decision, so it is kept out of automated updates.
+      - dependency-name: "xunit.runner.visualstudio"
+      - dependency-name: "Microsoft.NET.Test.Sdk"
+      - dependency-name: "coverlet.collector"
 
   # Keeps both tag references and SHA pins (with their trailing version
   # comment) current across .github/workflows.
