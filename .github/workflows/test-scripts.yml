@@ -28,14 +28,14 @@ jobs:
     name: Test install-worker.sh (bash)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: bash scripts/install-worker.test.sh
 
   test-install-worker-powershell:
     name: Test install-worker.ps1 (pwsh)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - shell: pwsh
         run: ./scripts/install-worker.tests.ps1
 
@@ -43,5 +43,5 @@ jobs:
     name: Test deploy-host.sh (bash)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: bash scripts/deploy-host.test.sh
