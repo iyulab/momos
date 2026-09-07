@@ -59,7 +59,7 @@ public class ServiceCollectionExtensionsTests
         try
         {
             await RunGitAsync(sourceRepo.FullName, "init");
-            await RunGitAsync(sourceRepo.FullName, "commit", "--allow-empty", "-m", "seed", "--author=test <test@example.invalid>");
+            await RunGitAsync(sourceRepo.FullName, "commit", "--allow-empty", "-m", "seed");
 
             var services = new ServiceCollection();
             services.AddMomosWorker(new ConfigurationBuilder().Build());
@@ -113,14 +113,34 @@ public class ServiceCollectionExtensionsTests
         Assert.Same(first, second);
     }
 
+    /// <summary>
+    /// Runs <c>git</c> hermetically: the machine's global and system config are cut off
+    /// and the commit identity is supplied through the environment. Without this the
+    /// seed commit depends on whatever <c>user.name</c>/<c>user.email</c> the machine
+    /// happens to have — present on a developer box, absent on a CI runner, where
+    /// <c>git commit</c> fails with "Committer identity unknown" (exit 128).
+    /// <c>--author</c> alone does not cover it: it sets the author, not the committer.
+    /// Cutting off the config also keeps other ambient settings (<c>commit.gpgsign</c>,
+    /// hooks paths, <c>init.defaultBranch</c>) from leaking into the fixture.
+    /// </summary>
     private static async Task RunGitAsync(string workingDirectory, params string[] args)
     {
-        var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("git", args)
+        var startInfo = new System.Diagnostics.ProcessStartInfo("git", args)
         {
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-        })!;
+        };
+
+        // A path that never exists: git treats a missing config file as empty.
+        startInfo.Environment["GIT_CONFIG_GLOBAL"] = Path.Combine(workingDirectory, ".no-global-gitconfig");
+        startInfo.Environment["GIT_CONFIG_NOSYSTEM"] = "1";
+        startInfo.Environment["GIT_AUTHOR_NAME"] = "test";
+        startInfo.Environment["GIT_AUTHOR_EMAIL"] = "test@example.invalid";
+        startInfo.Environment["GIT_COMMITTER_NAME"] = "test";
+        startInfo.Environment["GIT_COMMITTER_EMAIL"] = "test@example.invalid";
+
+        var process = System.Diagnostics.Process.Start(startInfo)!;
         await process.WaitForExitAsync();
         Assert.Equal(0, process.ExitCode);
     }
