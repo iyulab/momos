@@ -9,7 +9,7 @@
     <PackageVersion Include="IronHive.Agent" Version="0.9.6" />
     <PackageVersion Include="IronHive.Core" Version="0.22.1" />
     <PackageVersion Include="IronHive.Providers.OpenAI.Compatible" Version="0.22.1" />
-    <PackageVersion Include="FluxIndex.SDK" Version="0.28.6" />
+    <PackageVersion Include="FluxIndex.SDK" Version="0.28.8" />
     <PackageVersion Include="FluxIndex.Storage.PostgreSQL" Version="0.28.6" />
     <PackageVersion Include="FluxIndex.Providers.OpenAI" Version="0.28.6" />
     <PackageVersion Include="CodeBeaker.Commands" Version="0.1.0" />
