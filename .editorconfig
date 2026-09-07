@@ -1,0 +1,30 @@
+root = true
+
+# .gitattributes already declares LF as this repository's line ending, and CI runs
+# `dotnet format --verify-no-changes` on Linux, where LF is the default. Without this
+# file the formatter falls back to the platform default, so the same command asks for
+# CRLF on Windows and LF on Linux — a contradiction that only shows up locally.
+#
+# `charset` is deliberately absent. The EF migration files and launchSettings.json are
+# emitted by tooling that writes a UTF-8 BOM, and pinning a charset here would turn every
+# regenerated migration into a formatting failure for no benefit — a BOM is inert in C#.
+[*]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.{json,md}]
+indent_style = space
+indent_size = 2
+
+[*.{ps1,psm1}]
+indent_style = space
+indent_size = 4
