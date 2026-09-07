@@ -6,6 +6,19 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <Deterministic>true</Deterministic>
+    <!--
+      Warnings are kept at zero, so a new one breaks the build where it is introduced
+      rather than joining a backlog nobody reads. Reaching zero was the prerequisite,
+      not the point: warnings that stop nothing accumulate until nobody reads any of them.
+    -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!--
+      The worker is published as a self-contained binary and attached to a public
+      release, and its symbol file travels in the same archive rather than inside the
+      single file. Without this the paths baked into it are wherever the build ran.
+      Set only on a runner, so a local build keeps real paths and stays debuggable.
+    -->
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
 </Project>
