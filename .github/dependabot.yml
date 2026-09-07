@@ -33,6 +33,32 @@ updates:
       - dependency-name: "Microsoft.NET.Test.Sdk"
       - dependency-name: "coverlet.collector"
 
+  # The Host image is what actually runs in production, so the .NET generation its
+  # two stages are built from is a deployed artifact rather than a build detail —
+  # and nothing else in the repository reports when that generation stops receiving
+  # patches. A pull request here is a proposal, not a deployment: the merge is still
+  # a decision.
+  #
+  # The build and runtime stages are grouped deliberately. `sdk` and `aspnet` are
+  # separate images that have to stay on the same generation, and updating them in
+  # separate pull requests would produce a Dockerfile that builds against one .NET
+  # and runs on another. The group matches everything this directory resolves rather
+  # than naming the two images: this directory holds one Dockerfile, so "everything
+  # in it moves together" is the actual rule, and spelling the image names here would
+  # only restate the `FROM` lines somewhere they can fall out of step with.
+  - package-ecosystem: "docker"
+    directory: "/src/Momos.Host"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(docker)"
+    groups:
+      host-image:
+        patterns:
+          - "*"
+
   # Keeps both tag references and SHA pins (with their trailing version
   # comment) current across .github/workflows.
   - package-ecosystem: "github-actions"
