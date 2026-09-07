@@ -11,9 +11,14 @@ public sealed class FakeMcpPluginManager : IMcpPluginManager
 
     public IReadOnlyCollection<string> ConnectedPlugins => ConnectedPluginNames;
 
-    public event EventHandler<McpPluginEventArgs>? PluginConnected;
-    public event EventHandler<McpPluginEventArgs>? PluginDisconnected;
-    public event EventHandler<McpPluginEventArgs>? ToolsChanged;
+    // The interface carries these, but a fake that spawns no process has nothing to
+    // announce. Empty accessors say that outright, and are indistinguishable to a
+    // subscriber from a field-like event nothing ever raises — minus the dead backing
+    // field the compiler warns about. A test that needs one of these to fire should add
+    // a raise method here rather than resurrect the field.
+    public event EventHandler<McpPluginEventArgs>? PluginConnected { add { } remove { } }
+    public event EventHandler<McpPluginEventArgs>? PluginDisconnected { add { } remove { } }
+    public event EventHandler<McpPluginEventArgs>? ToolsChanged { add { } remove { } }
 
     public Task ConnectAsync(string name, McpPluginConfig config, CancellationToken cancellationToken = default)
     {
