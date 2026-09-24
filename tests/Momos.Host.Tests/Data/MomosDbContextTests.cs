@@ -160,6 +160,55 @@ public sealed class MomosDbContextTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SavesAndReloadsAProjectModelWithClaimsRoundTrip()
+    {
+        Guid projectModelId;
+        using (var seedDb = NewContext())
+        {
+            var project = new Project { Name = "p", Purpose = "x", Vision = "x", Scope = "x" };
+            seedDb.Projects.Add(project);
+            var analysisRequest = new InspectionRequest { ProjectId = project.Id, Kind = InspectionRequestKind.Analysis };
+            seedDb.InspectionRequests.Add(analysisRequest);
+
+            var projectModel = new ProjectModel
+            {
+                ProjectId = project.Id,
+                ModelVersion = 1,
+                BaseCommit = "abc123",
+                AnalysisRequestId = analysisRequest.Id,
+                Components = [new ModelComponent("cmp.a", "A", "library", "does things", ["clm.a"])],
+            };
+            projectModel.Claims.Add(new ModelClaim
+            {
+                ProjectModelId = projectModel.Id,
+                Key = "clm.a",
+                Tier = ClaimTier.Fact,
+                Statement = "statement clm.a",
+                Evidence = [new ClaimEvidence(EvidenceKind.Code, Path: "src/App/App.csproj")],
+                Confidence = ClaimConfidence.High,
+            });
+            seedDb.ProjectModels.Add(projectModel);
+            await seedDb.SaveChangesAsync();
+            projectModelId = projectModel.Id;
+        }
+
+        using var freshDb = NewContext();
+        var reloaded = await freshDb.ProjectModels
+            .Include(m => m.Claims)
+            .SingleAsync(m => m.Id == projectModelId);
+
+        var component = Assert.Single(reloaded.Components);
+        Assert.Equal("cmp.a", component.Id);
+        Assert.Equal(["clm.a"], component.Claims);
+
+        var claim = Assert.Single(reloaded.Claims);
+        Assert.Equal(ClaimTier.Fact, claim.Tier);
+        var evidence = Assert.Single(claim.Evidence);
+        Assert.Equal(EvidenceKind.Code, evidence.Kind);
+        Assert.Equal("src/App/App.csproj", evidence.Path);
+    }
+
+    [Fact]
     public async Task DeletingARequestCascadesToItsToolCalls()
     {
         Guid requestId;
