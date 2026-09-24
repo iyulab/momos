@@ -14,6 +14,10 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<InspectionRequest>()
+            .Property(r => r.Kind)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<InspectionRequest>()
             .Property(r => r.Status)
             .HasConversion<string>();
 

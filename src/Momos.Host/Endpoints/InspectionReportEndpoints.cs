@@ -45,6 +45,14 @@ public static class InspectionReportEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Inspection request not found.");
             }
 
+            if (inspectionRequest.Kind != InspectionRequestKind.Inspection)
+            {
+                return Results.Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Wrong completion contract.",
+                    detail: "An analysis request completes with a project model, not an inspection report.");
+            }
+
             if (inspectionRequest.Status != InspectionRequestStatus.Running)
             {
                 return Results.Problem(

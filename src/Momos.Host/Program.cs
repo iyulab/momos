@@ -62,6 +62,7 @@ app.MapProjectEndpoints();
 app.MapInspectionRequestEndpoints();
 app.MapInspectionReportEndpoints();
 app.MapKnowledgeEndpoints();
+app.MapAnalysisRequestEndpoints();
 
 app.Run();
 

@@ -12,8 +12,9 @@ public sealed class WorkerCompatibilityOptions
     /// <summary>
     /// The value is maintained by hand to match the protocol contract the Host ships with —
     /// nothing enforces the pairing, so bumping the wire contract requires bumping this too.
+    /// Protocol 3 added the request <c>Kind</c> to claim-next: a protocol-2 Worker would run an analysis request as an inspection.
     /// </summary>
-    public int MinSupportedProtocolVersion { get; set; } = 2;
+    public int MinSupportedProtocolVersion { get; set; } = 3;
 
     /// <summary>Soft update hint returned only when it differs from the Worker's reported
     /// WorkerVersion. Null (the default) means "unset" — an operator sets this when cutting a
