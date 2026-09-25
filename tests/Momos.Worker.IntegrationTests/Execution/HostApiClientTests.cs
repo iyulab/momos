@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Momos.Host.Contracts;
 using Momos.Host.Endpoints;
+using Momos.Worker.Analysis;
 using Momos.Worker.Execution;
 
 namespace Momos.Worker.IntegrationTests.Execution;
@@ -315,5 +316,96 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
             Assert.True(JsonNode.DeepEquals(sentClaims[i], servedSubmittedPart),
                 $"claim: sent {sentClaims[i]!.ToJsonString()} but served {servedClaim.ToJsonString()}");
         }
+    }
+
+    private async Task<(Guid ProjectId, Guid AnalysisRequestId)> ClaimAnalysisAsync(string projectName)
+    {
+        while ((await _client.ClaimNextAsync(CancellationToken.None)).Request is not null)
+        {
+        }
+
+        var httpClient = _factory.CreateAuthorizedClient();
+        var project = await httpClient.PostAsJsonAsync("/projects",
+            new CreateProjectRequest(projectName, "https://example.invalid/acme.git", null, "purpose", "vision", "scope"));
+        var projectId = (await project.Content.ReadFromJsonAsync<ProjectResponse>())!.Id;
+        await httpClient.PostAsJsonAsync($"/projects/{projectId}/analysis-requests", new CreateAnalysisRequestRequest(null));
+        var claimed = (await _client.ClaimNextAsync(CancellationToken.None)).Request!;
+        Assert.Equal(Momos.Worker.Execution.InspectionRequestKind.Analysis, claimed.Kind);
+        return (projectId, claimed.Id);
+    }
+
+    [Fact]
+    public async Task ExtractedModel_OfAMultiProjectRepository_IsAcceptedByTheHost()
+    {
+        var (projectId, analysisRequestId) = await ClaimAnalysisAsync("acme-extracted");
+        var repository = new ScriptedRepositoryRuntime(new Dictionary<string, string>
+        {
+            ["src/App/App.csproj"] = """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+                  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'"><ProjectReference Include="..\Lib\Lib.csproj" /></ItemGroup>
+                  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'"><ProjectReference Include="../Lib/Lib.csproj" /></ItemGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="..\..\..\Other\Other.csproj" />
+                    <ProjectReference Include="$(RepoRoot)\eng\Build.csproj" />
+                    <ProjectReference Include="..\Broken\Broken.csproj" />
+                  </ItemGroup>
+                </Project>
+                """,
+            ["src/Lib/Lib.csproj"] = """<Project Sdk="Microsoft.NET.Sdk" />""",
+            ["src/Api/Api.csproj"] = """<Project Sdk="Microsoft.NET.Sdk.Web"><ItemGroup><ProjectReference Include="..\lib\lib.csproj" /></ItemGroup></Project>""",
+            ["tests/App.Tests/App.Tests.csproj"] = """<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" /><ProjectReference Include="..\..\src\App\App.csproj" /></ItemGroup></Project>""",
+            ["src/Broken/Broken.csproj"] = "<Project",
+        });
+
+        var extracted = await new ProjectModelExtractor(repository).ExtractAsync(new ExecutionSessionHandle("s"), CancellationToken.None);
+        // Throws on any non-success status, so this line is the Host's validator accepting the model.
+        await _client.SubmitModelAsync(analysisRequestId, extracted, CancellationToken.None);
+
+        var httpClient = _factory.CreateAuthorizedClient();
+        var model = await httpClient.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+        Assert.Equal(repository.Head, model!.BaseCommit);
+        Assert.Equal(["Api", "App", "App.Tests", "Lib"], model.Components.Select(c => c.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(3, model.Relations.Count);
+        Assert.Equal(extracted.Claims.Count, model.Claims.Count);
+        var request = await httpClient.GetFromJsonAsync<InspectionRequestResponse>($"/analysis-requests/{analysisRequestId}", TestJsonOptions.Value);
+        Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Completed, request!.Status);
+    }
+
+    [Fact]
+    public async Task ExtractedModel_OfARepositoryWithNoProjects_IsAcceptedByTheHostAsAnEmptyModel()
+    {
+        var (projectId, analysisRequestId) = await ClaimAnalysisAsync("acme-empty");
+        var repository = new ScriptedRepositoryRuntime(new Dictionary<string, string>());
+
+        var extracted = await new ProjectModelExtractor(repository).ExtractAsync(new ExecutionSessionHandle("s"), CancellationToken.None);
+        await _client.SubmitModelAsync(analysisRequestId, extracted, CancellationToken.None);
+
+        var model = await _factory.CreateAuthorizedClient()
+            .GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+        Assert.Empty(model!.Components);
+        Assert.Empty(model.Claims);
+    }
+
+    /// <summary>Answers the extractor's git commands from an in-memory file set, as a checked-out
+    /// repository would.</summary>
+    private sealed class ScriptedRepositoryRuntime(IReadOnlyDictionary<string, string> files) : IExecutionRuntimeProvider
+    {
+        public string Head { get; } = "0123456789abcdef0123456789abcdef01234567";
+
+        public Task<ExecutionSessionHandle> CreateSessionAsync(ExecutionSessionRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ExecutionSessionHandle("s"));
+
+        public Task<ExecutionCommandResult> ExecuteAsync(ExecutionSessionHandle session, ExecutionCommand command, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ExecutionCommandResult>((command.Name, command.Args) switch
+            {
+                ("git", ["rev-parse", "HEAD"]) => new(true, Head + "\n", null, 1),
+                ("git", ["ls-files", "-z", "--", "*.csproj"]) => new(true, string.Concat(files.Keys.Select(k => k + "\0")), null, 1),
+                ("git", ["show", var spec]) when spec.StartsWith("HEAD:", StringComparison.Ordinal) && files.TryGetValue(spec[5..], out var content)
+                    => new(true, content, null, 1),
+                _ => new(false, null, $"unexpected command: {command.Name} {string.Join(' ', command.Args)}", 1),
+            });
+
+        public Task CloseSessionAsync(ExecutionSessionHandle session, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }
