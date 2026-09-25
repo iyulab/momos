@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
+using Momos.Worker.Analysis;
 using Momos.Worker.Execution;
 using Momos.Worker.Tests.Agent;
 
@@ -58,6 +59,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -86,6 +88,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -114,6 +117,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -143,6 +147,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -165,6 +170,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -190,6 +196,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -218,6 +225,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -243,6 +251,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -267,6 +276,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -305,6 +315,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -342,6 +353,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -377,6 +389,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -405,6 +418,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(5), ConsecutiveFailureLogThreshold = 3 }),
             logger);
@@ -441,6 +455,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -463,6 +478,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             selfUpdater,
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -492,6 +508,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             selfUpdater,
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -523,6 +540,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
+            new ProjectModelExtractor(executionProvider),
             new FakeWorkerSelfUpdater(throwsForFirstNCalls: 5),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(5), ConsecutiveFailureLogThreshold = 3 }),
             logger);
@@ -543,5 +561,71 @@ public sealed class PullExecutionBackgroundServiceTests
         Assert.Equal(2, logger.Messages.Count(m => m.Level == LogLevel.Error));
         var critical = Assert.Single(logger.Messages, m => m.Level == LogLevel.Critical);
         Assert.Contains("suppressing", critical.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AnAnalysisRequest_ExtractsAndSubmitsAModelWithoutRunningTheAgent()
+    {
+        var requestId = Guid.NewGuid();
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(requestId, Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null, InspectionRequestKind.Analysis)],
+            repositoryUrl: "https://example.invalid/acme.git");
+        var chat = new FakeChatClientProvider("should never be asked");
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory(chat);
+        executionProvider.Respond = command => command.Args switch
+        {
+            ["rev-parse", "HEAD"] => new(true, "abc123\n", null, 1),
+            ["ls-files", ..] => new(true, "src/Lib/Lib.csproj\0", null, 1),
+            ["show", "HEAD:src/Lib/Lib.csproj"] => new(true, """<Project Sdk="Microsoft.NET.Sdk" />""", null, 1),
+            ["clone", ..] => new(true, "", null, 1),
+            _ => new(false, null, $"unexpected command: {string.Join(' ', command.Args)}", 1),
+        };
+        var service = new PullExecutionBackgroundService(
+            hostClient, agentLoopFactory, executionProvider, new ProjectModelExtractor(executionProvider),
+            new FakeWorkerSelfUpdater(),
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        var (id, model) = Assert.Single(hostClient.SubmittedModels);
+        Assert.Equal(requestId, id);
+        Assert.Equal("abc123", model.BaseCommit);
+        Assert.Equal("Lib", Assert.Single(model.Components).Name);
+        Assert.Empty(hostClient.SubmittedReports);
+        Assert.Empty(hostClient.SubmittedFailures);
+        // The agent loop never started: no chat client was ever requested.
+        Assert.Null(chat.LastClient);
+        Assert.Single(executionProvider.ClosedSessions);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenExtractionFails_SubmitsAFailureForTheAnalysisRequest()
+    {
+        var requestId = Guid.NewGuid();
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(requestId, Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null, InspectionRequestKind.Analysis)],
+            repositoryUrl: "https://example.invalid/acme.git");
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory("unused");
+        executionProvider.Respond = command => command.Args is ["rev-parse", ..]
+            ? new(false, null, "not a git repository", 1)
+            : new(true, "", null, 1);
+        var service = new PullExecutionBackgroundService(
+            hostClient, agentLoopFactory, executionProvider, new ProjectModelExtractor(executionProvider),
+            new FakeWorkerSelfUpdater(),
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Empty(hostClient.SubmittedModels);
+        var failure = Assert.Single(hostClient.SubmittedFailures);
+        Assert.Equal(requestId, failure.Id);
+        Assert.Contains("not a git repository", failure.Reason);
+        Assert.Single(executionProvider.ClosedSessions);
     }
 }
