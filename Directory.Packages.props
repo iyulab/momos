@@ -9,24 +9,24 @@
     <PackageVersion Include="IronHive.Agent" Version="0.9.6" />
     <PackageVersion Include="IronHive.Core" Version="0.22.1" />
     <PackageVersion Include="IronHive.Providers.OpenAI.Compatible" Version="0.22.1" />
-    <PackageVersion Include="FluxIndex.SDK" Version="0.28.6" />
-    <PackageVersion Include="FluxIndex.Storage.PostgreSQL" Version="0.28.6" />
-    <PackageVersion Include="FluxIndex.Providers.OpenAI" Version="0.28.6" />
+    <PackageVersion Include="FluxIndex.SDK" Version="0.51.4" />
+    <PackageVersion Include="FluxIndex.Storage.PostgreSQL" Version="0.51.4" />
+    <PackageVersion Include="FluxIndex.Providers.OpenAI" Version="0.51.4" />
     <PackageVersion Include="CodeBeaker.Commands" Version="0.1.0" />
     <PackageVersion Include="CodeBeaker.Core" Version="0.1.0" />
     <PackageVersion Include="CodeBeaker.Runtimes" Version="0.1.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
