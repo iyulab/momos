@@ -1,4 +1,4 @@
-using FluxIndex.Providers.OpenAI.Extensions;
+using FluxIndex.Providers.OpenAI.Services;
 using FluxIndex.SDK;
 using FluxIndex.Storage.PostgreSQL;
 using Microsoft.Extensions.Logging;
@@ -24,22 +24,27 @@ public static class KnowledgeServiceCollectionExtensions
                     // after this, which would overwrite a Configure() call here — PostConfigure
                     // runs after all Configure calls and wins.
                     s.PostConfigure<PostgreSQLOptions>(o => o.EmbeddingDimensions = options.EmbeddingDimension);
-                    if (!string.IsNullOrEmpty(options.EmbeddingEndpoint))
-                    {
-                        s.AddOpenAICompatibleEmbedding(
-                            options.EmbeddingEndpoint, options.EmbeddingApiKey,
-                            options.EmbeddingModel, options.EmbeddingDimension);
-                    }
-                    else
-                    {
-                        sp.GetRequiredService<ILogger<FluxIndexKnowledgeIndex>>().LogWarning(
-                            "Momos:Host:Knowledge:EmbeddingEndpoint is not set — the project " +
-                            "knowledge index will use FluxIndex's in-memory embedding fallback, " +
-                            "whose vectors are not semantically meaningful. Set it (and " +
-                            "EmbeddingApiKey) to a real embedding endpoint for knowledge search " +
-                            "to work.");
-                    }
                 });
+            if (!string.IsNullOrEmpty(options.EmbeddingEndpoint))
+            {
+                // Through the builder, not ConfigureServices: Build() registers its own default
+                // (in-memory) embedding service after everything ConfigureServices added unless
+                // the builder was told a custom one is in use, and the later registration wins.
+                builder.UseEmbeddingService(fluxServices => new OpenAICompatibleEmbeddingService(
+                    options.EmbeddingEndpoint, options.EmbeddingApiKey,
+                    options.EmbeddingModel, options.EmbeddingDimension,
+                    fluxServices.GetRequiredService<ILoggerFactory>().CreateLogger<OpenAICompatibleEmbeddingService>()));
+            }
+            else
+            {
+                sp.GetRequiredService<ILogger<FluxIndexKnowledgeIndex>>().LogWarning(
+                    "Momos:Host:Knowledge:EmbeddingEndpoint is not set — the project " +
+                    "knowledge index will use FluxIndex's in-memory embedding fallback, " +
+                    "whose vectors are not semantically meaningful. Set it (and " +
+                    "EmbeddingApiKey) to a real embedding endpoint for knowledge search " +
+                    "to work.");
+            }
+
             builder.Options.GraphStore.AutoMigrate = false;
             builder.Options.SemanticCache.AutoMigrate = false;
 
