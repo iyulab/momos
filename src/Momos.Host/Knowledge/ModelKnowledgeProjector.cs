@@ -17,8 +17,9 @@ public sealed class ModelKnowledgeProjector(IKnowledgeIndex index, ILogger<Model
     /// <summary>The stable index document id for one claim of one project. Claim keys have no
     /// length bound, so (project, key) is hashed to a fixed-length id; the readable identity is
     /// kept in the document metadata (<c>ProjectId</c>, <c>ClaimKey</c>).</summary>
-    // TODO(upstream): FluxIndex.Storage.PostgreSQL 0.28.6 stores document ids in varchar(50) with
-    // no validation at the API; ids are hashed to a fixed length until the column is widened.
+    // TODO(upstream): FluxIndex.Storage.PostgreSQL stores document ids in varchar(50) with no
+    // validation at the API (still the case in 0.51.4); ids are hashed to a fixed length until the
+    // column is widened.
     public static string DocumentId(Guid projectId, string claimKey)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{projectId:N}:{claimKey}"));
