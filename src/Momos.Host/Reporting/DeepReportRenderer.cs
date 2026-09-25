@@ -17,6 +17,9 @@ public sealed record ReportDocument(string Path, string Content);
 /// instead of it.
 /// </summary>
 /// <remarks>
+/// Free text (statements, corrections, names) is markdown whose raw HTML is shown literally: a
+/// statement quoting <c>&lt;OutputType&gt;</c> reads as that instead of vanishing as an unknown
+/// tag. Code spans in it are kept as written.
 /// The output is byte-for-byte the same on every platform: lines end in <c>\n</c> and dates use
 /// the invariant culture. Every relative link points at a document in the same tree; a reference
 /// to something the model does not contain is rendered as plain text rather than a broken link.
@@ -75,7 +78,7 @@ public static partial class DeepReportRenderer
               .Line("| Component | Kind |").Line("|---|---|");
             foreach (var c in tree.Components)
             {
-                md.Line($"| {Cell(tree.ComponentLink(c.Id, "components/"))} | {Cell(c.Kind)} |");
+                md.Line($"| {Cell(tree.ComponentLink(c.Id, "components/"))} | {Cell(Inline(c.Kind))} |");
             }
 
             md.Line();
@@ -135,7 +138,7 @@ public static partial class DeepReportRenderer
               .Line("| Claim | Tier | Confidence | Status | Statement |").Line("|---|---|---|---|---|");
             foreach (var c in tree.Claims)
             {
-                md.Line($"| {Cell(tree.ClaimLink(c.Key, "claims/"))} | {c.Tier} | {c.Confidence} | {c.Status} | {Cell(c.Statement)} |");
+                md.Line($"| {Cell(tree.ClaimLink(c.Key, "claims/"))} | {c.Tier} | {c.Confidence} | {c.Status} | {Cell(Inline(c.Statement))} |");
             }
 
             md.Line();
@@ -181,9 +184,9 @@ public static partial class DeepReportRenderer
     private static string ClaimPage(ModelClaim claim, Tree tree)
     {
         var md = new StringBuilder()
-            .Line($"# Claim {Code(claim.Key)}")
+            .Line($"# {Title(claim.Statement)}")
             .Line()
-            .Line("Back to the [summary](../index.md).")
+            .Line($"Claim {Code(claim.Key)}. Back to the [summary](../index.md).")
             .Line()
             .Line("| Tier | Confidence | Status |").Line("|---|---|---|")
             .Line($"| {claim.Tier} | {claim.Confidence} | {claim.Status} |")
@@ -214,7 +217,7 @@ public static partial class DeepReportRenderer
 
     private static string Evidence(ClaimEvidence e, Tree tree) => e.Kind switch
     {
-        EvidenceKind.Code => $"{Code(e.Path ?? "")}{(e.Lines is null ? "" : $":{Inline(e.Lines)}")}{(e.Symbol is null ? "" : $" — {Inline(e.Symbol)}")}",
+        EvidenceKind.Code => $"{Code(e.Path ?? "")}{(e.Lines is null ? "" : $":{Inline(e.Lines)}")}{(e.Symbol is null ? "" : $" — {Code(e.Symbol)}")}",
         EvidenceKind.Commit => $"commit {Code(e.Sha ?? "")}",
         EvidenceKind.PullRequest => $"pull request {Inline(e.Url ?? "")}",
         EvidenceKind.Issue => $"issue {Inline(e.Url ?? "")}",
@@ -226,13 +229,56 @@ public static partial class DeepReportRenderer
 
     private static string Date(DateTimeOffset at) => at.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>Text that must stay on one line (headings, list items).</summary>
-    private static string Inline(string text) => text.ReplaceLineEndings(" ");
+    private const int TitleLength = 80;
+
+    /// <summary>Free text that must stay on one line (headings, list items).</summary>
+    private static string Inline(string text) => EscapeHtml(OneLine(text));
 
     /// <summary>A paragraph of free text, with its line endings normalized to <c>\n</c>.</summary>
-    private static string Block(string text) => text.ReplaceLineEndings("\n").Trim('\n');
+    private static string Block(string text) => EscapeHtml(text.ReplaceLineEndings("\n").Trim('\n'));
 
-    private static string Cell(string text) => Inline(text).Replace("|", @"\|", StringComparison.Ordinal);
+    private static string OneLine(string text) => text.ReplaceLineEndings(" ");
+
+    /// <summary>A page title from free text: the text itself, or — past <see cref="TitleLength"/>
+    /// characters — its words up to that length followed by an ellipsis.</summary>
+    private static string Title(string text)
+    {
+        var line = OneLine(text).Trim();
+        if (line.Length > TitleLength)
+        {
+            var cut = line.LastIndexOf(' ', TitleLength);
+            line = $"{line[..(cut > 0 ? cut : TitleLength)].TrimEnd()}…";
+        }
+
+        return EscapeHtml(line);
+    }
+
+    /// <summary>Escapes <c>&amp;</c>, <c>&lt;</c> and <c>&gt;</c> outside code spans, so markdown
+    /// formatting still works but raw HTML is shown as text. A code span is a run of backticks,
+    /// its content, and a run of the same length.</summary>
+    private static string EscapeHtml(string text)
+    {
+        var escaped = new StringBuilder(text.Length);
+        var last = 0;
+        foreach (Match span in CodeSpan().Matches(text))
+        {
+            escaped.Append(EscapeHtmlChars(text[last..span.Index])).Append(span.Value);
+            last = span.Index + span.Length;
+        }
+
+        return escaped.Append(EscapeHtmlChars(text[last..])).ToString();
+    }
+
+    private static string EscapeHtmlChars(string text) => text
+        .Replace("&", "&amp;", StringComparison.Ordinal)
+        .Replace("<", "&lt;", StringComparison.Ordinal)
+        .Replace(">", "&gt;", StringComparison.Ordinal);
+
+    [GeneratedRegex(@"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", RegexOptions.Singleline)]
+    private static partial Regex CodeSpan();
+
+    /// <summary>A table cell from markdown that is already rendered; only pipes are escaped.</summary>
+    private static string Cell(string text) => OneLine(text).Replace("|", @"\|", StringComparison.Ordinal);
 
     private static string LinkText(string text) => Inline(text)
         .Replace(@"\", @"\\", StringComparison.Ordinal)
@@ -242,13 +288,13 @@ public static partial class DeepReportRenderer
     /// <summary>An inline code span that survives backticks in its content.</summary>
     private static string Code(string text)
     {
-        var inline = Inline(text);
+        var inline = OneLine(text);
         return inline.Contains('`', StringComparison.Ordinal) ? $"`` {inline} ``" : $"`{inline}`";
     }
 
     // Mermaid's entity codes keep quotes, brackets and pipes from ending a label early; '#' goes
     // first so the entity codes introduced after it are not escaped again.
-    private static string MermaidLabel(string text) => Inline(text)
+    private static string MermaidLabel(string text) => OneLine(text)
         .Replace("#", "#35;", StringComparison.Ordinal)
         .Replace("\"", "#quot;", StringComparison.Ordinal)
         .Replace("[", "#91;", StringComparison.Ordinal)

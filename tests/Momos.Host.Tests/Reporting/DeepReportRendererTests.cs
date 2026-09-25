@@ -50,6 +50,12 @@ public sealed partial class DeepReportRendererTests
         configure?.Invoke(m);
     });
 
+    private static void ReplaceClaim(ProjectModel model, ModelClaim claim)
+    {
+        model.Claims.Remove(model.Claims.Single(c => c.Key == claim.Key));
+        model.Claims.Add(claim);
+    }
+
     private static string Doc(IReadOnlyList<ReportDocument> tree, string path) => Assert.Single(tree, d => d.Path == path).Content;
 
     [GeneratedRegex(@"\]\(([^)#\s]+\.md)(#[^)]*)?\)")]
@@ -282,5 +288,81 @@ public sealed partial class DeepReportRendererTests
             m.Components[1] = m.Components[1] with { Name = "Lib|Core" })), "index.md");
 
         Assert.Contains(@"Lib\|Core", index);
+    }
+
+    [Fact]
+    public void FreeText_ShowsHtmlLiterallyInsteadOfLettingItRender()
+    {
+        var claim = Doc(DeepReportRenderer.Render("acme", Model(m =>
+        {
+            var c = m.Claims.Single(c => c.Key == "clm.app");
+            c.Status = ClaimStatus.Corrected;
+            c.Correction = "It is an executable because of <OutputType>Exe</OutputType> & nothing else";
+        })), "claims/clm.app.md");
+
+        Assert.Contains("> It is an executable because of &lt;OutputType&gt;Exe&lt;/OutputType&gt; &amp; nothing else", claim);
+        Assert.DoesNotContain("<OutputType>", claim);
+    }
+
+    [Fact]
+    public void ANameInATableLink_IsEscapedOnce()
+    {
+        var index = Doc(DeepReportRenderer.Render("acme", Model(m =>
+            m.Components[1] = m.Components[1] with { Name = "Lib <core> & more" })), "index.md");
+
+        Assert.Contains("| [Lib &lt;core&gt; &amp; more](components/cmp.lib.md) |", index);
+        Assert.DoesNotContain("&amp;amp;", index);
+        Assert.DoesNotContain("&amp;lt;", index);
+    }
+
+    [Fact]
+    public void FreeText_KeepsItsCodeSpansAsWritten()
+    {
+        var claim = Doc(DeepReportRenderer.Render("acme", Model(m =>
+            ReplaceClaim(m, Fact(m, "clm.app", "App sets `<OutputType>Exe</OutputType>` and ``a `tick` <here>``")))),
+            "claims/clm.app.md");
+
+        Assert.Contains("App sets `<OutputType>Exe</OutputType>` and ``a `tick` <here>``", claim);
+    }
+
+    [Fact]
+    public void AnEvidenceSymbol_IsACodeSpan()
+    {
+        var claim = Doc(DeepReportRenderer.Render("acme", Model(m =>
+            ReplaceClaim(m, new ModelClaim
+            {
+                ProjectModelId = m.Id,
+                Key = "clm.app",
+                Tier = ClaimTier.Fact,
+                Statement = "App is a .NET project",
+                Evidence = [new ClaimEvidence(EvidenceKind.Code, Path: "src/App/Program.cs", Lines: "3-9", Symbol: "List<Item>.Add")],
+                Confidence = ClaimConfidence.High,
+            }))),
+            "claims/clm.app.md");
+
+        Assert.Contains("`src/App/Program.cs`:3-9 — `List<Item>.Add`", claim);
+    }
+
+    [Fact]
+    public void AClaimPage_IsTitledByItsStatement_AndStillNamesItsKey()
+    {
+        var claim = Doc(DeepReportRenderer.Render("acme", Model()), "claims/clm.ref.md");
+
+        Assert.StartsWith("# App references Lib\n", claim);
+        Assert.Contains("Claim `clm.ref`", claim);
+    }
+
+    [Fact]
+    public void ALongStatement_IsShortenedInTheTitleButShownInFull()
+    {
+        var statement = string.Join(' ', Enumerable.Repeat("word", 40));
+        var claim = Doc(DeepReportRenderer.Render("acme", Model(m =>
+            ReplaceClaim(m, Fact(m, "clm.app", statement)))), "claims/clm.app.md");
+
+        var title = claim[..claim.IndexOf('\n')];
+        Assert.EndsWith("…", title);
+        Assert.InRange(title.Length, 10, 2 + 80 + 1);
+        Assert.DoesNotContain("wor…", title);
+        Assert.Contains(statement, claim);
     }
 }
