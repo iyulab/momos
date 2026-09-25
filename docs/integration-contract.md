@@ -48,14 +48,18 @@ JSON 필드 이름은 camelCase이고, enum 값은 PascalCase 문자열로 오�
 - **진술** — 각 진술은 안정된 `key`, 등급 `tier`(`Fact`·`History`·`Assessment`), `statement`, 근거 목록
   `evidence`(`kind`: `Code`·`Commit`·`PullRequest`·`Issue`·`Finding`·`Claim`), `confidence`(`High`·`Medium`·`Low`),
   판정 상태 `status`(`Proposed`·`Confirmed`·`Disputed`·`Corrected`)와 `correction`·`correctedAt`을 갖는다. 근거 없는
-  진술은 받아들여지지 않는다. 결정(decision)의 이유가 기록되지 않았으면 `rationale`은 지어낸 값이 아니라
+  진술은 받아들여지지 않는다. 근거는 종류마다 그것을 찾아갈 식별자를 가져야 한다 — `Code`는 `path`, `Commit`은 `sha`,
+  `PullRequest`·`Issue`는 `url`, `Finding`은 `inspectionRequestId`, `Claim`은 같은 모델 안의 `claimKey`. 구성 요소·패턴·결정·
+  의도의 id는 모델 안에서 유일해야 하고, 관계와 패턴이 가리키는 구성 요소는 모델 안에 있어야 한다. 어긋나면 `400`이다. 결정(decision)의 이유가 기록되지 않았으면 `rationale`은 지어낸 값이 아니라
   `unrecorded`다.
 - **딥 리포트** — `GET /projects/{id}/model/report`는 `{modelVersion, baseCommit, documents: [{path, content}]}`를
   돌려준다. `documents`는 마크다운 문서 트리다 — `index.md`가 요약(구조 도식·구성 요소 목록 등)이고,
   `components/*.md`와 `claims/*.md`가 구성 요소·진술 하나씩을 담으며, 문서 사이의 링크는 모두 상대 경로다. 줄 끝은
   LF이고 출력은 플랫폼과 무관하게 같다. 파일 이름은 id가 소문자·숫자·`.`·`_`·`-`로만 된 짧은 값이면 그대로 쓰고,
   그렇지 않으면 읽을 수 있는 슬러그에 원래 id의 짧은 해시를 붙인다. 문서 하나만 원하면 `index.md`를 읽는다. 프로젝트나
-  모델이 없으면 `404`다. 리포트 본문은 영어로 렌더링된다.
+  모델이 없으면 `404`다. 리포트 본문은 영어로 렌더링된다. 진술 페이지의 제목은 진술 문장이다(80자가 넘으면 줄여 쓰고
+  본문에는 전문). 진술·교정문 같은 자유 텍스트는 마크다운으로 넣되 raw HTML은 문자 그대로 보인다 — 코드 스팬 밖의
+  `&`·`<`·`>`는 이스케이프된다.
 - **교정** — `POST /projects/{id}/model/claims/{claimKey}/corrections`의 본문은 `{status, correction}`이다. `status`는
   `Confirmed`·`Disputed`·`Corrected` 중 하나이고, `Proposed`면 `400`, `Corrected`인데 `correction`이 비어 있으면
   `400`이다. `claimKey`가 최신 모델에 없으면 `404`이며, 성공하면 갱신된 진술을 돌려준다. 원래 진술은 고쳐지거나

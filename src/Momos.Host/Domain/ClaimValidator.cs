@@ -9,7 +9,8 @@ public sealed record ModelElements(
 
 /// <summary>
 /// Enforces the evidence contract on a submitted model: no claim of any tier without evidence,
-/// and no model element without a claim behind it. An assessment is an interpretation, so it must
+/// no evidence without the identifier that locates it, no reference that does not resolve inside
+/// the model, and no model element without a claim behind it. An assessment is an interpretation, so it must
 /// point at the claim it interprets, and it cannot rise above low confidence unless a reproduced
 /// finding backs it.
 /// </summary>
@@ -35,9 +36,18 @@ public static class ClaimValidator
                 continue;
             }
 
-            if (claim.Evidence.Any(e => e.Kind == EvidenceKind.Code && string.IsNullOrWhiteSpace(e.Path)))
+            // Evidence a developer cannot follow is not evidence: each kind must carry the
+            // identifier that locates it.
+            foreach (var kind in claim.Evidence.Where(e => !Locates(e)).Select(e => e.Kind).Distinct())
             {
-                errors.Add($"Claim '{claim.Key}' has code evidence without a path.");
+                errors.Add($"Claim '{claim.Key}' has {kind} evidence without {RequiredField(kind)}.");
+            }
+
+            // Tiers other than Assessment may also cite another claim; the citation must resolve.
+            if (claim.Tier != ClaimTier.Assessment
+                && claim.Evidence.Any(e => e.Kind == EvidenceKind.Claim && e.ClaimKey is { } k && (k == claim.Key || !keys.Contains(k))))
+            {
+                errors.Add($"Claim '{claim.Key}' references a claim that is not in this model.");
             }
 
             switch (claim.Tier)
@@ -65,6 +75,18 @@ public static class ClaimValidator
                     }
 
                     break;
+            }
+        }
+
+        RequireUniqueIds("Component", elements.Components.Select(c => c.Id));
+        RequireUniqueIds("Pattern", elements.Patterns.Select(p => p.Id));
+        RequireUniqueIds("Decision", elements.Decisions.Select(d => d.Id));
+        RequireUniqueIds("Intent", elements.Intents.Select(i => i.Id));
+        void RequireUniqueIds(string element, IEnumerable<string> ids)
+        {
+            foreach (var id in ids.GroupBy(id => id, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key))
+            {
+                errors.Add($"{element} id '{id}' appears more than once.");
             }
         }
 
@@ -98,6 +120,10 @@ public static class ClaimValidator
         foreach (var p in elements.Patterns)
         {
             RequireClaims($"Pattern '{p.Id}'", p.Claims);
+            if (p.AppliesTo.Any(id => !componentIds.Contains(id)))
+            {
+                errors.Add($"Pattern '{p.Id}' applies to a component that is not in this model.");
+            }
         }
 
         foreach (var d in elements.Decisions)
@@ -118,4 +144,24 @@ public static class ClaimValidator
 
         return errors;
     }
+
+    private static bool Locates(ClaimEvidence e) => e.Kind switch
+    {
+        EvidenceKind.Code => !string.IsNullOrWhiteSpace(e.Path),
+        EvidenceKind.Commit => !string.IsNullOrWhiteSpace(e.Sha),
+        EvidenceKind.PullRequest or EvidenceKind.Issue => !string.IsNullOrWhiteSpace(e.Url),
+        EvidenceKind.Finding => e.InspectionRequestId is not null,
+        EvidenceKind.Claim => !string.IsNullOrWhiteSpace(e.ClaimKey),
+        _ => false,
+    };
+
+    private static string RequiredField(EvidenceKind kind) => kind switch
+    {
+        EvidenceKind.Code => "a path",
+        EvidenceKind.Commit => "a sha",
+        EvidenceKind.PullRequest or EvidenceKind.Issue => "a url",
+        EvidenceKind.Finding => "an inspection request id",
+        EvidenceKind.Claim => "a claim key",
+        _ => "a known kind",
+    };
 }
