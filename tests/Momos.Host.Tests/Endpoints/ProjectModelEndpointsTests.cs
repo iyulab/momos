@@ -251,6 +251,58 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
     }
 
     [Fact]
+    public async Task GetReport_ReturnsTheDocumentTree()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+
+        var report = await _client.GetFromJsonAsync<ProjectModelReportResponse>($"/projects/{projectId}/model/report", TestJsonOptions.Value);
+
+        Assert.Equal(1, report!.ModelVersion);
+        Assert.Equal("abc123", report.BaseCommit);
+        var index = Assert.Single(report.Documents, d => d.Path == "index.md").Content;
+        Assert.Contains("# acme-model", index);
+        Assert.Contains("```mermaid", index);
+        Assert.Contains(report.Documents, d => d.Path == "claims/clm.ref.md");
+    }
+
+    [Fact]
+    public async Task GetReport_AfterACorrection_ShowsTheVerdictBesideTheOriginalClaim()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+        await CorrectAsync(_client, projectId, "clm.ref", new CorrectClaimRequest(ClaimStatus.Corrected, "Lib is loaded as a plugin"));
+
+        var report = await _client.GetFromJsonAsync<ProjectModelReportResponse>($"/projects/{projectId}/model/report", TestJsonOptions.Value);
+
+        var claim = Assert.Single(report!.Documents, d => d.Path == "claims/clm.ref.md").Content;
+        Assert.Contains("App references Lib", claim);
+        Assert.Contains("> Lib is loaded as a plugin", claim);
+        Assert.Contains("Corrected", claim);
+        Assert.Contains("| Corrected |", Assert.Single(report.Documents, d => d.Path == "index.md").Content);
+    }
+
+    [Fact]
+    public async Task GetReport_ForAProjectNeverAnalyzed_Returns404()
+    {
+        var project = await _client.PostAsJsonAsync("/projects",
+            new CreateProjectRequest("acme-unreported", null, null, "purpose", "vision", "scope"));
+        var projectId = (await project.Content.ReadFromJsonAsync<ProjectResponse>())!.Id;
+
+        var response = await _client.GetAsync($"/projects/{projectId}/model/report");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetReport_ForAnUnknownProject_Returns404()
+    {
+        var response = await _client.GetAsync($"/projects/{Guid.NewGuid()}/model/report");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task GetModel_ForAProjectNeverAnalyzed_Returns404()
     {
         var project = await _client.PostAsJsonAsync("/projects",

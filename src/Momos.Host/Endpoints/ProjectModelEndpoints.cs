@@ -3,6 +3,7 @@ using Momos.Host.Contracts;
 using Momos.Host.Data;
 using Momos.Host.Domain;
 using Momos.Host.Knowledge;
+using Momos.Host.Reporting;
 
 namespace Momos.Host.Endpoints;
 
@@ -29,6 +30,26 @@ public static class ProjectModelEndpoints
         })
             .WithName("GetProjectModel")
             .Produces<ProjectModelResponse>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        app.MapGet("/projects/{projectId:guid}/model/report", async (Guid projectId, MomosDbContext db, CancellationToken cancellationToken) =>
+        {
+            var project = await db.Projects.AsNoTracking().SingleOrDefaultAsync(p => p.Id == projectId, cancellationToken);
+            if (project is null)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Project not found.");
+            }
+
+            var model = await ProjectModelQueries.LatestAsync(db, projectId, cancellationToken);
+            return model is null
+                ? Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "This project has no model yet.")
+                : Results.Ok(new ProjectModelReportResponse(
+                    model.ModelVersion,
+                    model.BaseCommit,
+                    DeepReportRenderer.Render(project.Name, model).Select(d => new ReportDocumentDto(d.Path, d.Content)).ToList()));
+        })
+            .WithName("GetProjectModelReport")
+            .Produces<ProjectModelReportResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         // The claim key is matched ordinally against the latest model only: a verdict on an older

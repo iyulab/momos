@@ -134,3 +134,12 @@ public sealed record ProjectModelResponse(
         m.Intents.Select(i => new ModelIntentDto(i.Id, i.Statement, i.Source, i.Claims)).ToList(),
         m.Claims.OrderBy(c => c.Key, StringComparer.Ordinal).Select(ClaimResponse.FromEntity).ToList());
 }
+
+public sealed record ReportDocumentDto(string Path, string Content);
+
+/// <summary>The deep report of the latest model as a tree of markdown documents — <c>index.md</c>
+/// is the summary, <c>components/*.md</c> and <c>claims/*.md</c> hold one component or claim
+/// each, and every link between them is relative. A generic <c>{path, content}</c> shape, so any
+/// static-site builder that takes a markdown tree can publish it; a reader who wants one document
+/// reads <c>index.md</c>.</summary>
+public sealed record ProjectModelReportResponse(int ModelVersion, string BaseCommit, IReadOnlyList<ReportDocumentDto> Documents);
