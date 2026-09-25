@@ -1,6 +1,7 @@
 using Momos.Host.Contracts;
 using Momos.Host.Data;
 using Momos.Host.Domain;
+using Momos.Host.Knowledge;
 
 namespace Momos.Host.Endpoints;
 
@@ -54,7 +55,8 @@ public static class AnalysisRequestEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         app.MapPost("/analysis-requests/{id:guid}/model", async (
-            Guid id, SubmitProjectModelRequest request, MomosDbContext db, CancellationToken cancellationToken) =>
+            Guid id, SubmitProjectModelRequest request, MomosDbContext db, ModelKnowledgeProjector projector,
+            CancellationToken cancellationToken) =>
         {
             var analysisRequest = await db.InspectionRequests.FindAsync([id], cancellationToken);
             if (analysisRequest is null || analysisRequest.Kind != InspectionRequestKind.Analysis)
@@ -127,6 +129,10 @@ public static class AnalysisRequestEndpoints
             db.ProjectModels.Add(model);
             analysisRequest.Status = InspectionRequestStatus.Completed;
             await db.SaveChangesAsync(cancellationToken);
+
+            // After the commit: the index is derived from the stored model, and projection is
+            // best-effort, so a failure here never turns an accepted model into an error.
+            await projector.ProjectModelAsync(model, previous, cancellationToken);
 
             return Results.Created($"/projects/{model.ProjectId}/model", ProjectModelResponse.FromEntity(model));
         })

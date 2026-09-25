@@ -37,6 +37,7 @@ builder.Services
     .ValidateDataAnnotations()
     .ValidateOnStart();
 builder.Services.AddKnowledgeIndex();
+builder.Services.AddSingleton<ModelKnowledgeProjector>();
 
 var app = builder.Build();
 

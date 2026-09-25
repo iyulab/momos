@@ -43,6 +43,17 @@ public static class KnowledgeServiceCollectionExtensions
             builder.Options.GraphStore.AutoMigrate = false;
             builder.Options.SemanticCache.AutoMigrate = false;
 
+            // Documents here are replaced and deleted (model claims are re-projected on every
+            // analysis and correction), but the retriever's search-result cache is not
+            // invalidated when the indexer deletes or replaces a document, so a repeated query
+            // would keep returning removed or outdated content until the entry expires. Any
+            // cache provider other than the default "Memory" keeps Build() from registering the
+            // in-memory search cache, so the retriever runs without one. The EnableSearchCache
+            // flag is not consulted by the retriever, so it cannot be used for this.
+            // TODO(upstream): re-enable once FluxIndex invalidates cached search results on
+            // document delete/re-index.
+            builder.Options.Cache.CacheProvider = "None";
+
             return builder.AddPostgreSQLStorage().Build();
         });
         services.AddSingleton<IKnowledgeIndex, FluxIndexKnowledgeIndex>();
@@ -55,6 +66,10 @@ public interface IKnowledgeIndex
     Task IndexAsync(string content, string documentId, Dictionary<string, object> metadata, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken);
+
+    /// <summary>Removes a document and all of its chunks from the index. Deleting a document
+    /// that was never indexed is not an error.</summary>
+    Task DeleteAsync(string documentId, CancellationToken cancellationToken);
 }
 
 public sealed record KnowledgeSearchHit(string Content, double Score);
@@ -63,6 +78,11 @@ internal sealed class FluxIndexKnowledgeIndex(IFluxIndexContext context) : IKnow
 {
     public Task IndexAsync(string content, string documentId, Dictionary<string, object> metadata, CancellationToken cancellationToken) =>
         context.Indexer.IndexDocumentAsync(content, documentId, metadata, cancellationToken);
+
+    // DeleteByDocumentIdAsync removes the vector chunks and the keyword postings together; its
+    // bool result only says whether anything existed, which callers don't need.
+    public Task DeleteAsync(string documentId, CancellationToken cancellationToken) =>
+        context.Indexer.DeleteByDocumentIdAsync(documentId, cancellationToken);
 
     public async Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken)
     {

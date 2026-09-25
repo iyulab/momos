@@ -322,5 +322,8 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
 
         public Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("simulated knowledge index failure");
+
+        public Task DeleteAsync(string documentId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("simulated knowledge index failure");
     }
 }
