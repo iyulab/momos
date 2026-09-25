@@ -9,9 +9,9 @@
     <PackageVersion Include="IronHive.Agent" Version="0.19.0" />
     <PackageVersion Include="IronHive.Core" Version="0.38.0" />
     <PackageVersion Include="IronHive.Providers.OpenAI.Compatible" Version="0.38.0" />
-    <PackageVersion Include="FluxIndex.SDK" Version="0.51.4" />
-    <PackageVersion Include="FluxIndex.Storage.PostgreSQL" Version="0.51.4" />
-    <PackageVersion Include="FluxIndex.Providers.OpenAI" Version="0.51.4" />
+    <PackageVersion Include="FluxIndex.SDK" Version="0.52.0" />
+    <PackageVersion Include="FluxIndex.Storage.PostgreSQL" Version="0.52.0" />
+    <PackageVersion Include="FluxIndex.Providers.OpenAI" Version="0.52.0" />
     <PackageVersion Include="CodeBeaker.Commands" Version="0.1.0" />
     <PackageVersion Include="CodeBeaker.Core" Version="0.1.0" />
     <PackageVersion Include="CodeBeaker.Runtimes" Version="0.1.0" />

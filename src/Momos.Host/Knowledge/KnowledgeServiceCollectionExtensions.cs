@@ -43,20 +43,6 @@ public static class KnowledgeServiceCollectionExtensions
             builder.Options.GraphStore.AutoMigrate = false;
             builder.Options.SemanticCache.AutoMigrate = false;
 
-            // Documents here are replaced and deleted (model claims are re-projected on every
-            // analysis and correction), but the retriever's search-result cache is not
-            // invalidated when the indexer deletes or replaces a document, so a repeated query
-            // would keep returning removed or outdated content until the entry expires. This
-            // reaches HybridSearchAsync too: its vector leg is a call to the cached vector
-            // SearchAsync. Any cache provider other than the default "Memory" keeps Build() from
-            // registering the in-memory search cache, so the retriever runs without one. The
-            // EnableSearchCache flag is not consulted by the retriever, so it cannot be used for
-            // this.
-            // TODO(upstream): re-enable once FluxIndex invalidates cached search results on
-            // document delete/re-index. Re-verified on FluxIndex 0.51.4: still not invalidated,
-            // and a claim dropped by re-analysis stays searchable with the cache on.
-            builder.Options.Cache.CacheProvider = "None";
-
             return builder.AddPostgreSQLStorage().Build();
         });
         services.AddSingleton<IKnowledgeIndex, FluxIndexKnowledgeIndex>();
