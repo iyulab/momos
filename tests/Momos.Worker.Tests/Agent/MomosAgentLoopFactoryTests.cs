@@ -79,6 +79,31 @@ public class MomosAgentLoopFactoryTests
     }
 
     /// <summary>
+    /// The provider sends no thinking controls when <see cref="ChatOptions.Reasoning"/> is unset,
+    /// which lets a reasoning model think before every reply. The engine's chat-client pipeline
+    /// must therefore ask for no reasoning explicitly on every model call the loop makes.
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_TheChatClientIsAskedForNoReasoning()
+    {
+        var services = new ServiceCollection();
+        var chatClientProvider = new FakeChatClientProvider("hi");
+        services.AddSingleton<IChatClientProvider>(chatClientProvider);
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
+        services.AddSingleton<IExecutionRuntimeProvider>(new FakeExecutionRuntimeProvider());
+        services.AddSingleton<IHostApiClient>(new FakeHostApiClient([]));
+        services.AddIronHiveAgentEngine();
+        var factory = services.BuildServiceProvider().GetRequiredService<IAgentLoopFactory>();
+
+        var agentLoop = await factory.CreateAsync();
+        await agentLoop.RunAsync("look for problems in this repository");
+
+        var reasoning = chatClientProvider.LastClient?.LastOptions?.Reasoning;
+        Assert.NotNull(reasoning);
+        Assert.Equal(ReasoningEffort.None, reasoning!.Effort);
+    }
+
+    /// <summary>
     /// Proves the tool survives <c>IToolRetriever</c> (registered as
     /// <c>KeywordToolRetriever</c> — see <see cref="ServiceCollectionExtensions.AddIronHiveAgentEngine"/>)
     /// on its way from <c>AgentOptions.Tools</c> to what the chat client actually receives.

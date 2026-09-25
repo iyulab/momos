@@ -1,5 +1,6 @@
 using IronHive.Agent.Providers;
 using IronHive.Core.Microsoft;
+using IronHive.Providers.OpenAI.Compatible;
 using IronHive.Providers.OpenAI.Compatible.GpuStack;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
@@ -7,7 +8,8 @@ using Microsoft.Extensions.Options;
 namespace Momos.Worker.Agent;
 
 /// <summary>
-/// Bridges IronHive's GPUStack message generator (<c>IronHive.Providers.OpenAI.Compatible</c>)
+/// Bridges IronHive's OpenAI-compatible message generator (<c>IronHive.Providers.OpenAI.Compatible</c>),
+/// aimed at GPUStack's OpenAI-compatible surface by <see cref="GpuStackConfig.ToOpenAICompatible"/>,
 /// into <c>IronHive.Agent</c>'s <see cref="IChatClientProvider"/> extension point
 /// via <see cref="ChatClientAdapter"/> — the composition
 /// <c>IronHive.Agent</c> expects consumers to bring themselves, since it ships
@@ -15,7 +17,7 @@ namespace Momos.Worker.Agent;
 /// </summary>
 public sealed class GpuStackChatClientProvider(IOptions<GpuStackLlmOptions> options) : IChatClientProvider
 {
-    private GpuStackMessageGenerator? _generator;
+    private OpenAICompatibleMessageGenerator? _generator;
 
     public string ProviderName => "gpustack";
 
@@ -45,11 +47,11 @@ public sealed class GpuStackChatClientProvider(IOptions<GpuStackLlmOptions> opti
                 $"'{GpuStackLlmOptions.SectionName}:Model' is required to create the GPUStack chat client.");
         }
 
-        _generator ??= new GpuStackMessageGenerator(new GpuStackConfig
+        _generator ??= new OpenAICompatibleMessageGenerator(new GpuStackConfig
         {
             BaseUrl = config.Endpoint,
             ApiKey = config.ApiKey,
-        });
+        }.ToOpenAICompatible());
 
         IChatClient chatClient = new ChatClientAdapter(_generator, model, ProviderName);
         return Task.FromResult(chatClient);

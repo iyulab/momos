@@ -18,6 +18,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
     <PackageReference Include="CodeBeaker.Commands" />
     <PackageReference Include="CodeBeaker.Core" />
     <PackageReference Include="CodeBeaker.Runtimes" />

@@ -150,9 +150,17 @@ public static class ServiceCollectionExtensions
             // provider client directly, called once per tool-call iteration rather than
             // once per top-level RunAsync; that's the only vantage point that can stop a
             // runaway loop mid-flight instead of after every iteration already ran.
+            //
+            // ConfigureOptions, outermost, pins reasoning off unless a caller asks for it.
+            // Leaving ChatOptions.Reasoning unset no longer means "no thinking": the provider
+            // then sends no thinking controls at all and a reasoning model falls back to its own
+            // default, which for the self-hosted models in use is to think before every reply —
+            // an order of magnitude more output tokens per tool-call iteration. An explicit
+            // ReasoningEffort.None keeps the agent's replies direct.
             var usageLimiter = sp.GetRequiredService<UsageLimiter>();
             return new ChatClientFactory(providers, providers.Values.First(),
                 client => client.AsBuilder()
+                    .ConfigureOptions(o => o.Reasoning ??= new ReasoningOptions { Effort = ReasoningEffort.None })
                     .UseFunctionInvocation(configure: c => c.MaximumIterationsPerRequest = limits.MaxIterationsPerRequest)
                     .Use(inner => new UsageLimitingChatClient(inner, usageLimiter))
                     .Build(sp));
