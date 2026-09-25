@@ -89,7 +89,8 @@ public sealed class CodeBeakerExecutionRuntimeProvider(
         };
 
         var result = await sessionManager.ExecuteInSessionAsync(session.SessionId, shellCommand, cancellationToken);
-        return new ExecutionCommandResult(result.Success, result.Result as string, result.Error, result.DurationMs);
+        var shell = ShellResultReader.Read(result);
+        return new ExecutionCommandResult(shell.Success, shell.Stdout, shell.Error, result.DurationMs);
     }
 
     public Task CloseSessionAsync(ExecutionSessionHandle session, CancellationToken cancellationToken = default) =>

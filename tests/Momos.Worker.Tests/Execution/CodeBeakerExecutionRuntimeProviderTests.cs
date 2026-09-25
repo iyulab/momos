@@ -120,6 +120,42 @@ public class CodeBeakerExecutionRuntimeProviderTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ContainerShapedResultWithNonZeroExit_IsReportedAsFailure()
+    {
+        // A container runtime reports every shell command as successful and carries the real
+        // outcome in an object — a failing command must not surface as a success with no output.
+        var sessionManager = new FakeSessionManager
+        {
+            NextResult = CommandResult.Ok(new { stdout = "1 test failed", stderr = "boom", exitCode = 1L }),
+        };
+        var provider = new CodeBeakerExecutionRuntimeProvider(sessionManager, NullLogger<CodeBeakerExecutionRuntimeProvider>.Instance);
+
+        var result = await provider.ExecuteAsync(
+            new ExecutionSessionHandle("session-1"), new ExecutionCommand("dotnet", ["test"]));
+
+        Assert.False(result.Success);
+        Assert.Equal("1 test failed", result.Output);
+        Assert.Equal("boom", result.Error);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ContainerShapedResultWithZeroExit_ReturnsStdoutAsOutput()
+    {
+        var sessionManager = new FakeSessionManager
+        {
+            NextResult = CommandResult.Ok(new { stdout = "build succeeded", stderr = "", exitCode = 0L }),
+        };
+        var provider = new CodeBeakerExecutionRuntimeProvider(sessionManager, NullLogger<CodeBeakerExecutionRuntimeProvider>.Instance);
+
+        var result = await provider.ExecuteAsync(
+            new ExecutionSessionHandle("session-1"), new ExecutionCommand("dotnet", ["build"]));
+
+        Assert.True(result.Success);
+        Assert.Equal("build succeeded", result.Output);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
     public async Task CloseSessionAsync_ClosesTheUnderlyingSession()
     {
         var sessionManager = new FakeSessionManager();
