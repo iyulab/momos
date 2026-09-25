@@ -53,12 +53,25 @@ public sealed class CodeExecutionTools(
 
             return result.Success
                 ? result.Output ?? string.Empty
-                : $"Command failed after {result.DurationMs}ms: {result.Error}";
+                : FormatFailure(result);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             trace.Add(new ToolCallEntry(nameof(RunCommand), $"{command} {argsJoined}".TrimEnd(), Success: false, (int)stopwatch.ElapsedMilliseconds));
             throw;
         }
+    }
+
+    /// <summary>
+    /// A failed command's stdout is kept alongside its error: tools such as test runners
+    /// report their failures on stdout with an empty stderr, leaving only the exit code as the
+    /// error — and the output is the evidence the agent has to cite in a finding.
+    /// </summary>
+    private static string FormatFailure(ExecutionCommandResult result)
+    {
+        var summary = $"Command failed after {result.DurationMs}ms: {result.Error}";
+        return string.IsNullOrEmpty(result.Output)
+            ? summary
+            : $"{summary}\nstdout:\n{result.Output}";
     }
 }

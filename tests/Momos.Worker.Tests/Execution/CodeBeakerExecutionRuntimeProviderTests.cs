@@ -139,6 +139,40 @@ public class CodeBeakerExecutionRuntimeProviderTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ContainerShapedResultWithNonZeroExitAndEmptyStderr_KeepsStdoutAsOutput()
+    {
+        var sessionManager = new FakeSessionManager
+        {
+            NextResult = CommandResult.Ok(new { stdout = "Total tests: 12, Failed: 1", stderr = "", exitCode = 1L }),
+        };
+        var provider = new CodeBeakerExecutionRuntimeProvider(sessionManager, NullLogger<CodeBeakerExecutionRuntimeProvider>.Instance);
+
+        var result = await provider.ExecuteAsync(
+            new ExecutionSessionHandle("session-1"), new ExecutionCommand("dotnet", ["test"]));
+
+        Assert.False(result.Success);
+        Assert.Equal("Total tests: 12, Failed: 1", result.Output);
+        Assert.Equal("exit code 1", result.Error);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_StringShapedFailedResult_KeepsStdoutAsOutput()
+    {
+        // The native runtime returns stdout as the result even when the command failed.
+        var sessionManager = new FakeSessionManager
+        {
+            NextResult = new CommandResult { Success = false, Result = "Total tests: 12, Failed: 1", Error = "", DurationMs = 9 },
+        };
+        var provider = new CodeBeakerExecutionRuntimeProvider(sessionManager, NullLogger<CodeBeakerExecutionRuntimeProvider>.Instance);
+
+        var result = await provider.ExecuteAsync(
+            new ExecutionSessionHandle("session-1"), new ExecutionCommand("dotnet", ["test"]));
+
+        Assert.False(result.Success);
+        Assert.Equal("Total tests: 12, Failed: 1", result.Output);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ContainerShapedResultWithZeroExit_ReturnsStdoutAsOutput()
     {
         var sessionManager = new FakeSessionManager

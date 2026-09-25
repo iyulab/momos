@@ -138,6 +138,62 @@ public class CodeExecutionToolsTests
     }
 
     [Fact]
+    public async Task RunCommand_FailureWithEmptyStderr_ReturnsTheCapturedStdout()
+    {
+        // A test runner reports its failures on stdout and leaves stderr empty, so the only
+        // error the runtime can report is the exit code. The agent must still see the output
+        // it has to cite as evidence.
+        var provider = new FakeExecutionRuntimeProvider
+        {
+            NextResult = new ExecutionCommandResult(false, "Failed LoginTests.RejectsBadPassword\nTotal tests: 12, Failed: 1", "exit code 1", 900),
+        };
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, NullLogger<CodeExecutionTools>.Instance);
+
+        var output = await tools.RunCommand("dotnet", ["test"]);
+
+        Assert.Contains("exit code 1", output);
+        Assert.Contains("900ms", output);
+        Assert.Contains("Failed LoginTests.RejectsBadPassword", output);
+        Assert.Contains("Total tests: 12, Failed: 1", output);
+    }
+
+    [Fact]
+    public async Task RunCommand_FailureWithStderrAndStdout_ReturnsBoth()
+    {
+        var provider = new FakeExecutionRuntimeProvider
+        {
+            NextResult = new ExecutionCommandResult(false, "Restored 3 projects", "error CS1002: ; expected", 40),
+        };
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, NullLogger<CodeExecutionTools>.Instance);
+
+        var output = await tools.RunCommand("dotnet", ["build"]);
+
+        Assert.Contains("error CS1002: ; expected", output);
+        Assert.Contains("Restored 3 projects", output);
+    }
+
+    [Fact]
+    public async Task RunCommand_FailureWithStdout_KeepsTheStdoutOutOfTheLogAndTheTraceEntry()
+    {
+        // Returning a failed command's stdout to the agent must not widen what the Worker log
+        // and the persisted trace carry: both still record only what ran and whether it succeeded.
+        var provider = new FakeExecutionRuntimeProvider
+        {
+            NextResult = new ExecutionCommandResult(false, "SECRET_TOKEN=xyz", "exit code 1", 5),
+        };
+        var logger = new RecordingLogger();
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, logger);
+
+        await tools.RunCommand("printenv");
+
+        Assert.All(logger.Messages, message => Assert.DoesNotContain("SECRET_TOKEN", message));
+        Assert.DoesNotContain("SECRET_TOKEN", Assert.Single(trace.Calls).Summary);
+    }
+
+    [Fact]
     public async Task RunCommand_ProviderThrows_StillRecordsAToolCallEntryAndRethrows()
     {
         var provider = new FakeExecutionRuntimeProvider { ExceptionToThrow = new InvalidOperationException("session died") };
