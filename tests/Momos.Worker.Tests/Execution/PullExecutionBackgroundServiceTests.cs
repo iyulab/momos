@@ -385,9 +385,8 @@ public sealed class PullExecutionBackgroundServiceTests
         await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
         await service.StopAsync(CancellationToken.None);
 
-        // Before this fix, the tool call made before the failure was discarded entirely
-        // (see claudedocs/issues/ISSUE-momos-20260903-failed-inspection-trace-discarded.md) —
-        // it must now travel alongside the failure report.
+        // The tool call made before the failure used to be discarded entirely; it must
+        // travel alongside the failure report.
         Assert.Empty(hostClient.SubmittedReports);
         var failure = Assert.Single(hostClient.SubmittedFailures);
         Assert.Contains("simulated LLM-provider failure", failure.Reason);
