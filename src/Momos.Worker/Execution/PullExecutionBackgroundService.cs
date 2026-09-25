@@ -9,13 +9,12 @@ namespace Momos.Worker.Execution;
 
 /// <summary>
 /// Polls Host for the next Pending request — an inspection or an analysis — checks the target
-/// repo out into a fresh code-beaker session's workspace, and reports the outcome back. An
-/// analysis runs the deterministic project-model extractor over the checkout and submits the
-/// model; an inspection runs the agent loop against it. The agent loop has a code-execution tool and a finding-reporting
-/// tool — the agent decides what, if
-/// anything, to report; an inspection that finds nothing submits zero findings rather than
-/// fabricate one, per momos's 근거 기반 엄밀함 non-negotiable. Computer Use activation is
-/// still a separate, undecided "반드시 논의" item (momos improvement protocol).
+/// repository out into a fresh execution session's workspace, and reports the outcome back.
+/// An analysis runs the deterministic project-model extractor over the checkout and submits the
+/// model. An inspection runs the agent loop, which has a code-execution tool and a
+/// finding-reporting tool; the agent decides what, if anything, to report, and an inspection
+/// that reproduces nothing submits zero findings rather than an unsupported one. Screen-driven
+/// (computer-use) interaction is not enabled here.
 /// </summary>
 public sealed class PullExecutionBackgroundService(
     IHostApiClient hostApiClient,

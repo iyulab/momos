@@ -14,8 +14,8 @@ public sealed class Project
 
     /// <summary>
     /// Optional third kind of provided material (alongside <see cref="RepositoryUrl"/> and
-    /// <see cref="DeploymentUrl"/>) — extends D-41's "depth varies by what's provided" model
-    /// rather than replacing it with a mutually-exclusive intake-type enum. Materials are
+    /// <see cref="DeploymentUrl"/>) — extends the "inspection depth varies with what's provided"
+    /// model rather than replacing it with a mutually-exclusive intake-type enum. Materials are
     /// additive: a Project can supply any combination of the three.
     /// <see cref="AppInstallerUri"/>, <see cref="AppInstallPlatform"/>, and
     /// <see cref="AppInstallLaunchCommand"/> travel together — either all set or all null;
