@@ -3,22 +3,24 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
+using Momos.Worker.Analysis;
 
 namespace Momos.Worker.Execution;
 
 /// <summary>
-/// Polls Host for the next Pending inspection request, checks the target repo out into
-/// a fresh code-beaker session's workspace, runs the agent loop against it, and reports
-/// the outcome back. The agent loop has a code-execution tool and a finding-reporting
-/// tool — the agent decides what, if
-/// anything, to report; an inspection that finds nothing submits zero findings rather than
-/// fabricate one, per momos's 근거 기반 엄밀함 non-negotiable. Computer Use activation is
-/// still a separate, undecided "반드시 논의" item (momos improvement protocol).
+/// Polls Host for the next Pending request — an inspection or an analysis — checks the target
+/// repository out into a fresh execution session's workspace, and reports the outcome back.
+/// An analysis runs the deterministic project-model extractor over the checkout and submits the
+/// model. An inspection runs the agent loop, which has a code-execution tool and a
+/// finding-reporting tool; the agent decides what, if anything, to report, and an inspection
+/// that reproduces nothing submits zero findings rather than an unsupported one. Screen-driven
+/// (computer-use) interaction is not enabled here.
 /// </summary>
 public sealed class PullExecutionBackgroundService(
     IHostApiClient hostApiClient,
     ISessionAwareAgentLoopFactory agentLoopFactory,
     IExecutionRuntimeProvider executionRuntimeProvider,
+    IProjectModelExtractor modelExtractor,
     IWorkerSelfUpdater selfUpdater,
     IOptions<PullExecutionOptions> options,
     ILogger<PullExecutionBackgroundService> logger) : BackgroundService
@@ -50,7 +52,7 @@ public sealed class PullExecutionBackgroundService(
                 }
                 else
                 {
-                    await RunInspectionAsync(result.Request, stoppingToken);
+                    await RunClaimedRequestAsync(result.Request, stoppingToken);
                     claimedWork = true;
 
                     // Just-finished work is an idle boundary too, so act on the hint this poll
@@ -87,7 +89,7 @@ public sealed class PullExecutionBackgroundService(
                 // A BackgroundService that throws out of ExecuteAsync takes the whole
                 // host down — a transient Host-unreachable blip must not do that.
                 //
-                // This is where a request stays stuck if RunInspectionAsync's own
+                // This is where a request stays stuck if RunClaimedRequestAsync's own
                 // catch (below) can't even report the failure — e.g. Host itself is
                 // unreachable. That's not a gap: it left the request Running, and the
                 // claim-next reclaim lease (InspectionClaimOptions.ReclaimTimeout) picks
@@ -124,7 +126,7 @@ public sealed class PullExecutionBackgroundService(
         }
     }
 
-    private async Task RunInspectionAsync(ClaimedInspectionRequest request, CancellationToken cancellationToken)
+    private async Task RunClaimedRequestAsync(ClaimedInspectionRequest request, CancellationToken cancellationToken)
     {
         ExecutionSessionHandle? session = null;
         // Declared outside the try so a failure can still report what was attempted before it —
@@ -135,13 +137,13 @@ public sealed class PullExecutionBackgroundService(
         {
             var project = await hostApiClient.GetProjectAsync(request.ProjectId, cancellationToken);
             logger.LogInformation(
-                "Starting inspection for request {RequestId}, project {ProjectName} ({ProjectId}), commitRef={CommitRef}",
-                request.Id, project.Name, request.ProjectId, request.CommitRef ?? "(default branch)");
+                "Starting {Kind} for request {RequestId}, project {ProjectName} ({ProjectId}), commitRef={CommitRef}",
+                request.Kind, request.Id, project.Name, request.ProjectId, request.CommitRef ?? "(default branch)");
 
             // Opened here, not by the agent-loop factory (ISessionAwareAgentLoopFactory)
             // — the repo has to be checked out into the session's workspace before the
             // agent's first turn, so the session must exist first (one session per
-            // inspection request).
+            // claimed request, whatever its kind).
             //
             // "dotnet" is a stand-in for real repo language detection, which doesn't
             // exist yet — it names the only language the current pilots target. A string
@@ -185,6 +187,20 @@ public sealed class PullExecutionBackgroundService(
             // No RepositoryUrl declared — an honest "nothing to check out" case, not a
             // failure: momos never assumes a repo it wasn't told about.
 
+            if (request.Kind == InspectionRequestKind.Analysis)
+            {
+                // Same checkout, different job: an analysis reads the repository to build the
+                // project model instead of exercising it, so no agent loop runs. A failed
+                // extraction throws into the catch below and is reported like any failed run,
+                // so the request never stays Running.
+                var model = await modelExtractor.ExtractAsync(session, cancellationToken);
+                logger.LogInformation(
+                    "Analysis for request {RequestId} extracted {ComponentCount} component(s) and {ClaimCount} claim(s) at {BaseCommit}",
+                    request.Id, model.Components.Count, model.Claims.Count, model.BaseCommit);
+                await hostApiClient.SubmitModelAsync(request.Id, model, cancellationToken);
+                return;
+            }
+
             var (agentLoop, findings, toolCallSink) = await agentLoopFactory.CreateAsync(
                 new AgentLoopFactoryOptions(), session, projectId: request.ProjectId, cancellationToken);
             toolCalls = toolCallSink;
@@ -214,12 +230,12 @@ public sealed class PullExecutionBackgroundService(
             {
                 logger.LogError(
                     ex,
-                    "Inspection run failed for request {RequestId} after {ToolCallCount} tool call(s), last: {LastTool} ({LastToolSuccess})",
-                    request.Id, toolCallPayloads.Count, toolCallPayloads[^1].Tool, toolCallPayloads[^1].Success ? "succeeded" : "failed");
+                    "{Kind} run failed for request {RequestId} after {ToolCallCount} tool call(s), last: {LastTool} ({LastToolSuccess})",
+                    request.Kind, request.Id, toolCallPayloads.Count, toolCallPayloads[^1].Tool, toolCallPayloads[^1].Success ? "succeeded" : "failed");
             }
             else
             {
-                logger.LogError(ex, "Inspection run failed for request {RequestId}", request.Id);
+                logger.LogError(ex, "{Kind} run failed for request {RequestId}", request.Kind, request.Id);
             }
             await hostApiClient.SubmitFailureAsync(request.Id, ex.Message, toolCallPayloads, cancellationToken);
         }
@@ -250,6 +266,9 @@ public sealed class PullExecutionBackgroundService(
         without calling ReportFinding — do not report a finding you did not reproduce.
 
         Use QueryProjectKnowledge if you want context from this project's registered
-        documents or past inspection findings before deciding what to check.
+        documents, past inspection findings, or its project model (claims about its
+        structure). Where a model claim carries a developer correction, the correction
+        describes the intended design — judge behavior against it. A model claim is
+        context, not evidence: a finding still needs the command output that reproduces it.
         """;
 }

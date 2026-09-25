@@ -39,6 +39,13 @@ public sealed class HostApiClient(HttpClient httpClient) : IHostApiClient
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task SubmitModelAsync(Guid analysisRequestId, ProjectModelPayload model, CancellationToken cancellationToken)
+    {
+        var response = await httpClient.PostAsJsonAsync(
+            $"/analysis-requests/{analysisRequestId}/model", model, JsonOptions, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task SubmitFailureAsync(Guid inspectionRequestId, string reason, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken)
     {
         var response = await httpClient.PostAsJsonAsync(

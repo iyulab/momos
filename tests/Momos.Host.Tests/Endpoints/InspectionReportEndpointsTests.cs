@@ -23,7 +23,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
     private async Task<InspectionRequestResponse> ClaimNextAsync()
     {
         var response = await _client.PostAsJsonAsync(
-            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 2, WorkerVersion: "0.1.0"));
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 3, WorkerVersion: "0.1.0"));
         var envelope = await response.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value);
         return envelope!.Request!;
     }
@@ -299,7 +299,7 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
         await client.PostAsJsonAsync(
             $"/projects/{project!.Id}/inspection-requests", new CreateInspectionRequestRequest(null, null));
         var claimResponse = await client.PostAsJsonAsync(
-            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 2, WorkerVersion: "0.1.0"));
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 3, WorkerVersion: "0.1.0"));
         var claimed = (await claimResponse.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value))!.Request!;
 
         var submission = new SubmitInspectionReportRequest(
@@ -321,6 +321,9 @@ public sealed class InspectionReportEndpointsTests : IClassFixture<MomosHostFact
             throw new InvalidOperationException("simulated knowledge index failure");
 
         public Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("simulated knowledge index failure");
+
+        public Task DeleteAsync(string documentId, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("simulated knowledge index failure");
     }
 }

@@ -18,7 +18,7 @@ public sealed class KnowledgeQueryTools(
     ToolCallTraceSink trace,
     ILogger<KnowledgeQueryTools> logger)
 {
-    [Description("Search this project's registered documents and past inspection findings for context relevant to a query. Returns matching snippets, or nothing if the project has no relevant knowledge yet.")]
+    [Description("Search this project's registered documents, past inspection findings, and project-model claims (structure, relations, developer corrections) for context relevant to a query. Returns matching snippets, or nothing if the project has no relevant knowledge yet.")]
     public async Task<string> QueryProjectKnowledge(
         [Description("What to search for, e.g. \"login flow\" or \"payment errors\".")] string query,
         CancellationToken cancellationToken = default)

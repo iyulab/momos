@@ -1,4 +1,4 @@
-using FluxIndex.Providers.OpenAI.Extensions;
+using FluxIndex.Providers.OpenAI.Services;
 using FluxIndex.SDK;
 using FluxIndex.Storage.PostgreSQL;
 using Microsoft.Extensions.Logging;
@@ -24,22 +24,27 @@ public static class KnowledgeServiceCollectionExtensions
                     // after this, which would overwrite a Configure() call here — PostConfigure
                     // runs after all Configure calls and wins.
                     s.PostConfigure<PostgreSQLOptions>(o => o.EmbeddingDimensions = options.EmbeddingDimension);
-                    if (!string.IsNullOrEmpty(options.EmbeddingEndpoint))
-                    {
-                        s.AddOpenAICompatibleEmbedding(
-                            options.EmbeddingEndpoint, options.EmbeddingApiKey,
-                            options.EmbeddingModel, options.EmbeddingDimension);
-                    }
-                    else
-                    {
-                        sp.GetRequiredService<ILogger<FluxIndexKnowledgeIndex>>().LogWarning(
-                            "Momos:Host:Knowledge:EmbeddingEndpoint is not set — the project " +
-                            "knowledge index will use FluxIndex's in-memory embedding fallback, " +
-                            "whose vectors are not semantically meaningful. Set it (and " +
-                            "EmbeddingApiKey) to a real embedding endpoint for knowledge search " +
-                            "to work.");
-                    }
                 });
+            if (!string.IsNullOrEmpty(options.EmbeddingEndpoint))
+            {
+                // Through the builder, not ConfigureServices: Build() registers its own default
+                // (in-memory) embedding service after everything ConfigureServices added unless
+                // the builder was told a custom one is in use, and the later registration wins.
+                builder.UseEmbeddingService(fluxServices => new OpenAICompatibleEmbeddingService(
+                    options.EmbeddingEndpoint, options.EmbeddingApiKey,
+                    options.EmbeddingModel, options.EmbeddingDimension,
+                    fluxServices.GetRequiredService<ILoggerFactory>().CreateLogger<OpenAICompatibleEmbeddingService>()));
+            }
+            else
+            {
+                sp.GetRequiredService<ILogger<FluxIndexKnowledgeIndex>>().LogWarning(
+                    "Momos:Host:Knowledge:EmbeddingEndpoint is not set — the project " +
+                    "knowledge index will use FluxIndex's in-memory embedding fallback, " +
+                    "whose vectors are not semantically meaningful. Set it (and " +
+                    "EmbeddingApiKey) to a real embedding endpoint for knowledge search " +
+                    "to work.");
+            }
+
             builder.Options.GraphStore.AutoMigrate = false;
             builder.Options.SemanticCache.AutoMigrate = false;
 
@@ -55,6 +60,10 @@ public interface IKnowledgeIndex
     Task IndexAsync(string content, string documentId, Dictionary<string, object> metadata, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken);
+
+    /// <summary>Removes a document and all of its chunks from the index. Deleting a document
+    /// that was never indexed is not an error.</summary>
+    Task DeleteAsync(string documentId, CancellationToken cancellationToken);
 }
 
 public sealed record KnowledgeSearchHit(string Content, double Score);
@@ -63,6 +72,11 @@ internal sealed class FluxIndexKnowledgeIndex(IFluxIndexContext context) : IKnow
 {
     public Task IndexAsync(string content, string documentId, Dictionary<string, object> metadata, CancellationToken cancellationToken) =>
         context.Indexer.IndexDocumentAsync(content, documentId, metadata, cancellationToken);
+
+    // DeleteByDocumentIdAsync removes the vector chunks and the keyword postings together; its
+    // bool result only says whether anything existed, which callers don't need.
+    public Task DeleteAsync(string documentId, CancellationToken cancellationToken) =>
+        context.Indexer.DeleteByDocumentIdAsync(documentId, cancellationToken);
 
     public async Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken)
     {
@@ -73,6 +87,9 @@ internal sealed class FluxIndexKnowledgeIndex(IFluxIndexContext context) : IKnow
         // keyword leg is unaffected by embedding quality, so it catches what pure vector search
         // would drop while still counting toward relevance when a real embedding IS configured.
         var results = await context.Retriever.HybridSearchAsync(query, query, maxResults, vectorWeight: 0.5, filter, cancellationToken);
-        return results.Select(r => new KnowledgeSearchHit(r.DocumentChunk.Content, r.Score)).ToList();
+        return results
+            .OrderByDescending(r => r.Score)
+            .Select(r => new KnowledgeSearchHit(r.DocumentChunk.Content, r.Score))
+            .ToList();
     }
 }

@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
+using Momos.Worker.Analysis;
 using Momos.Worker.Execution;
 using Momos.Worker.SelfUpdate;
 
@@ -45,6 +46,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExecutionRuntime, DockerRuntime>();
         services.AddSingleton<ISessionManager, SessionManager>();
         services.AddSingleton<IExecutionRuntimeProvider, CodeBeakerExecutionRuntimeProvider>();
+        services.AddSingleton<IProjectModelExtractor, ProjectModelExtractor>();
 
         var agentLoopLimits = configuration.GetSection(AgentLoopLimitsOptions.SectionName).Get<AgentLoopLimitsOptions>()
             ?? new AgentLoopLimitsOptions();

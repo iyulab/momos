@@ -10,9 +10,15 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
     public DbSet<InspectionReport> InspectionReports => Set<InspectionReport>();
     public DbSet<Finding> Findings => Set<Finding>();
     public DbSet<ToolCall> ToolCalls => Set<ToolCall>();
+    public DbSet<ProjectModel> ProjectModels => Set<ProjectModel>();
+    public DbSet<ModelClaim> ModelClaims => Set<ModelClaim>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<InspectionRequest>()
+            .Property(r => r.Kind)
+            .HasConversion<string>();
+
         modelBuilder.Entity<InspectionRequest>()
             .Property(r => r.Status)
             .HasConversion<string>();
@@ -57,5 +63,23 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
             .WithOne()
             .HasForeignKey<InspectionReport>(r => r.InspectionRequestId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        var projectModel = modelBuilder.Entity<ProjectModel>();
+        projectModel.Property(m => m.Components).HasJsonColumn();
+        projectModel.Property(m => m.Relations).HasJsonColumn();
+        projectModel.Property(m => m.Patterns).HasJsonColumn();
+        projectModel.Property(m => m.Decisions).HasJsonColumn();
+        projectModel.Property(m => m.Intents).HasJsonColumn();
+        projectModel.HasIndex(m => new { m.ProjectId, m.ModelVersion }).IsUnique();
+        projectModel.HasOne<Project>().WithMany().HasForeignKey(m => m.ProjectId).OnDelete(DeleteBehavior.Restrict);
+        projectModel.HasOne<InspectionRequest>().WithMany().HasForeignKey(m => m.AnalysisRequestId).OnDelete(DeleteBehavior.Restrict);
+        projectModel.HasMany(m => m.Claims).WithOne().HasForeignKey(c => c.ProjectModelId).OnDelete(DeleteBehavior.Cascade);
+
+        var claim = modelBuilder.Entity<ModelClaim>();
+        claim.Property(c => c.Evidence).HasJsonColumn();
+        claim.Property(c => c.Tier).HasConversion<string>();
+        claim.Property(c => c.Confidence).HasConversion<string>();
+        claim.Property(c => c.Status).HasConversion<string>();
+        claim.HasIndex(c => new { c.ProjectModelId, c.Key }).IsUnique();
     }
 }

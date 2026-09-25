@@ -15,6 +15,19 @@ public enum InspectionRequestStatus
     Failed,
 }
 
+/// <summary>
+/// Mirrors <c>Momos.Host.Domain.InspectionRequestKind</c>'s wire shape — see
+/// <see cref="InspectionRequestStatus"/> for why this is a local copy. Inspection and analysis
+/// requests share one queue; the kind decides how a claimed request is run and completed.
+/// </summary>
+public enum InspectionRequestKind
+{
+    Inspection,
+    Analysis,
+}
+
+/// <summary><see cref="Kind"/> defaults to <see cref="InspectionRequestKind.Inspection"/> so a
+/// request built without it reads as the only kind older protocols knew.</summary>
 public sealed record ClaimedInspectionRequest(
     Guid Id,
     Guid ProjectId,
@@ -22,7 +35,8 @@ public sealed record ClaimedInspectionRequest(
     string? CommitRef,
     DateTimeOffset SubmittedAt,
     InspectionRequestStatus Status,
-    string? FailureReason);
+    string? FailureReason,
+    InspectionRequestKind Kind = InspectionRequestKind.Inspection);
 
 public sealed record ProjectInfo(
     Guid Id,
@@ -66,6 +80,96 @@ public sealed record ClaimNextRequest(int ProtocolVersion, string WorkerVersion)
 /// <summary>Mirrors Host's ClaimNextResponse wire shape (Momos.Host.Contracts.ClaimNextResponse) —
 /// see ClaimedInspectionRequest's doc comment for why this is a local copy.</summary>
 public sealed record ClaimNextResult(ClaimedInspectionRequest? Request, bool UpdateRequired, string? RecommendedWorkerVersion);
+
+/// <summary>
+/// Mirrors <c>Momos.Host.Domain.ClaimTier</c>'s wire shape — see
+/// <see cref="InspectionRequestStatus"/> for why this is a local copy.
+/// </summary>
+public enum ClaimTier
+{
+    Fact,
+    History,
+    Assessment,
+}
+
+/// <summary>
+/// Mirrors <c>Momos.Host.Domain.ClaimConfidence</c>'s wire shape — see
+/// <see cref="InspectionRequestStatus"/> for why this is a local copy.
+/// </summary>
+public enum ClaimConfidence
+{
+    High,
+    Medium,
+    Low,
+}
+
+/// <summary>
+/// Mirrors <c>Momos.Host.Domain.EvidenceKind</c>'s wire shape — see
+/// <see cref="InspectionRequestStatus"/> for why this is a local copy.
+/// </summary>
+public enum EvidenceKind
+{
+    Code,
+    Commit,
+    PullRequest,
+    Issue,
+    Finding,
+    Claim,
+}
+
+/// <summary>
+/// Mirrors <c>Momos.Host.Domain.IntentSource</c>'s wire shape — see
+/// <see cref="InspectionRequestStatus"/> for why this is a local copy.
+/// </summary>
+public enum IntentSource
+{
+    Developer,
+    Document,
+    Inferred,
+}
+
+/// <summary>Mirrors Host's ClaimEvidenceDto wire shape (Momos.Host.Contracts.ClaimEvidenceDto).
+/// Which fields apply depends on <see cref="Kind"/>: Code → Path (+Symbol, Lines), Commit → Sha,
+/// PullRequest/Issue → Url, Finding → InspectionRequestId, Claim → ClaimKey.</summary>
+public sealed record EvidencePayload(
+    EvidenceKind Kind,
+    string? Path = null,
+    string? Symbol = null,
+    string? Lines = null,
+    string? Sha = null,
+    string? Url = null,
+    Guid? InspectionRequestId = null,
+    string? ClaimKey = null);
+
+/// <summary>Mirrors Host's SubmittedClaim wire shape (Momos.Host.Contracts.SubmittedClaim).</summary>
+public sealed record ClaimPayload(string Key, ClaimTier Tier, string Statement, IReadOnlyList<EvidencePayload> Evidence, ClaimConfidence Confidence);
+
+/// <summary>Mirrors Host's ModelComponentDto wire shape (Momos.Host.Contracts.ModelComponentDto).</summary>
+public sealed record ComponentPayload(string Id, string Name, string Kind, string? Responsibility, IReadOnlyList<string> Claims);
+
+/// <summary>Mirrors Host's ModelRelationDto wire shape (Momos.Host.Contracts.ModelRelationDto).</summary>
+public sealed record RelationPayload(string From, string To, string Kind, IReadOnlyList<string> Claims);
+
+/// <summary>Mirrors Host's ModelPatternDto wire shape (Momos.Host.Contracts.ModelPatternDto).</summary>
+public sealed record PatternPayload(string Id, string Name, IReadOnlyList<string> AppliesTo, IReadOnlyList<string> Claims);
+
+/// <summary>Mirrors Host's ModelDecisionDto wire shape (Momos.Host.Contracts.ModelDecisionDto).</summary>
+public sealed record DecisionPayload(string Id, string Summary, IReadOnlyList<string> Alternatives, string Rationale, IReadOnlyList<string> Claims);
+
+/// <summary>Mirrors Host's ModelIntentDto wire shape (Momos.Host.Contracts.ModelIntentDto).</summary>
+public sealed record IntentPayload(string Id, string Statement, IntentSource Source, IReadOnlyList<string> Claims);
+
+/// <summary>Mirrors Host's SubmitProjectModelRequest wire shape
+/// (Momos.Host.Contracts.SubmitProjectModelRequest) — the completion of an analysis request. Every
+/// list is required; send an empty list when there is nothing to report.</summary>
+public sealed record ProjectModelPayload(
+    string BaseCommit,
+    IReadOnlyList<ComponentPayload> Components,
+    IReadOnlyList<RelationPayload> Relations,
+    IReadOnlyList<PatternPayload> Patterns,
+    IReadOnlyList<DecisionPayload> Decisions,
+    IReadOnlyList<IntentPayload> Intents,
+    IReadOnlyList<ClaimPayload> Claims);
 
 /// <summary>Mirrors Host's QueryKnowledgeRequest wire shape (Momos.Host.Contracts.QueryKnowledgeRequest) —
 /// see ClaimedInspectionRequest's doc comment for why this is a local copy.</summary>

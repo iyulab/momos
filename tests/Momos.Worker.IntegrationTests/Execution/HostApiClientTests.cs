@@ -1,7 +1,11 @@
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Momos.Host.Contracts;
+using Momos.Host.Endpoints;
+using Momos.Worker.Analysis;
 using Momos.Worker.Execution;
 
 namespace Momos.Worker.IntegrationTests.Execution;
@@ -65,6 +69,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         var result = await _client.ClaimNextAsync(CancellationToken.None);
         Assert.NotNull(result.Request);
         Assert.Equal(InspectionRequestStatus.Running, result.Request!.Status);
+        Assert.Equal(Momos.Worker.Execution.InspectionRequestKind.Inspection, result.Request.Kind);
 
         var project = await _client.GetProjectAsync(result.Request.ProjectId, CancellationToken.None);
         Assert.Equal(projectId, project.Id);
@@ -154,9 +159,8 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
     {
         var result = await _client.ClaimNextAsync(CancellationToken.None);
 
-        // 이 테스트가 통과한다는 것 자체가 Host가 요청 body(ProtocolVersion=WorkerVersionInfo.ProtocolVersion)를
-        // 파싱해 200을 돌려줬다는 뜻 — appsettings.Development.json의 MinSupportedProtocolVersion
-        // 기본값(1)과 WorkerVersionInfo.ProtocolVersion(1)이 일치해야 한다.
+        // Passing at all means the Host parsed the request body (ProtocolVersion =
+        // WorkerVersionInfo.ProtocolVersion) and accepted it as a supported protocol.
         Assert.False(result.UpdateRequired);
     }
 
@@ -180,5 +184,228 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         Assert.Equal("win-x64", project.AppInstallPlatform);
         Assert.Null(project.AppInstallArgs);
         Assert.Equal("acme.exe", project.AppInstallLaunchCommand);
+    }
+
+    [Fact]
+    public void ProtocolVersion_MatchesTheMinimumTheHostShipsWith()
+    {
+        // Each side's constant is bumped by hand on a wire change; this keeps a bump on one side
+        // from shipping without the other.
+        Assert.Equal(WorkerVersionInfo.ProtocolVersion, new WorkerCompatibilityOptions().MinSupportedProtocolVersion);
+    }
+
+    [Theory]
+    [InlineData(typeof(Momos.Worker.Execution.InspectionRequestKind), typeof(Momos.Host.Domain.InspectionRequestKind))]
+    [InlineData(typeof(Momos.Worker.Execution.ClaimTier), typeof(Momos.Host.Domain.ClaimTier))]
+    [InlineData(typeof(Momos.Worker.Execution.ClaimConfidence), typeof(Momos.Host.Domain.ClaimConfidence))]
+    [InlineData(typeof(Momos.Worker.Execution.EvidenceKind), typeof(Momos.Host.Domain.EvidenceKind))]
+    [InlineData(typeof(Momos.Worker.Execution.IntentSource), typeof(Momos.Host.Domain.IntentSource))]
+    public void MirroredEnums_HaveTheHostsMembersInTheHostsOrder(Type workerEnum, Type hostEnum)
+    {
+        // Enums travel by name, so a renamed or missing member would only fail at runtime on the
+        // one value that uses it — compare the member lists instead.
+        Assert.Equal(Enum.GetNames(hostEnum), Enum.GetNames(workerEnum));
+    }
+
+    [Fact]
+    public async Task SubmitModelAsync_CompletesAClaimedAnalysisRequest()
+    {
+        while ((await _client.ClaimNextAsync(CancellationToken.None)).Request is not null)
+        {
+        }
+
+        var httpClient = _factory.CreateAuthorizedClient();
+        var project = await httpClient.PostAsJsonAsync("/projects",
+            new CreateProjectRequest("acme-model", "https://example.invalid/acme.git", null, "purpose", "vision", "scope"));
+        var projectId = (await project.Content.ReadFromJsonAsync<ProjectResponse>())!.Id;
+        await httpClient.PostAsJsonAsync($"/projects/{projectId}/analysis-requests", new CreateAnalysisRequestRequest(null));
+        var claimed = (await _client.ClaimNextAsync(CancellationToken.None)).Request!;
+        Assert.Equal(Momos.Worker.Execution.InspectionRequestKind.Analysis, claimed.Kind);
+
+        await _client.SubmitModelAsync(claimed.Id, new ProjectModelPayload(
+            "abc123",
+            [new ComponentPayload("cmp.app", "App", "executable", null, ["clm.app"])],
+            [], [], [], [],
+            [new ClaimPayload("clm.app", Momos.Worker.Execution.ClaimTier.Fact, "App is a .NET project",
+                [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/App/App.csproj")], Momos.Worker.Execution.ClaimConfidence.High)]),
+            CancellationToken.None);
+
+        var model = await httpClient.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+        Assert.Equal("abc123", model!.BaseCommit);
+        var request = await httpClient.GetFromJsonAsync<InspectionRequestResponse>($"/analysis-requests/{claimed.Id}", TestJsonOptions.Value);
+        Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Completed, request!.Status);
+    }
+
+    [Fact]
+    public async Task SubmitModelAsync_EveryFieldAndEnumValue_RoundTripsThroughTheHostUnchanged()
+    {
+        while ((await _client.ClaimNextAsync(CancellationToken.None)).Request is not null)
+        {
+        }
+
+        var httpClient = _factory.CreateAuthorizedClient();
+        var project = await httpClient.PostAsJsonAsync("/projects",
+            new CreateProjectRequest("acme-contract", "https://example.invalid/acme.git", null, "purpose", "vision", "scope"));
+        var projectId = (await project.Content.ReadFromJsonAsync<ProjectResponse>())!.Id;
+        await httpClient.PostAsJsonAsync($"/projects/{projectId}/analysis-requests", new CreateAnalysisRequestRequest("main"));
+        var claimed = (await _client.ClaimNextAsync(CancellationToken.None)).Request!;
+        Assert.Equal("main", claimed.CommitRef);
+
+        var payload = new ProjectModelPayload(
+            "0123456789abcdef0123456789abcdef01234567",
+            [
+                new ComponentPayload("cmp.app", "App", "executable", "Hosts the HTTP API", ["clm.app", "clm.app.refs"]),
+                new ComponentPayload("cmp.lib", "Lib", "library", null, ["clm.lib"]),
+            ],
+            [new RelationPayload("cmp.app", "cmp.lib", "references", ["clm.app.refs"])],
+            [new PatternPayload("pat.layers", "Layered", ["cmp.app", "cmp.lib"], ["clm.layers"])],
+            [new DecisionPayload("dec.split", "Split the library out", ["Keep one project"], "unrecorded", ["clm.split"])],
+            [new IntentPayload("int.api", "Serve an HTTP API", Momos.Worker.Execution.IntentSource.Document, ["clm.app"])],
+            [
+                new ClaimPayload("clm.app", Momos.Worker.Execution.ClaimTier.Fact, "App is an executable .NET project",
+                    [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/App/App.csproj", Symbol: "OutputType", Lines: "3-5")],
+                    Momos.Worker.Execution.ClaimConfidence.High),
+                new ClaimPayload("clm.app.refs", Momos.Worker.Execution.ClaimTier.Fact, "App references Lib",
+                    [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/App/App.csproj")],
+                    Momos.Worker.Execution.ClaimConfidence.Medium),
+                new ClaimPayload("clm.lib", Momos.Worker.Execution.ClaimTier.Fact, "Lib is a class library",
+                    [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/Lib/Lib.csproj")],
+                    Momos.Worker.Execution.ClaimConfidence.High),
+                new ClaimPayload("clm.split", Momos.Worker.Execution.ClaimTier.History, "Lib was split out of App",
+                    [
+                        new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Commit, Sha: "fedcba9876543210fedcba9876543210fedcba98"),
+                        new EvidencePayload(Momos.Worker.Execution.EvidenceKind.PullRequest, Url: "https://example.invalid/acme/pull/7"),
+                        new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Issue, Url: "https://example.invalid/acme/issues/3"),
+                    ],
+                    Momos.Worker.Execution.ClaimConfidence.Medium),
+                new ClaimPayload("clm.layers", Momos.Worker.Execution.ClaimTier.Assessment, "App and Lib form two layers",
+                    [
+                        new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Claim, ClaimKey: "clm.app.refs"),
+                        new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Finding, InspectionRequestId: Guid.NewGuid()),
+                    ],
+                    Momos.Worker.Execution.ClaimConfidence.Low),
+            ]);
+
+        await _client.SubmitModelAsync(claimed.Id, payload, CancellationToken.None);
+
+        // Compare JSON rather than records: the point is that the Worker's serialized shape is
+        // exactly what the Host stores and serves back, field for field and enum name for enum name.
+        var sent = JsonSerializer.SerializeToNode(payload, TestJsonOptions.Value)!.AsObject();
+        var served = JsonNode.Parse(await httpClient.GetStringAsync($"/projects/{projectId}/model"))!.AsObject();
+        Assert.Equal(sent["baseCommit"]!.GetValue<string>(), served["baseCommit"]!.GetValue<string>());
+        foreach (var collection in new[] { "components", "relations", "patterns", "decisions", "intents" })
+        {
+            Assert.True(JsonNode.DeepEquals(sent[collection], served[collection]),
+                $"{collection}: sent {sent[collection]!.ToJsonString()} but served {served[collection]!.ToJsonString()}");
+        }
+
+        // The Host serves claims ordered by key, with the correction fields added on top.
+        var sentClaims = sent["claims"]!.AsArray().OrderBy(c => c!["key"]!.GetValue<string>(), StringComparer.Ordinal).ToList();
+        var servedClaims = served["claims"]!.AsArray().ToList();
+        Assert.Equal(sentClaims.Count, servedClaims.Count);
+        for (var i = 0; i < sentClaims.Count; i++)
+        {
+            var servedClaim = servedClaims[i]!.AsObject();
+            Assert.Equal("Proposed", servedClaim["status"]!.GetValue<string>());
+            var servedSubmittedPart = new JsonObject();
+            foreach (var property in sentClaims[i]!.AsObject())
+            {
+                servedSubmittedPart[property.Key] = servedClaim[property.Key]?.DeepClone();
+            }
+
+            Assert.True(JsonNode.DeepEquals(sentClaims[i], servedSubmittedPart),
+                $"claim: sent {sentClaims[i]!.ToJsonString()} but served {servedClaim.ToJsonString()}");
+        }
+    }
+
+    private async Task<(Guid ProjectId, Guid AnalysisRequestId)> ClaimAnalysisAsync(string projectName)
+    {
+        while ((await _client.ClaimNextAsync(CancellationToken.None)).Request is not null)
+        {
+        }
+
+        var httpClient = _factory.CreateAuthorizedClient();
+        var project = await httpClient.PostAsJsonAsync("/projects",
+            new CreateProjectRequest(projectName, "https://example.invalid/acme.git", null, "purpose", "vision", "scope"));
+        var projectId = (await project.Content.ReadFromJsonAsync<ProjectResponse>())!.Id;
+        await httpClient.PostAsJsonAsync($"/projects/{projectId}/analysis-requests", new CreateAnalysisRequestRequest(null));
+        var claimed = (await _client.ClaimNextAsync(CancellationToken.None)).Request!;
+        Assert.Equal(Momos.Worker.Execution.InspectionRequestKind.Analysis, claimed.Kind);
+        return (projectId, claimed.Id);
+    }
+
+    [Fact]
+    public async Task ExtractedModel_OfAMultiProjectRepository_IsAcceptedByTheHost()
+    {
+        var (projectId, analysisRequestId) = await ClaimAnalysisAsync("acme-extracted");
+        var repository = new ScriptedRepositoryRuntime(new Dictionary<string, string>
+        {
+            ["src/App/App.csproj"] = """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+                  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'"><ProjectReference Include="..\Lib\Lib.csproj" /></ItemGroup>
+                  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'"><ProjectReference Include="../Lib/Lib.csproj" /></ItemGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="..\..\..\Other\Other.csproj" />
+                    <ProjectReference Include="$(RepoRoot)\eng\Build.csproj" />
+                    <ProjectReference Include="..\Broken\Broken.csproj" />
+                  </ItemGroup>
+                </Project>
+                """,
+            ["src/Lib/Lib.csproj"] = """<Project Sdk="Microsoft.NET.Sdk" />""",
+            ["src/Api/Api.csproj"] = """<Project Sdk="Microsoft.NET.Sdk.Web"><ItemGroup><ProjectReference Include="..\lib\lib.csproj" /></ItemGroup></Project>""",
+            ["tests/App.Tests/App.Tests.csproj"] = """<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" /><ProjectReference Include="..\..\src\App\App.csproj" /></ItemGroup></Project>""",
+            ["src/Broken/Broken.csproj"] = "<Project",
+        });
+
+        var extracted = await new ProjectModelExtractor(repository).ExtractAsync(new ExecutionSessionHandle("s"), CancellationToken.None);
+        // Throws on any non-success status, so this line is the Host's validator accepting the model.
+        await _client.SubmitModelAsync(analysisRequestId, extracted, CancellationToken.None);
+
+        var httpClient = _factory.CreateAuthorizedClient();
+        var model = await httpClient.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+        Assert.Equal(repository.Head, model!.BaseCommit);
+        Assert.Equal(["Api", "App", "App.Tests", "Lib"], model.Components.Select(c => c.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(3, model.Relations.Count);
+        Assert.Equal(extracted.Claims.Count, model.Claims.Count);
+        var request = await httpClient.GetFromJsonAsync<InspectionRequestResponse>($"/analysis-requests/{analysisRequestId}", TestJsonOptions.Value);
+        Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Completed, request!.Status);
+    }
+
+    [Fact]
+    public async Task ExtractedModel_OfARepositoryWithNoProjects_IsAcceptedByTheHostAsAnEmptyModel()
+    {
+        var (projectId, analysisRequestId) = await ClaimAnalysisAsync("acme-empty");
+        var repository = new ScriptedRepositoryRuntime(new Dictionary<string, string>());
+
+        var extracted = await new ProjectModelExtractor(repository).ExtractAsync(new ExecutionSessionHandle("s"), CancellationToken.None);
+        await _client.SubmitModelAsync(analysisRequestId, extracted, CancellationToken.None);
+
+        var model = await _factory.CreateAuthorizedClient()
+            .GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+        Assert.Empty(model!.Components);
+        Assert.Empty(model.Claims);
+    }
+
+    /// <summary>Answers the extractor's git commands from an in-memory file set, as a checked-out
+    /// repository would.</summary>
+    private sealed class ScriptedRepositoryRuntime(IReadOnlyDictionary<string, string> files) : IExecutionRuntimeProvider
+    {
+        public string Head { get; } = "0123456789abcdef0123456789abcdef01234567";
+
+        public Task<ExecutionSessionHandle> CreateSessionAsync(ExecutionSessionRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ExecutionSessionHandle("s"));
+
+        public Task<ExecutionCommandResult> ExecuteAsync(ExecutionSessionHandle session, ExecutionCommand command, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ExecutionCommandResult>((command.Name, command.Args) switch
+            {
+                ("git", ["rev-parse", "HEAD"]) => new(true, Head + "\n", null, 1),
+                ("git", ["ls-files", "-z", "--", "*.csproj"]) => new(true, string.Concat(files.Keys.Select(k => k + "\0")), null, 1),
+                ("git", ["show", var spec]) when spec.StartsWith("HEAD:", StringComparison.Ordinal) && files.TryGetValue(spec[5..], out var content)
+                    => new(true, content, null, 1),
+                _ => new(false, null, $"unexpected command: {command.Name} {string.Join(' ', command.Args)}", 1),
+            });
+
+        public Task CloseSessionAsync(ExecutionSessionHandle session, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

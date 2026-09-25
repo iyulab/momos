@@ -37,6 +37,7 @@ builder.Services
     .ValidateDataAnnotations()
     .ValidateOnStart();
 builder.Services.AddKnowledgeIndex();
+builder.Services.AddSingleton<ModelKnowledgeProjector>();
 
 var app = builder.Build();
 
@@ -62,6 +63,8 @@ app.MapProjectEndpoints();
 app.MapInspectionRequestEndpoints();
 app.MapInspectionReportEndpoints();
 app.MapKnowledgeEndpoints();
+app.MapAnalysisRequestEndpoints();
+app.MapProjectModelEndpoints();
 
 app.Run();
 

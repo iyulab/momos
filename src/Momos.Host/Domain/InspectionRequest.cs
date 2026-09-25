@@ -9,12 +9,24 @@ public enum InspectionRequestStatus
 }
 
 /// <summary>
+/// What a claimed request asks a Worker to do. Both kinds share one queue — claim-next's
+/// compare-and-swap, reclaim lease, worker auth and protocol gate don't depend on the kind —
+/// but each kind has its own completion contract (an inspection report vs. a project model).
+/// </summary>
+public enum InspectionRequestKind
+{
+    Inspection,
+    Analysis,
+}
+
+/// <summary>
 /// A single, lightweight trigger for one inspection run against a <see cref="Project"/>.
 /// </summary>
 public sealed class InspectionRequest
 {
     public Guid Id { get; init; } = Guid.NewGuid();
     public required Guid ProjectId { get; set; }
+    public InspectionRequestKind Kind { get; init; } = InspectionRequestKind.Inspection;
     public string? Focus { get; set; }
 
     /// <summary>

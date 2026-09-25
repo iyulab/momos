@@ -4,6 +4,8 @@ namespace Momos.Host.Contracts;
 
 public sealed record CreateInspectionRequestRequest(string? Focus, string? CommitRef);
 
+public sealed record CreateAnalysisRequestRequest(string? CommitRef);
+
 public sealed record InspectionRequestResponse(
     Guid Id,
     Guid ProjectId,
@@ -12,7 +14,8 @@ public sealed record InspectionRequestResponse(
     DateTimeOffset SubmittedAt,
     InspectionRequestStatus Status,
     string? FailureReason,
-    DateTimeOffset? ClaimedAt)
+    DateTimeOffset? ClaimedAt,
+    InspectionRequestKind Kind)
 {
     public static InspectionRequestResponse FromEntity(InspectionRequest request) => new(
         request.Id,
@@ -22,7 +25,8 @@ public sealed record InspectionRequestResponse(
         request.SubmittedAt,
         request.Status,
         request.FailureReason,
-        request.ClaimedAt);
+        request.ClaimedAt,
+        request.Kind);
 }
 
 public sealed record FindingResponse(Guid Id, FindingCategory Category, string Description, string Evidence)

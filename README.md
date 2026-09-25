@@ -1,6 +1,6 @@
 # Momos
 
-정적 분석이 잡지 못하는 실행 환경의 문제(UX 흐름, 실행 중 결함)를 자율 에이전트가 직접 상호작용하며 찾아내는 검사 도구.
+정적 분석이 잡지 못하는 실행 환경의 문제(UX 흐름, 실행 중 결함)를 자율 에이전트가 직접 상호작용하며 찾아내고, 그 검사의 바탕이 되는 프로젝트 설계 이해를 근거 등급이 붙은 모델로 개발자에게 돌려주는 도구.
 
 ## 대상
 
@@ -16,6 +16,8 @@ CI/CD 파이프라인 안에서, 개별 프로젝트 개발자가 릴리스 전 
 ## 현재 상태
 
 Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)이 존재하며, 둘은 별도 프로세스로 배포된다 — Worker가 Host를 poll해 대기 중인 검사 신청서를 가져와 실행하고 결과서를 제출한다. Host의 프로젝트 등록·검사 신청/결과 조회 API가 구현되어 있다: `POST /projects`, `GET /projects/{id}`, `POST /projects/{id}/inspection-requests`, `GET /inspection-requests/{id}`, `GET /inspection-requests/{id}/report`(자세한 내용은 [통합 계약](docs/integration-contract.md) 참고). 신청서는 제출 후 실제로 Worker에 의해 실행된다 — 대상 리포를 체크아웃하고, 샌드박스 환경에서 명령을 실행하며, 실제로 재현한 결함이 있으면 근거(명령 출력)와 함께 보고하고, 없으면 정직하게 지적 0건으로 완료한다. 실제 대상 리포에 대한 엔드투엔드 실행(Host+Worker+LLM+실행 샌드박스)이 검증됐다 — 남은 것은 지적 품질을 평가할 비교 방법론을 다듬는 것이다.
+
+프로젝트 설계 이해 모델도 첫 단계가 구현되어 있다: `POST /projects/{id}/analysis-requests`로 분석을 요청하면 Worker가 대상 리포의 .NET 프로젝트 파일에서 구조(프로젝트)와 프로젝트 참조 관계를 결정적으로 추출해(LLM 호출 없음) 근거가 붙은 진술로 이뤄진 모델을 제출한다. 모델은 `GET /projects/{id}/model`로, 개발자용 딥 리포트(마크다운 문서 트리)는 `GET /projects/{id}/model/report`로 조회하고, 각 진술은 `POST /projects/{id}/model/claims/{claimKey}/corrections`로 확인·반박·교정할 수 있다. 모델 진술과 교정은 검사 에이전트가 지식 조회로 읽는 맥락이 된다. 증분 분석, 패턴 식별, 이력 추출, 평가(`Assessment`) 진술 생성은 아직 구현되지 않았다 — 자세한 내용은 [통합 계약](docs/integration-contract.md#프로젝트-모델) 참고.
 
 ## 설정
 
@@ -39,9 +41,9 @@ Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)
 
 `appsettings.Development.json`에 커밋하지 말고 `dotnet user-secrets` 또는 환경 변수(`Momos__Llm__GpuStack__Endpoint` 등)로 주입한다.
 
-Worker→Host 통신도 인증이 **필수**다. Host는 `Momos:Host:WorkerAuth:ApiKey`, Worker는 그와 동일한 값을 `Momos:Worker:Host:ApiKey`에 채워야 하며, 둘 다 부팅 시 `OptionsValidationException`으로 검증한다. Worker는 이 값을 매 요청 `Authorization: Bearer {ApiKey}` 헤더로 보내고, Host는 `claim-next`/`report`/`fail` 엔드포인트에서만 이를 검사한다(프로젝트 등록·조회 등 나머지 API는 별개 통합 표면이라 대상이 아니다). GPUStack 설정과 마찬가지로 커밋하지 말고 환경 변수(`Momos__Host__WorkerAuth__ApiKey`, `Momos__Worker__Host__ApiKey`)로 주입한다.
+Worker→Host 통신도 인증이 **필수**다. Host는 `Momos:Host:WorkerAuth:ApiKey`, Worker는 그와 동일한 값을 `Momos:Worker:Host:ApiKey`에 채워야 하며, 둘 다 부팅 시 `OptionsValidationException`으로 검증한다. Worker는 이 값을 매 요청 `Authorization: Bearer {ApiKey}` 헤더로 보내고, Host는 `claim-next`/`report`/`fail`과 프로젝트 모델 제출(`POST /analysis-requests/{id}/model`) 엔드포인트에서만 이를 검사한다(프로젝트 등록·조회 등 나머지 API는 별개 통합 표면이라 대상이 아니다). GPUStack 설정과 마찬가지로 커밋하지 말고 환경 변수(`Momos__Host__WorkerAuth__ApiKey`, `Momos__Worker__Host__ApiKey`)로 주입한다.
 
-Host는 프로젝트 지식 레이어(등록 문서·과거 지적사항을 색인해 Worker의 에이전트 루프가 검색하는 RAG)도 갖고 있다. `Momos:Host:Knowledge:ConnectionString`(PostgreSQL, pgvector 확장 필요)만 있으면 바로 뜬다. 임베딩은 선택이다 — `Momos:Host:Knowledge:EmbeddingEndpoint`/`EmbeddingApiKey`/`EmbeddingModel`(기본 `qwen3-embedding-0.6b`)/`EmbeddingDimension`(기본 `1024`)을 GPUStack 값으로 채우면 실제 의미 기반 검색이 동작하고, 비워두면 의미 없는 벡터를 반환하는 인메모리 폴백으로 조용히 넘어간다(부팅은 실패하지 않는다) — 프로덕션에서는 반드시 채워야 지식 검색이 실질적으로 동작한다.
+Host는 프로젝트 지식 레이어(등록 문서·과거 지적사항·프로젝트 모델 진술을 색인해 Worker의 에이전트 루프가 검색하는 RAG)도 갖고 있다. `Momos:Host:Knowledge:ConnectionString`(PostgreSQL, pgvector 확장 필요)만 있으면 바로 뜬다. 임베딩은 선택이다 — `Momos:Host:Knowledge:EmbeddingEndpoint`/`EmbeddingApiKey`/`EmbeddingModel`(기본 `qwen3-embedding-0.6b`)/`EmbeddingDimension`(기본 `1024`)을 GPUStack 값으로 채우면 실제 의미 기반 검색이 동작하고, 비워두면 의미 없는 벡터를 반환하는 인메모리 폴백으로 조용히 넘어간다(부팅은 실패하지 않는다) — 프로덕션에서는 반드시 채워야 지식 검색이 실질적으로 동작한다.
 
 ### 로컬 데이터베이스
 

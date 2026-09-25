@@ -12,6 +12,9 @@ public sealed class FakeExecutionRuntimeProvider : IExecutionRuntimeProvider
     public ExecutionCommandResult NextResult { get; set; } = new(true, "ok", null, 1);
     public Exception? ExceptionToThrow { get; set; }
 
+    /// <summary>Per-command scripted results; when null every command gets <see cref="NextResult"/>.</summary>
+    public Func<ExecutionCommand, ExecutionCommandResult>? Respond { get; set; }
+
     public Task<ExecutionSessionHandle> CreateSessionAsync(
         ExecutionSessionRequest request, CancellationToken cancellationToken = default)
     {
@@ -26,7 +29,7 @@ public sealed class FakeExecutionRuntimeProvider : IExecutionRuntimeProvider
         ExecutedCommands.Add((session, command));
         return ExceptionToThrow is not null
             ? Task.FromException<ExecutionCommandResult>(ExceptionToThrow)
-            : Task.FromResult(NextResult);
+            : Task.FromResult(Respond?.Invoke(command) ?? NextResult);
     }
 
     public Task CloseSessionAsync(ExecutionSessionHandle session, CancellationToken cancellationToken = default)

@@ -91,6 +91,10 @@ namespace Momos.Host.Migrations
                     b.Property<string>("Focus")
                         .HasColumnType("text");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
@@ -106,6 +110,53 @@ namespace Momos.Host.Migrations
                     b.HasIndex("ProjectId");
 
                     b.ToTable("InspectionRequests");
+                });
+
+            modelBuilder.Entity("Momos.Host.Domain.ModelClaim", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Confidence")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("CorrectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Correction")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Evidence")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProjectModelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Statement")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Tier")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectModelId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("ModelClaims");
                 });
 
             modelBuilder.Entity("Momos.Host.Domain.Project", b =>
@@ -154,6 +205,58 @@ namespace Momos.Host.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Projects");
+                });
+
+            modelBuilder.Entity("Momos.Host.Domain.ProjectModel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AnalysisRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BaseCommit")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Components")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Decisions")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Intents")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("ModelVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Patterns")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Relations")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AnalysisRequestId");
+
+                    b.HasIndex("ProjectId", "ModelVersion")
+                        .IsUnique();
+
+                    b.ToTable("ProjectModels");
                 });
 
             modelBuilder.Entity("Momos.Host.Domain.ToolCall", b =>
@@ -216,6 +319,30 @@ namespace Momos.Host.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Momos.Host.Domain.ModelClaim", b =>
+                {
+                    b.HasOne("Momos.Host.Domain.ProjectModel", null)
+                        .WithMany("Claims")
+                        .HasForeignKey("ProjectModelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Momos.Host.Domain.ProjectModel", b =>
+                {
+                    b.HasOne("Momos.Host.Domain.InspectionRequest", null)
+                        .WithMany()
+                        .HasForeignKey("AnalysisRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Momos.Host.Domain.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Momos.Host.Domain.ToolCall", b =>
                 {
                     b.HasOne("Momos.Host.Domain.InspectionRequest", null)
@@ -233,6 +360,11 @@ namespace Momos.Host.Migrations
             modelBuilder.Entity("Momos.Host.Domain.InspectionRequest", b =>
                 {
                     b.Navigation("ToolCalls");
+                });
+
+            modelBuilder.Entity("Momos.Host.Domain.ProjectModel", b =>
+                {
+                    b.Navigation("Claims");
                 });
 #pragma warning restore 612, 618
         }
