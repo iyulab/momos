@@ -59,15 +59,11 @@ docker run -d --name momos-pg-knowledge-dev -e POSTGRES_PASSWORD=devpw -e POSTGR
 
 테스트 스위트는 `Testcontainers.PostgreSql`로 컨테이너를 직접 관리하므로 위 수동 기동은 앱을 직접 `dotnet run`으로 띄울 때만 필요하다(Docker 데몬은 테스트에도 필요).
 
-컨테이너를 띄운 뒤에는 마이그레이션을 수동으로 적용해야 한다 — 이 브랜치부터 마이그레이션 실행이 앱 시작 시점에서 빠졌으므로, 갓 띄운 PostgreSQL은 스키마가 없는 빈 데이터베이스다:
+컨테이너를 띄운 뒤에는 마이그레이션을 수동으로 적용해야 한다 — 마이그레이션은 앱 시작 시점에 실행되지 않으므로, 갓 띄운 PostgreSQL은 스키마가 없는 빈 데이터베이스다:
 
 ```bash
 dotnet tool restore && dotnet ef database update --project src/Momos.Host
 ```
-
-### 알려진 제한사항
-
-프로젝트 지식(RAG) 색인 기능이 PostgreSQL 백엔드에서 현재 동작하지 않는다 — FluxIndex의 PostgreSQL storage 기본 임베딩 차원(1536)과 이 프로젝트가 설정한 임베딩 차원(1024) 간 불일치로 `POST /projects/{id}/knowledge`가 모든 요청에서 실패한다. 관련 테스트 4건은 `Skip`으로 표시돼 있어 CI는 green을 유지하지만, 기능 자체는 막혀 있다 — 후속 수정으로 추적 중이다.
 
 ## Worker 설치
 
@@ -113,7 +109,12 @@ iwr https://raw.githubusercontent.com/iyulab/momos/main/scripts/install-worker.p
 
 값은 설치 디렉터리의 `appsettings.Production.json`에 기록된다(소유자 전용 권한). 기본 설치 경로는 Linux `~/.local/share/momos-worker`, Windows `%LOCALAPPDATA%\MomosWorker`이며 `MOMOS_WORKER_INSTALL_DIR` 환경변수로 바꿀 수 있다. 특정 버전을 설치하려면 `MOMOS_WORKER_VERSION=0.1.0`처럼 지정한다(기본은 최신 릴리스).
 
-설치 후 실행은 직접 하거나(`<설치경로>/Momos.Worker`, Windows는 `Momos.Worker.exe`) 운영 환경에 맞는 방식(Windows Service, systemd 등)으로 상주시킨다 — 이 스크립트는 그 등록까지는 하지 않는다. 재실행하면 기존 설정 파일은 그대로 둔 채 바이너리만 최신으로 교체한다. Windows에서 설치한 사용자와 다른 계정(예: LocalSystem)으로 서비스를 등록하면 그 계정에 `appsettings.Production.json` 읽기 권한을 추가해야 한다 — 설치 스크립트가 현재 사용자 전용으로 ACL을 좁혀두기 때문이다.
+바이너리는 설치 경로의 `installs/<버전>/` 아래에 풀리고, `current`가 그 디렉터리를 가리킨다(Linux는 심볼릭 링크, Windows는 junction). 실행 파일은 `<설치경로>/current/Momos.Worker`(Windows는 `Momos.Worker.exe`)다. 재실행하면 기존 설정 파일은 그대로 둔 채 바이너리만 최신으로 교체한다.
+
+스크립트는 Worker를 OS 서비스로도 등록한다 — 아래 자체 업데이트가 동작하려면 종료된 프로세스를 다시 띄워 줄 감시자가 필요하기 때문이다. 두 플랫폼의 기본값은 의도적으로 다르다:
+
+- **Windows** — 기본으로 등록한다(끄려면 `MOMOS_WORKER_SKIP_SERVICE_INSTALL=1`). 관리자 권한 PowerShell에서만 등록되며, 권한이 없으면 등록을 건너뛰고 설치는 계속된다. 서비스 이름은 `MomosWorker`, 실행 계정은 LocalSystem, 시작 유형은 자동이고, 비정상 종료 시 5초·5초·30초 간격으로 재시작한다. 설정 파일은 설치한 사용자 전용 권한으로 기록되므로 스크립트가 LocalSystem에 읽기 권한을 따로 부여한다 — 서비스 계정을 다른 계정으로 바꾸면 그 계정에도 같은 권한을 줘야 한다.
+- **Linux** — 기본으로는 등록하지 않는다(`MOMOS_WORKER_INSTALL_SERVICE=1`로 옵트인). `curl | bash` 같은 무인 설치에서 `sudo` 프롬프트가 설치를 멈추게 하지 않기 위해서다. 옵트인하면 root 또는 `sudo`로 `/etc/systemd/system/momos-worker.service`(`Restart=always`, 설치한 사용자로 실행)를 만들고 활성화·시작한다.
 
 새 버전은 `worker-v*` 형태의 태그(예: `worker-v0.1.0`)로 릴리스된다 — Host(컨테이너 배포)와는 독립된 버전 계열이다.
 
