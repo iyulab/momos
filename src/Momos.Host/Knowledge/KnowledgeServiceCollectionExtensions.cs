@@ -93,6 +93,16 @@ internal sealed class FluxIndexKnowledgeIndex(IFluxIndexContext context) : IKnow
         // keyword leg is unaffected by embedding quality, so it catches what pure vector search
         // would drop while still counting toward relevance when a real embedding IS configured.
         var results = await context.Retriever.HybridSearchAsync(query, query, maxResults, vectorWeight: 0.5, filter, cancellationToken);
-        return results.Select(r => new KnowledgeSearchHit(r.DocumentChunk.Content, r.Score)).ToList();
+
+        // The vector store and the keyword store assign independent ids to the same chunk, so
+        // the fusion cannot merge a chunk both legs found and returns it twice. A caller would
+        // then read one document as two sources; collapse hits by (document, chunk) instead.
+        // TODO(upstream): drop once FluxIndex fuses hybrid results by document chunk identity.
+        return results
+            .GroupBy(r => (r.DocumentChunk.DocumentId, r.DocumentChunk.ChunkIndex))
+            .Select(g => g.MaxBy(r => r.Score)!)
+            .OrderByDescending(r => r.Score)
+            .Select(r => new KnowledgeSearchHit(r.DocumentChunk.Content, r.Score))
+            .ToList();
     }
 }

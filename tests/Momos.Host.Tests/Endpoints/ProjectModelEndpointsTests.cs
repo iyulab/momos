@@ -124,6 +124,132 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
     }
 
+    private static Task<HttpResponseMessage> CorrectAsync(HttpClient client, Guid projectId, string claimKey, CorrectClaimRequest verdict) =>
+        client.PostAsJsonAsync($"/projects/{projectId}/model/claims/{Uri.EscapeDataString(claimKey)}/corrections", verdict, TestJsonOptions.Value);
+
+    [Fact]
+    public async Task Reanalysis_CarriesACorrectionForward_OnlyWhileTheStatementIsUnchanged()
+    {
+        var (projectId, first) = await StartAnalysisAsync(_client);
+        await SubmitAsync(_client, first, ModelFixtures.ValidSubmission());
+        var corrected = await CorrectAsync(_client, projectId, "clm.ref",
+            new CorrectClaimRequest(ClaimStatus.Corrected, "Lib is a plugin loaded at run time, not a compile-time dependency"));
+        Assert.Equal(HttpStatusCode.OK, corrected.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await CorrectAsync(_client, projectId, "clm.app", new CorrectClaimRequest(ClaimStatus.Confirmed, null))).StatusCode);
+        // Read back from storage, so both sides of the comparison below carry the stored precision.
+        var correctedAt = (await _client.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value))!
+            .Claims.Single(c => c.Key == "clm.ref").CorrectedAt;
+        Assert.NotNull(correctedAt);
+
+        var (_, second) = await StartAnalysisAsync(_client, projectId);
+        var response = await SubmitAsync(_client, second, ModelFixtures.ValidSubmission(baseCommit: "def456", componentStatement: "App is a .NET web service"));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var model = await response.Content.ReadFromJsonAsync<ProjectModelResponse>(TestJsonOptions.Value);
+        Assert.Equal(2, model!.ModelVersion);
+        var carried = model.Claims.Single(c => c.Key == "clm.ref");
+        Assert.Equal(ClaimStatus.Corrected, carried.Status);
+        Assert.Equal("Lib is a plugin loaded at run time, not a compile-time dependency", carried.Correction);
+        Assert.Equal(correctedAt, carried.CorrectedAt);
+        // The statement behind clm.app changed, so the old confirmation no longer describes it.
+        var restarted = model.Claims.Single(c => c.Key == "clm.app");
+        Assert.Equal(ClaimStatus.Proposed, restarted.Status);
+        Assert.Null(restarted.CorrectedAt);
+        Assert.Equal(ClaimStatus.Proposed, model.Claims.Single(c => c.Key == "clm.lib").Status);
+
+        // The stored latest model agrees with the submission response.
+        var latest = await _client.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+        Assert.Equal(ClaimStatus.Corrected, latest!.Claims.Single(c => c.Key == "clm.ref").Status);
+    }
+
+    [Fact]
+    public async Task Correct_AClaim_KeepsTheOriginalStatementAndRecordsTheCorrection()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+
+        var response = await CorrectAsync(_client, projectId, "clm.ref", new CorrectClaimRequest(ClaimStatus.Corrected, "  Lib is loaded as a plugin  "));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var claim = await response.Content.ReadFromJsonAsync<ClaimResponse>(TestJsonOptions.Value);
+        Assert.Equal("clm.ref", claim!.Key);
+        Assert.Equal("App references Lib", claim.Statement);
+        Assert.Equal(ClaimStatus.Corrected, claim.Status);
+        Assert.Equal("Lib is loaded as a plugin", claim.Correction);
+        Assert.NotNull(claim.CorrectedAt);
+
+        var latest = await _client.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+        var stored = latest!.Claims.Single(c => c.Key == "clm.ref");
+        Assert.Equal(ClaimStatus.Corrected, stored.Status);
+        Assert.Equal("Lib is loaded as a plugin", stored.Correction);
+        Assert.Equal("App references Lib", stored.Statement);
+    }
+
+    [Fact]
+    public async Task Confirm_AfterACorrection_ClearsTheCorrection()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+        await CorrectAsync(_client, projectId, "clm.ref", new CorrectClaimRequest(ClaimStatus.Corrected, "Lib is loaded as a plugin"));
+
+        var response = await CorrectAsync(_client, projectId, "clm.ref", new CorrectClaimRequest(ClaimStatus.Confirmed, null));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var claim = await response.Content.ReadFromJsonAsync<ClaimResponse>(TestJsonOptions.Value);
+        Assert.Equal(ClaimStatus.Confirmed, claim!.Status);
+        Assert.Null(claim.Correction);
+    }
+
+    [Theory]
+    [InlineData(ClaimStatus.Corrected, null)]
+    [InlineData(ClaimStatus.Corrected, "   ")]
+    [InlineData(ClaimStatus.Proposed, null)]
+    public async Task Correct_WithAnInvalidVerdict_Returns400(ClaimStatus status, string? correction)
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+
+        var response = await CorrectAsync(_client, projectId, "clm.ref", new CorrectClaimRequest(status, correction));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var latest = await _client.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+        Assert.Equal(ClaimStatus.Proposed, latest!.Claims.Single(c => c.Key == "clm.ref").Status);
+    }
+
+    [Fact]
+    public async Task Correct_AnUnknownClaim_Returns404()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+
+        var response = await CorrectAsync(_client, projectId, "clm.nope", new CorrectClaimRequest(ClaimStatus.Confirmed, null));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Correct_AClaimKeyThatDiffersOnlyInCase_Returns404()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+
+        var response = await CorrectAsync(_client, projectId, "CLM.REF", new CorrectClaimRequest(ClaimStatus.Confirmed, null));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Correct_OnAProjectWithNoModel_Returns404()
+    {
+        var project = await _client.PostAsJsonAsync("/projects",
+            new CreateProjectRequest("acme-uncorrected", null, null, "purpose", "vision", "scope"));
+        var projectId = (await project.Content.ReadFromJsonAsync<ProjectResponse>())!.Id;
+
+        var response = await CorrectAsync(_client, projectId, "clm.ref", new CorrectClaimRequest(ClaimStatus.Confirmed, null));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     [Fact]
     public async Task GetModel_ForAProjectNeverAnalyzed_Returns404()
     {

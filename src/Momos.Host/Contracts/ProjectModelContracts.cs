@@ -106,6 +106,10 @@ public sealed record SubmitProjectModelRequest(
         Intents.Select(i => new ModelIntent(i.Id, i.Statement, i.Source, i.Claims)).ToList());
 }
 
+/// <summary>A developer's verdict on one claim: Confirmed, Disputed, or Corrected (which
+/// requires the corrected understanding in <see cref="Correction"/>).</summary>
+public sealed record CorrectClaimRequest(ClaimStatus Status, string? Correction);
+
 public sealed record ClaimResponse(
     string Key, ClaimTier Tier, string Statement, IReadOnlyList<ClaimEvidenceDto> Evidence,
     ClaimConfidence Confidence, ClaimStatus Status, string? Correction, DateTimeOffset? CorrectedAt)

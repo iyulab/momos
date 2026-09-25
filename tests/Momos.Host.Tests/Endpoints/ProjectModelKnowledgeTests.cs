@@ -66,6 +66,24 @@ public sealed class ProjectModelKnowledgeTests(MomosHostFactory factory) : IClas
     }
 
     [Fact]
+    public async Task ACorrection_ReplacesTheClaimsIndexedDocument()
+    {
+        var (projectId, requestId) = await ProjectModelEndpointsTests.StartAnalysisAsync(_client);
+        await SubmitCreatedAsync(requestId, ModelFixtures.ValidSubmission());
+
+        var response = await _client.PostAsJsonAsync($"/projects/{projectId}/model/claims/clm.ref/corrections",
+            new CorrectClaimRequest(ClaimStatus.Corrected, "Quetzalplugin loading happens at run time"), TestJsonOptions.Value);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var snippets = await QueryAsync(projectId, "Quetzalplugin");
+        var snippet = Assert.Single(snippets, s => s.Content.Contains("claim clm.ref "));
+        Assert.Contains("Developer correction (authoritative): Quetzalplugin", snippet.Content);
+        Assert.Contains("Corrected]", snippet.Content);
+        Assert.DoesNotContain(await QueryAsync(projectId, "App references Lib"),
+            s => s.Content.Contains("claim clm.ref ") && s.Content.Contains("Proposed]"));
+    }
+
+    [Fact]
     public async Task Submit_WhenProjectingIntoTheIndexThrows_TheModelIsStillStored()
     {
         using var throwingFactory = factory.WithWebHostBuilder(builder =>
