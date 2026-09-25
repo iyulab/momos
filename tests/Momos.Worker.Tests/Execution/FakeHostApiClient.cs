@@ -3,7 +3,7 @@ using Momos.Worker.Execution;
 
 namespace Momos.Worker.Tests.Execution;
 
-/// <summary>Records what <see cref="Momos.Worker.Execution.PullExecutionBackgroundService"/> submits, and signals when an outcome (report or failure) lands.</summary>
+/// <summary>Records what <see cref="Momos.Worker.Execution.PullExecutionBackgroundService"/> submits, and signals when an outcome (report, model or failure) lands.</summary>
 internal sealed class FakeHostApiClient(
     IReadOnlyList<ClaimedInspectionRequest> claims,
     bool getProjectThrows = false,
@@ -21,6 +21,7 @@ internal sealed class FakeHostApiClient(
 
     public List<SubmitReportRequest> SubmittedReports { get; } = [];
     public List<(Guid Id, string Reason, IReadOnlyList<ToolCallPayload> ToolCalls)> SubmittedFailures { get; } = [];
+    public List<(Guid Id, ProjectModelPayload Model)> SubmittedModels { get; } = [];
 
     /// <summary>Total <see cref="ClaimNextAsync"/> calls so far, successful or throwing — lets a test condition-wait on the pull loop having reached a given iteration instead of sleeping an arbitrary duration.</summary>
     public int ClaimCallCount => _claimCallCount;
@@ -58,6 +59,13 @@ internal sealed class FakeHostApiClient(
     public Task SubmitReportAsync(Guid inspectionRequestId, IReadOnlyList<FindingPayload> findings, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken)
     {
         SubmittedReports.Add(new SubmitReportRequest(findings, toolCalls));
+        _outcomeReceived.TrySetResult();
+        return Task.CompletedTask;
+    }
+
+    public Task SubmitModelAsync(Guid analysisRequestId, ProjectModelPayload model, CancellationToken cancellationToken)
+    {
+        SubmittedModels.Add((analysisRequestId, model));
         _outcomeReceived.TrySetResult();
         return Task.CompletedTask;
     }

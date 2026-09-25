@@ -11,6 +11,10 @@ public interface IHostApiClient
 
     Task SubmitReportAsync(Guid inspectionRequestId, IReadOnlyList<FindingPayload> findings, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken);
 
+    /// <summary>Completes a claimed analysis request with the project model extracted from it —
+    /// the analysis counterpart of <see cref="SubmitReportAsync"/>.</summary>
+    Task SubmitModelAsync(Guid analysisRequestId, ProjectModelPayload model, CancellationToken cancellationToken);
+
     Task SubmitFailureAsync(Guid inspectionRequestId, string reason, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<string>> QueryKnowledgeAsync(Guid projectId, string query, CancellationToken cancellationToken);
