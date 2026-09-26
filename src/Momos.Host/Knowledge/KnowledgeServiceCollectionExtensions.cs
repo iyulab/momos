@@ -27,9 +27,9 @@ public static class KnowledgeServiceCollectionExtensions
                 });
             if (!string.IsNullOrEmpty(options.EmbeddingEndpoint))
             {
-                // Through the builder, not ConfigureServices: Build() registers its own default
-                // (in-memory) embedding service after everything ConfigureServices added unless
-                // the builder was told a custom one is in use, and the later registration wins.
+                // The builder's explicit selection: it states that this, not the in-memory
+                // default, is the embedding service. (A registration through ConfigureServices
+                // is also honored since FluxIndex 0.52.1.)
                 builder.UseEmbeddingService(fluxServices => new OpenAICompatibleEmbeddingService(
                     options.EmbeddingEndpoint, options.EmbeddingApiKey,
                     options.EmbeddingModel, options.EmbeddingDimension,

@@ -55,7 +55,7 @@ public sealed class CodeExecutionTools(
                 ? result.Output ?? string.Empty
                 : FormatFailure(result);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             trace.Add(new ToolCallEntry(nameof(RunCommand), $"{command} {argsJoined}".TrimEnd(), Success: false, (int)stopwatch.ElapsedMilliseconds));
             throw;

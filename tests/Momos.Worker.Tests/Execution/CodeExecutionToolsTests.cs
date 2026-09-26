@@ -209,6 +209,21 @@ public class CodeExecutionToolsTests
     }
 
     [Fact]
+    public async Task RunCommand_ProviderTimesOutWithoutCancellation_StillRecordsAFailedToolCallEntry()
+    {
+        // A timeout inside the provider surfaces as a TaskCanceledException although nobody
+        // canceled the run — it is a failed attempt, and the trace must show it.
+        var provider = new FakeExecutionRuntimeProvider { ExceptionToThrow = new TaskCanceledException("timed out") };
+        var trace = new ToolCallTraceSink();
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("session-1"), trace, NullLogger<CodeExecutionTools>.Instance);
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() => tools.RunCommand("dotnet", ["build"]));
+
+        var entry = Assert.Single(trace.Calls);
+        Assert.False(entry.Success);
+    }
+
+    [Fact]
     public async Task RunCommand_NoArgs_PassesEmptyArgsList()
     {
         var provider = new FakeExecutionRuntimeProvider();

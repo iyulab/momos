@@ -409,6 +409,35 @@ public sealed class PullExecutionBackgroundServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenTheRunIsCanceledWithoutAShutdown_SubmitsAFailureInsteadOfLeavingTheRequestRunning()
+    {
+        // HttpClient.Timeout surfaces as a TaskCanceledException even though nobody asked
+        // the Worker to stop. Treated as a shutdown, the request would stay Running, be
+        // reclaimed after the lease, and time out again — forever, with no failure reason.
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(Guid.NewGuid(), Guid.NewGuid(), null, null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)]);
+        var chatClientProvider = new FakeChatClientProvider(
+            responsesBeforeFinal: [],
+            finalException: new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing."));
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory(chatClientProvider);
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            new ProjectModelExtractor(executionProvider),
+            new FakeWorkerSelfUpdater(),
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        var failure = Assert.Single(hostClient.SubmittedFailures);
+        Assert.Contains("HttpClient.Timeout", failure.Reason);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenClaimNextFailsRepeatedly_DowngradesToACriticalLogAtTheThresholdAndThenSuppresses()
     {
         var hostClient = new FakeHostApiClient([], claimNextThrowsForFirstNCalls: 5);

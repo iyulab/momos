@@ -33,7 +33,7 @@ public sealed class KnowledgeQueryTools(
                 ? "No relevant project knowledge found."
                 : string.Join("\n---\n", snippets);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             // Recorded and rethrown, not swallowed: Microsoft.Extensions.AI's
             // FunctionInvokingChatClient already turns a thrown tool call into an error

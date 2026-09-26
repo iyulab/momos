@@ -214,7 +214,7 @@ public sealed class PullExecutionBackgroundService(
                 .ToList();
             await hostApiClient.SubmitReportAsync(request.Id, findings.Findings, toolCallPayloads, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             // Covers a mid-run Host hiccup (GetProjectAsync/SubmitReportAsync) and an
             // LLM-provider failure alike — both surface here as "the run threw", and
@@ -223,6 +223,10 @@ public sealed class PullExecutionBackgroundService(
             // to ExecuteAsync's catch and the request is left Running — the claim-next
             // reclaim lease (InspectionClaimOptions.ReclaimTimeout) picks it back up once
             // it expires, so no separate retry/backoff is needed for that case either.
+            //
+            // Only a cancellation of our own token is a shutdown. An HttpClient timeout also
+            // throws OperationCanceledException; letting it escape would leave the request
+            // Running, and the reclaimed retry would time out again with no reason recorded.
             var toolCallPayloads = toolCalls?.Calls
                 .Select(c => new ToolCallPayload(c.Tool, c.Summary, c.Success, c.DurationMs))
                 .ToList() ?? [];
