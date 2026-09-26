@@ -103,9 +103,20 @@ public sealed class GitCloneCommandTests
         Assert.DoesNotContain("s3cret-token", output);
     }
 
-    private static async Task<(int ExitCode, string Output)> FillAsync(string request)
+    [Fact]
+    public async Task Helper_ReturnsAPasswordWithBackslashesUnaltered()
     {
-        var clone = GitCloneCommand.Create("https://github.com/acme/repo.git", Credential);
+        var credential = new GitCredential("github.com", "worker", @"pa\nss\\w0rd\c");
+
+        var (exitCode, output) = await FillAsync("protocol=https\nhost=github.com\n\n", credential);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains(@"password=pa\nss\\w0rd\c", output);
+    }
+
+    private static async Task<(int ExitCode, string Output)> FillAsync(string request, GitCredential? credential = null)
+    {
+        var clone = GitCloneCommand.Create("https://github.com/acme/repo.git", credential ?? Credential);
         var start = new ProcessStartInfo("git")
         {
             RedirectStandardInput = true,

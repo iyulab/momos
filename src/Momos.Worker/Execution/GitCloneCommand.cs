@@ -22,7 +22,8 @@ public static class GitCloneCommand
         "!f() { test \"$1\" = get || return 0; p=; h=; "
         + "while IFS= read -r l; do case \"$l\" in protocol=*) p=\"${l#protocol=}\";; host=*) h=\"${l#host=}\";; esac; done; "
         + "test \"$p\" = https && test \"$h\" = \"$" + HostVariable + "\" || return 0; "
-        + "echo \"username=$" + UsernameVariable + "\"; echo \"password=$" + PasswordVariable + "\"; }; f";
+        // printf, not echo: sh's echo may interpret backslashes, which would alter a password.
+        + "printf 'username=%s\\npassword=%s\\n' \"$" + UsernameVariable + "\" \"$" + PasswordVariable + "\"; }; f";
 
     // What git prints when the server wants credentials it did not get, or refused the ones
     // it got. GitHub answers a private repository the credential cannot read with "Repository
