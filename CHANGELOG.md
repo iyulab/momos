@@ -38,3 +38,7 @@ momos는 `0.x` 단계다. 공개 계약은 아직 고정되지 않았고, 더 �
 - 자체 업데이트(`Momos:Worker:SelfUpdate:Enabled`, 기본값 `false`) — 새 버전을 스테이징한 뒤 종료하고,
   재시작은 프로세스를 감시하는 서비스 관리자에게 맡긴다.
 - Windows x64·Linux x64용 자체 포함 단일 파일 바이너리와 SHA-256 체크섬.
+- 실행이 Worker 종료가 아닌 이유로 취소되면(예: HTTP 요청 시간 초과) 실패로 보고한다 — 신청서가 `Running`에 머물다
+  회수·재시도되며 같은 시간 초과를 이유 없이 반복하지 않는다.
+- HTTP 클라이언트의 요청 단위 로그는 기본 `Warning` 수준이다 — 유휴 상태의 `claim-next` 폴링이 로그를 채우지 않는다.
+  필요하면 `Logging:LogLevel:System.Net.Http.HttpClient`로 되돌린다.
