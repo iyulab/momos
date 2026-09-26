@@ -2,7 +2,6 @@ using FluxIndex.Providers.OpenAI.Services;
 using FluxIndex.SDK;
 using FluxIndex.Storage.PostgreSQL;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Momos.Host.Knowledge;
@@ -19,7 +18,10 @@ public static class KnowledgeServiceCollectionExtensions
                 .UsePostgreSQL(options.ConnectionString)
                 .ConfigureServices(s =>
                 {
-                    s.AddLogging(b => b.AddProvider(NullLoggerProvider.Instance));
+                    // FluxIndex's own warnings (a vector size mismatch, a resolved embedder that is
+                    // not the one configured) belong in the Host's log, not a null provider.
+                    s.AddSingleton(sp.GetRequiredService<ILoggerFactory>());
+                    s.AddLogging();
                     // AddPostgreSQLStorage() below registers its own Configure<PostgreSQLOptions>
                     // after this, which would overwrite a Configure() call here — PostConfigure
                     // runs after all Configure calls and wins.
@@ -51,6 +53,8 @@ public static class KnowledgeServiceCollectionExtensions
             return builder.AddPostgreSQLStorage().Build();
         });
         services.AddSingleton<IKnowledgeIndex, FluxIndexKnowledgeIndex>();
+        services.AddSingleton<IValidateOptions<KnowledgeOptions>, KnowledgeOptionsValidator>();
+        services.AddHostedService<KnowledgeIndexInitializer>();
         return services;
     }
 }

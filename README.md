@@ -43,7 +43,7 @@ Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)
 
 Worker→Host 통신도 인증이 **필수**다. Host는 `Momos:Host:WorkerAuth:ApiKey`, Worker는 그와 동일한 값을 `Momos:Worker:Host:ApiKey`에 채워야 하며, 둘 다 부팅 시 `OptionsValidationException`으로 검증한다. Worker는 이 값을 매 요청 `Authorization: Bearer {ApiKey}` 헤더로 보내고, Host는 `claim-next`/`report`/`fail`과 프로젝트 모델 제출(`POST /analysis-requests/{id}/model`) 엔드포인트에서만 이를 검사한다(프로젝트 등록·조회 등 나머지 API는 별개 통합 표면이라 대상이 아니다). GPUStack 설정과 마찬가지로 커밋하지 말고 환경 변수(`Momos__Host__WorkerAuth__ApiKey`, `Momos__Worker__Host__ApiKey`)로 주입한다.
 
-Host는 프로젝트 지식 레이어(등록 문서·과거 지적사항·프로젝트 모델 진술을 색인해 Worker의 에이전트 루프가 검색하는 RAG)도 갖고 있다. `Momos:Host:Knowledge:ConnectionString`(PostgreSQL, pgvector 확장 필요)만 있으면 바로 뜬다. 임베딩은 선택이다 — `Momos:Host:Knowledge:EmbeddingEndpoint`/`EmbeddingApiKey`/`EmbeddingModel`(기본 `qwen3-embedding-0.6b`)/`EmbeddingDimension`(기본 `1024`)을 GPUStack 값으로 채우면 실제 의미 기반 검색이 동작하고, 비워두면 의미 없는 벡터를 반환하는 인메모리 폴백으로 조용히 넘어간다(부팅은 실패하지 않는다) — 프로덕션에서는 반드시 채워야 지식 검색이 실질적으로 동작한다.
+Host는 프로젝트 지식 레이어(등록 문서·과거 지적사항·프로젝트 모델 진술을 색인해 Worker의 에이전트 루프가 검색하는 RAG)도 갖고 있다. `Momos:Host:Knowledge:ConnectionString`(PostgreSQL, pgvector 확장 필요)이 필수이며, Host는 기동할 때 이 저장소를 초기화한다 — DB에 닿지 않거나, pgvector가 없거나, 테이블이 다른 임베딩 크기로 만들어져 있으면 그 이유와 설정 이름을 담아 **기동이 실패한다**. 임베딩은 `Momos:Host:Knowledge:EmbeddingEndpoint`/`EmbeddingApiKey`/`EmbeddingModel`(기본 `qwen3-embedding-0.6b`)/`EmbeddingDimension`(기본 `1024`)을 GPUStack 값으로 채우면 실제 의미 기반 검색이 동작한다. `EmbeddingEndpoint`는 Development 밖에서 필수다 — 비워 두면 의미 없는 벡터를 반환하는 인메모리 임베더가 쓰이므로, Development에서는 경고만 남기고 그 밖의 환경에서는 기동이 실패한다. `EmbeddingApiKey`만 있고 엔드포인트가 없는 설정도 기동 시 거부된다.
 
 ### 로컬 데이터베이스
 
