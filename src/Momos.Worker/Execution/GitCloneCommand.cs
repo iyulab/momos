@@ -24,6 +24,34 @@ public static class GitCloneCommand
         + "test \"$p\" = https && test \"$h\" = \"$" + HostVariable + "\" || return 0; "
         + "echo \"username=$" + UsernameVariable + "\"; echo \"password=$" + PasswordVariable + "\"; }; f";
 
+    // What git prints when the server wants credentials it did not get, or refused the ones
+    // it got. GitHub answers a private repository the credential cannot read with "Repository
+    // not found" rather than 401/403.
+    private static readonly string[] AuthenticationFailureSignals =
+    [
+        "could not read Username",
+        "Authentication failed",
+        "The requested URL returned error: 401",
+        "The requested URL returned error: 403",
+        "Repository not found",
+    ];
+
+    /// <summary>
+    /// What an operator should look at when a clone failed for want of access — or null when
+    /// <paramref name="gitError"/> is not an access failure. Names the setting, never a value.
+    /// </summary>
+    public static string? DescribeAccessFailure(string? gitError, GitCredential? credential)
+    {
+        if (gitError is null || !AuthenticationFailureSignals.Any(signal => gitError.Contains(signal, StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        return credential is null
+            ? $"The repository needs credentials the clone did not have. To inspect a private repository, list it (or its owner) in {GitCredentialOptions.SectionName}:CredentialedRepositories on the Worker, and give the account the Worker runs under a git credential for its host."
+            : $"The Worker account's git credential for {credential.Host} was refused or cannot read this repository.";
+    }
+
     public static ExecutionCommand Create(string repositoryUrl, GitCredential? credential)
     {
         // "--" pins the following token as a positional argument so a RepositoryUrl value

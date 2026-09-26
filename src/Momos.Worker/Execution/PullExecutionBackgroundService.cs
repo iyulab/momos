@@ -166,7 +166,9 @@ public sealed class PullExecutionBackgroundService(
                     session, GitCloneCommand.Create(project.RepositoryUrl, credential), cancellationToken);
                 if (!clone.Success)
                 {
-                    throw new InvalidOperationException($"Failed to check out {project.RepositoryUrl}: {clone.Error}");
+                    var hint = GitCloneCommand.DescribeAccessFailure(clone.Error, credential);
+                    throw new InvalidOperationException(
+                        $"Failed to check out {project.RepositoryUrl}: {clone.Error}{(hint is null ? "" : $" — {hint}")}");
                 }
 
                 if (!string.IsNullOrEmpty(request.CommitRef))

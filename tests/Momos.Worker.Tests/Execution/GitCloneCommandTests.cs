@@ -45,6 +45,39 @@ public sealed class GitCloneCommandTests
         Assert.DoesNotContain("s3cret-token", Credential.ToString());
     }
 
+    [Theory]
+    [InlineData("fatal: could not read Username for 'https://github.com': terminal prompts disabled")]
+    [InlineData("remote: Repository not found.\nfatal: repository 'https://github.com/acme/private.git/' not found")]
+    [InlineData("fatal: Authentication failed for 'https://github.com/acme/private.git/'")]
+    [InlineData("fatal: unable to access '...': The requested URL returned error: 403")]
+    public void DescribeAccessFailure_OnAnAnonymousClone_NamesTheSettingToChange(string gitError)
+    {
+        var hint = GitCloneCommand.DescribeAccessFailure(gitError, null);
+
+        Assert.NotNull(hint);
+        Assert.Contains("Momos:Worker:Checkout:CredentialedRepositories", hint);
+    }
+
+    [Fact]
+    public void DescribeAccessFailure_WithACredential_SaysTheCredentialWasRefused_WithoutItsValue()
+    {
+        var hint = GitCloneCommand.DescribeAccessFailure("remote: Repository not found.", Credential);
+
+        Assert.NotNull(hint);
+        Assert.Contains("github.com", hint);
+        Assert.DoesNotContain("s3cret-token", hint);
+        Assert.DoesNotContain("CredentialedRepositories", hint);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("fatal: unable to access '...': Could not resolve host: github.com")]
+    [InlineData("fatal: destination path '.' already exists and is not an empty directory.")]
+    public void DescribeAccessFailure_ForAnythingElse_AddsNothing(string? gitError)
+    {
+        Assert.Null(GitCloneCommand.DescribeAccessFailure(gitError, null));
+    }
+
     // The helper is a shell function git runs itself, so its behaviour is only shown by a real
     // git asking it — which is what these do, through "git credential fill".
 

@@ -333,6 +333,8 @@ public sealed class PullExecutionBackgroundServiceTests
         Assert.Empty(hostClient.SubmittedReports);
         var failure = Assert.Single(hostClient.SubmittedFailures);
         Assert.Contains("Authentication failed", failure.Reason);
+        // An access failure on an anonymous clone points the operator at the setting that fixes it.
+        Assert.Contains(GitCredentialOptions.SectionName + ":CredentialedRepositories", failure.Reason);
         // The session opened for the clone attempt still closes even though the
         // agent loop itself never ran.
         Assert.Single(executionProvider.ClosedSessions);
