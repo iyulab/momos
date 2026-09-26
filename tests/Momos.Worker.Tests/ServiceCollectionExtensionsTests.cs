@@ -113,6 +113,43 @@ public class ServiceCollectionExtensionsTests
         Assert.Same(first, second);
     }
 
+    [Fact]
+    public void AddMomosWorker_WithACredentialedRepositoryThatIsNotAnHttpsUrl_FailsValidation()
+    {
+        var services = new ServiceCollection();
+        services.AddMomosWorker(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"{GitCredentialOptions.SectionName}:CredentialedRepositories:0"] = "http://github.com/acme/",
+            })
+            .Build());
+        using var provider = services.BuildServiceProvider();
+
+        var failure = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(
+            () => provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GitCredentialOptions>>().Value);
+        Assert.Contains("CredentialedRepositories", failure.Message);
+    }
+
+    [Fact]
+    public void AddMomosWorker_BindsCredentialedRepositoriesFromConfiguration_AndDefaultsToNone()
+    {
+        var empty = new ServiceCollection();
+        empty.AddMomosWorker(new ConfigurationBuilder().Build());
+        using var emptyProvider = empty.BuildServiceProvider();
+        var listed = new ServiceCollection();
+        listed.AddMomosWorker(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"{GitCredentialOptions.SectionName}:CredentialedRepositories:0"] = "https://github.com/acme/",
+            })
+            .Build());
+        using var listedProvider = listed.BuildServiceProvider();
+
+        Assert.Empty(emptyProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GitCredentialOptions>>().Value.CredentialedRepositories);
+        Assert.Equal(["https://github.com/acme/"],
+            listedProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GitCredentialOptions>>().Value.CredentialedRepositories);
+    }
+
     /// <summary>
     /// Runs <c>git</c> hermetically: the machine's global and system config are cut off
     /// and the commit identity is supplied through the environment. Without this the

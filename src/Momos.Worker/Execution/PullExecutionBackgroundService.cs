@@ -21,6 +21,7 @@ public sealed class PullExecutionBackgroundService(
     ISessionAwareAgentLoopFactory agentLoopFactory,
     IExecutionRuntimeProvider executionRuntimeProvider,
     IProjectModelExtractor modelExtractor,
+    IGitCredentialSource gitCredentials,
     IWorkerSelfUpdater selfUpdater,
     IOptions<PullExecutionOptions> options,
     ILogger<PullExecutionBackgroundService> logger) : BackgroundService
@@ -154,11 +155,15 @@ public sealed class PullExecutionBackgroundService(
 
             if (!string.IsNullOrEmpty(project.RepositoryUrl))
             {
-                // "--" pins the following token as a positional argument so a
-                // RepositoryUrl value that happens to start with "-" (e.g.
-                // "--upload-pack=...") cannot be smuggled in as a git flag.
+                // The clone runs in the sandbox, which holds no credentials of its own; a
+                // private repository is read with the Worker machine's credential for its
+                // host, handed to this one command (see GitCloneCommand).
+                var credential = await gitCredentials.GetAsync(project.RepositoryUrl, cancellationToken);
+                logger.LogInformation(
+                    "Cloning {RepositoryUrl} for request {RequestId} {CredentialUse}",
+                    project.RepositoryUrl, request.Id, credential is null ? "anonymously" : $"with the Worker's credential for {credential.Host}");
                 var clone = await executionRuntimeProvider.ExecuteAsync(
-                    session, new ExecutionCommand("git", ["clone", "--", project.RepositoryUrl, "."]), cancellationToken);
+                    session, GitCloneCommand.Create(project.RepositoryUrl, credential), cancellationToken);
                 if (!clone.Success)
                 {
                     throw new InvalidOperationException($"Failed to check out {project.RepositoryUrl}: {clone.Error}");

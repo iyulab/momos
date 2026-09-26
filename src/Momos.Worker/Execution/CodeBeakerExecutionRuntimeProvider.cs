@@ -86,6 +86,7 @@ public sealed class CodeBeakerExecutionRuntimeProvider(
             CommandName = command.Name,
             Args = [.. command.Args],
             WorkingDirectory = command.WorkingDirectory,
+            Environment = command.Environment is null ? null : new Dictionary<string, string>(command.Environment),
         };
 
         var result = await sessionManager.ExecuteInSessionAsync(session.SessionId, shellCommand, cancellationToken);

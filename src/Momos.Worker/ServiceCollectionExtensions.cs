@@ -47,6 +47,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISessionManager, SessionManager>();
         services.AddSingleton<IExecutionRuntimeProvider, CodeBeakerExecutionRuntimeProvider>();
         services.AddSingleton<IProjectModelExtractor, ProjectModelExtractor>();
+        services
+            .AddOptions<GitCredentialOptions>()
+            .Bind(configuration.GetSection(GitCredentialOptions.SectionName))
+            .Validate(
+                o => o.CredentialedRepositories.All(GitCredentialOptions.IsValidEntry),
+                $"{GitCredentialOptions.SectionName}:CredentialedRepositories entries must be HTTPS repository or owner URLs without credentials, a query or a fragment")
+            .ValidateOnStart();
+        services.AddSingleton<IGitCredentialSource, HostGitCredentialSource>();
 
         var agentLoopLimits = configuration.GetSection(AgentLoopLimitsOptions.SectionName).Get<AgentLoopLimitsOptions>()
             ?? new AgentLoopLimitsOptions();

@@ -118,6 +118,37 @@ iwr https://raw.githubusercontent.com/iyulab/momos/main/scripts/install-worker.p
 - **Windows** — 기본으로 등록한다(끄려면 `MOMOS_WORKER_SKIP_SERVICE_INSTALL=1`). 관리자 권한 PowerShell에서만 등록되며, 권한이 없으면 등록을 건너뛰고 설치는 계속된다. 서비스 이름은 `MomosWorker`, 실행 계정은 LocalSystem, 시작 유형은 자동이고, 비정상 종료 시 5초·5초·30초 간격으로 재시작한다. 설정 파일은 설치한 사용자 전용 권한으로 기록되므로 스크립트가 LocalSystem에 읽기 권한을 따로 부여한다 — 서비스 계정을 다른 계정으로 바꾸면 그 계정에도 같은 권한을 줘야 한다.
 - **Linux** — 기본으로는 등록하지 않는다(`MOMOS_WORKER_INSTALL_SERVICE=1`로 옵트인). `curl | bash` 같은 무인 설치에서 `sudo` 프롬프트가 설치를 멈추게 하지 않기 위해서다. 옵트인하면 root 또는 `sudo`로 `/etc/systemd/system/momos-worker.service`(`Restart=always`, 설치한 사용자로 실행)를 만들고 활성화·시작한다.
 
+### 비공개 리포
+
+Worker는 자격증명을 따로 저장하지 않는다. 대상 리포는 샌드박스 안에서 clone되는데, 운영자가 허용한 리포면 Worker가
+**자기가 실행되는 계정의 git 설정**(`git credential fill` — 그 계정에 구성된 credential helper)에 그 호스트의 자격증명을
+묻고, 답이 있으면 clone 명령 하나에만 환경변수로 넘긴다. 허용 목록은 기본으로 비어 있다 — 리포 URL은 프로젝트를 등록한
+쪽이 정하므로, 목록 없이 자격증명을 넘기면 프로젝트를 등록할 수 있는 누구든 Worker 계정이 읽을 수 있는 리포를 읽게 만들 수
+있기 때문이다:
+
+```json
+{
+  "Momos": {
+    "Worker": {
+      "Checkout": {
+        "CredentialedRepositories": [ "https://github.com/acme/", "https://github.com/other/app" ]
+      }
+    }
+  }
+}
+```
+
+항목은 HTTPS URL이다 — `/`로 끝나면 그 소유자 아래 전부, 아니면 그 리포 하나(`.git` 유무 무관). 형식이 틀린 항목이 있으면
+부팅 시 실패한다. 목록에 없는 리포는 자격증명 없이 clone한다.
+자격증명은 체크아웃의 git 설정이나 원격 URL에 남지 않고, clone이 끝난 뒤 같은 세션에서 실행되는 명령에는 보이지 않으며,
+URL의 호스트가 아닌 곳(리다이렉트 등)이나 평문 HTTP로는 건네지지 않는다. 조회는 비대화식이라 저장된 자격증명이 없으면
+프롬프트를 기다리지 않고 익명으로 clone한다.
+
+서비스로 실행할 때는 **그 서비스 계정**에 자격증명이 있어야 한다 — Windows 서비스의 기본 계정 LocalSystem에는 설치한
+사용자의 자격증명(Git Credential Manager 등 사용자별 저장소)이 보이지 않는다. 비공개 리포를 검사하려면 서비스 계정을
+자격증명을 가진 계정으로 바꾸거나, 그 계정에 읽기 전용 토큰을 구성한다. 자격증명의 권한 범위가 곧 Worker가 읽을 수 있는
+범위이므로, 검사할 리포만 읽을 수 있는 토큰을 권한다. SSH URL과 git 서브모듈·LFS 객체는 지원하지 않는다.
+
 새 버전은 `worker-v*` 형태의 태그(예: `worker-v0.1.0`)로 릴리스된다 — Host(컨테이너 배포)와는 독립된 버전 계열이다.
 
 설치 스크립트로 최신 바이너리를 받는 것과, Worker가 새 버전을 스스로 내려받아 교체하는 것은 별개다 — 후자는 `Momos:Worker:SelfUpdate:Enabled`(기본값 `false`)로 켠다. 꺼져 있으면 Worker는 업데이트가 있음을 로그에 남길 뿐 아무것도 하지 않는다. 켜면 업데이트를 스테이징한 뒤 스스로 종료하는데, 종료 후 다시 뜨는 것은 전적으로 그 프로세스를 감시하는 쪽(Windows Service, systemd 등, 위 "Worker 설치" 참고)의 재시작 몫이다 — 그런 감시가 없는 머신에서 켜두면 첫 업데이트 힌트에 Worker가 영영 내려간다. 그래서 이 값은 Host 쪽 설정으로 원격 전환할 수 없고, 서비스 등록이 끝난 뒤 운영자가 그 머신에서 직접 켜는 배포 결정으로 남아 있다.

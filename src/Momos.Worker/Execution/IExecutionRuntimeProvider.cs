@@ -31,10 +31,28 @@ public sealed record ExecutionSessionRequest(string Language);
 
 public sealed record ExecutionSessionHandle(string SessionId);
 
+/// <summary>
+/// One process to run in a session. <paramref name="Environment"/> is set for this process
+/// only — it may carry a secret, so <see cref="ToString"/> names its variables and never
+/// their values.
+/// </summary>
 public sealed record ExecutionCommand(
     string Name,
     IReadOnlyList<string> Args,
-    string? WorkingDirectory = null);
+    string? WorkingDirectory = null,
+    IReadOnlyDictionary<string, string>? Environment = null)
+{
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append($"Name = {Name}, Args = [{string.Join(", ", Args)}], WorkingDirectory = {WorkingDirectory}");
+        if (Environment is { Count: > 0 })
+        {
+            builder.Append($", Environment = [{string.Join(", ", Environment.Keys)}]");
+        }
+
+        return true;
+    }
+}
 
 public sealed record ExecutionCommandResult(
     bool Success,

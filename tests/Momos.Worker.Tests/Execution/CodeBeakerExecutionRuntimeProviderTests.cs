@@ -56,6 +56,22 @@ public class CodeBeakerExecutionRuntimeProviderTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ForwardsTheCommandsEnvironment_ToThatShellCommandOnly()
+    {
+        var sessionManager = new FakeSessionManager();
+        var provider = new CodeBeakerExecutionRuntimeProvider(sessionManager, NullLogger<CodeBeakerExecutionRuntimeProvider>.Instance);
+        var session = new ExecutionSessionHandle("fake-session-id");
+
+        await provider.ExecuteAsync(session, new ExecutionCommand("git", ["clone"], Environment: new Dictionary<string, string> { ["A"] = "1" }));
+        var withEnvironment = Assert.IsType<ExecuteShellCommand>(sessionManager.LastExecuted!.Value.Command);
+        await provider.ExecuteAsync(session, new ExecutionCommand("git", ["status"]));
+        var without = Assert.IsType<ExecuteShellCommand>(sessionManager.LastExecuted!.Value.Command);
+
+        Assert.Equal(new Dictionary<string, string> { ["A"] = "1" }, withEnvironment.Environment);
+        Assert.Null(without.Environment);
+    }
+
+    [Fact]
     public async Task CreateSessionAsync_WhenNativeRuntimeIsSelected_ThrowsAndClosesTheSession()
     {
         // An isolated runtime (e.g. Docker) can be unavailable, leaving code-beaker to

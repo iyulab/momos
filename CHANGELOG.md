@@ -30,6 +30,10 @@ momos는 `0.x` 단계다. 공개 계약은 아직 고정되지 않았고, 더 �
   넘기지 않고 업데이트가 필요하다는 신호만 돌려준다(프로토콜 2 Worker는 이 Host와 호환되지 않는다).
 - 에이전트 루프가 호출한 도구와 그 결과를 트레이스로 Host에 제출한다. 실행이 실패해도 그때까지의
   트레이스는 실패 보고와 함께 전달된다.
+- 비공개 리포 체크아웃 — 운영자가 `Momos:Worker:Checkout:CredentialedRepositories`에 허용한 HTTPS 리포(또는 소유자 범위)면
+  Worker 실행 계정의 git credential helper에 그 호스트의 자격증명을 묻고(비대화식), clone 명령 하나에만 환경변수로 넘긴다.
+  허용 목록은 기본으로 비어 있다. 자격증명은 체크아웃에 남지 않고 이후 명령에 보이지 않으며, 다른
+  호스트·평문 HTTP로는 건네지지 않는다. 서비스 계정에 자격증명이 필요하다(README 「비공개 리포」).
 - Worker→Host 요청 인증(`Authorization: Bearer`) — Host와 같은 API 키가 없으면 부팅 시 실패한다.
 - LLM 프로바이더 설정 검증 — 필수 값이 비어 있으면 부팅 시 실패한다.
 - 설치 스크립트(`scripts/install-worker.sh`, `scripts/install-worker.ps1`) — 릴리스 바이너리를 체크섬으로

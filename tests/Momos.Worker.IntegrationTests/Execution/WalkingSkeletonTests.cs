@@ -106,6 +106,7 @@ public sealed partial class WalkingSkeletonTests(TestMomosHostFactory factory) :
             new AnalysisMustNotRunTheAgent(),
             _runtime,
             new ProjectModelExtractor(_runtime),
+            new NoGitCredentials(),
             new NoSelfUpdate(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(50) }),
             NullLogger<PullExecutionBackgroundService>.Instance);
@@ -202,5 +203,11 @@ public sealed partial class WalkingSkeletonTests(TestMomosHostFactory factory) :
     private sealed class NoSelfUpdate : IWorkerSelfUpdater
     {
         public Task UpdateAsync(string? targetVersion, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class NoGitCredentials : IGitCredentialSource
+    {
+        public Task<GitCredential?> GetAsync(string repositoryUrl, CancellationToken cancellationToken = default) =>
+            Task.FromResult<GitCredential?>(null);
     }
 }
