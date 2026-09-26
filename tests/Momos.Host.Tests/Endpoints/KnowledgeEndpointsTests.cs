@@ -27,6 +27,9 @@ public sealed class KnowledgeEndpointsTests : IClassFixture<MomosHostFactory>
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<RegisterKnowledgeDocumentResponse>();
         Assert.False(string.IsNullOrEmpty(body!.DocumentId));
+        // There is no route to read a single document back, so the response must not point
+        // a client at one — a Location it follows would only 404.
+        Assert.Null(response.Headers.Location);
     }
 
     [Fact]

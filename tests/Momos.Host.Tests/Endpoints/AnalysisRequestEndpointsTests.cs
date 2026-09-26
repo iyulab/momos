@@ -32,6 +32,19 @@ public sealed class AnalysisRequestEndpointsTests(MomosHostFactory factory) : IC
     }
 
     [Fact]
+    public async Task Create_WithoutABody_Returns201()
+    {
+        // commitRef is the only field and it is optional, so a caller can reasonably send no body.
+        var projectId = await CreateProjectAsync();
+
+        var response = await _client.PostAsync($"/projects/{projectId}/analysis-requests", content: null);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
+        Assert.Null(body!.CommitRef);
+    }
+
+    [Fact]
     public async Task Create_ForAProjectWithoutARepository_Returns400()
     {
         var projectId = await CreateProjectAsync(repositoryUrl: null);

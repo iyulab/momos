@@ -28,6 +28,20 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
     }
 
     [Fact]
+    public async Task Post_WithoutABody_Returns201()
+    {
+        // focus and commitRef are both optional, so a caller can reasonably send no body.
+        var projectId = await CreateProjectAsync();
+
+        var response = await _client.PostAsync($"/projects/{projectId}/inspection-requests", content: null);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<InspectionRequestResponse>(TestJsonOptions.Value);
+        Assert.Null(body!.Focus);
+        Assert.Null(body.CommitRef);
+    }
+
+    [Fact]
     public async Task PostThenGet_RoundTripsAnInspectionRequestAsPending()
     {
         var projectId = await CreateProjectAsync();
@@ -122,6 +136,9 @@ public sealed class InspectionRequestEndpointsTests : IClassFixture<MomosHostFac
     [Fact]
     public async Task ClaimNext_WithAPendingRequest_TransitionsItToRunningAndReturnsIt()
     {
+        // Other tests in this class leave Pending requests behind on the shared database, and
+        // claim-next hands out the oldest — without draining, this would claim one of those.
+        await DrainClaimQueueAsync();
         var projectId = await CreateProjectAsync();
         var created = await (await _client.PostAsJsonAsync(
             $"/projects/{projectId}/inspection-requests", new CreateInspectionRequestRequest(null, null)))

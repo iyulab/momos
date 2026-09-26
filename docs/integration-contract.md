@@ -25,12 +25,36 @@
 | `GET` | `/projects/{id}/model` | 프로젝트의 최신 모델(구성 요소·관계·진술)을 조회한다. |
 | `GET` | `/projects/{id}/model/report` | 최신 모델의 딥 리포트를 마크다운 문서 트리로 조회한다. |
 | `POST` | `/projects/{id}/model/claims/{claimKey}/corrections` | 최신 모델의 한 진술에 개발자 판정을 기록한다. |
+| `POST` | `/projects/{id}/knowledge/documents` | 프로젝트 지식에 문서(요구사항·설계 메모 등)를 등록한다. 검사 에이전트가 조회하는 맥락이 된다. |
+| `POST` | `/projects/{id}/knowledge/query` | 프로젝트 지식을 의미 검색한다. |
+| `GET` | `/health` | Host 프로세스가 요청을 받는지 확인한다(`{"status":"ok"}`). |
+
+Development 환경에서만 OpenAPI 문서(`/openapi/v1.json`)가 노출된다 — 계약의 일부가 아니며, 이 문서가 정본이다.
 
 검사 신청서 제출은 실행 노드(Worker)에 의해 실제로 처리된다 — 신청서는 대기 → 실행 중 → 완료(또는 실패)로 전환되며, 완료되면 결과서 조회가 실제 내용을 반환한다. Worker는 대상 리포를 체크아웃하고 실행 샌드박스 안에서 명령을 실제로 실행하며 재현한 결함만 보고한다 — 아무것도 재현하지 못하면 결과서는 정직하게 지적 0건으로 완료된다(근거 없는 지적을 내놓지 않는다는 원칙에 따른 결과이지, 검사 도구가 미연결된 상태의 placeholder가 아니다). 결과서는 실제로 무엇을 실행했는지 보여주는 `toolCalls` 트레이스도 함께 담아, 호출하는 쪽이 "정말 아무것도 발견하지 못함"과 "탐색이 코드에 도달조차 못함"을 구분할 수 있게 한다.
 
 JSON 필드 이름은 camelCase이고, enum 값은 PascalCase 문자열로 오간다(예: `"Pending"`, `"Analysis"`, `"Fact"`,
 `"Corrected"`). 검사 신청서와 분석 요청의 응답은 같은 모양이며 `kind` 필드(`Inspection` 또는 `Analysis`)로
 구별된다.
+
+## 요청 본문
+
+필드가 전부 선택인 요청은 본문 없이 보내도 된다(모든 필드를 생략한 것과 같다).
+
+- **프로젝트 등록** — `POST /projects`:
+  - 필수: `name`, `purpose`, `vision`, `scope`(비어 있으면 `400`).
+  - 선택: `repositoryUrl`(검사가 체크아웃할 리포 — 분석 요청과 `commitRef`에 필요), `deploymentUrl`(배포된 앱 주소 — 현재
+    Worker는 아직 사용하지 않는다).
+  - 선택, 셋이 함께: `appInstallerUri`, `appInstallPlatform`, `appInstallLaunchCommand`(하나라도 있으면 셋 다 있어야 하며
+    아니면 `400`), 그리고 `appInstallArgs`. 설치형 앱 자료이며 현재 Worker는 아직 사용하지 않는다.
+  - 성공하면 `201 Created`와 프로젝트(`id` 포함), `Location: /projects/{id}`.
+- **검사 신청** — `POST /projects/{id}/inspection-requests`: `focus`(선택, 에이전트에게 줄 중점 — 예: "로그인 흐름"),
+  `commitRef`(선택, 체크아웃할 커밋·브랜치·태그 — 프로젝트에 `repositoryUrl`이 없으면 `400`). 프로젝트가 없으면 `404`.
+- **분석 요청** — `POST /projects/{id}/analysis-requests`: `commitRef`(선택). 응답은 아래 「프로젝트 모델」 참고.
+- **지식 문서 등록** — `POST /projects/{id}/knowledge/documents`: `{title, content}`. 성공하면 `201 Created`와
+  `{documentId}` — 문서 하나를 다시 읽는 경로는 없으므로 `Location`은 없다. 프로젝트가 없으면 `404`.
+- **지식 검색** — `POST /projects/{id}/knowledge/query`: `{query, maxResults}`(`maxResults` 기본 5). `200`과
+  `{snippets: [{content, score}]}`. 프로젝트가 없으면 `404`.
 
 ## 프로젝트 모델
 
@@ -72,6 +96,12 @@ JSON 필드 이름은 camelCase이고, enum 값은 PascalCase 문자열로 오�
 ### Worker 계약
 
 Worker 전용 엔드포인트는 `Authorization: Bearer` 공유 키로 보호된다(없거나 틀리면 `401`).
+
+- Worker는 `POST /inspection-requests/claim-next`로 대기 중인 요청 하나를 가져간다(본문 `{protocolVersion, workerVersion}`).
+  응답은 항상 `200`이고 `{request, updateRequired, recommendedWorkerVersion}`이다 — 가져갈 것이 없거나 Worker의 프로토콜이
+  지원되지 않으면 `request`는 `null`이며 둘은 `updateRequired`로 구별된다. 가져간 요청은 `Running`이 되고,
+  `Momos:Host:InspectionClaim:ReclaimTimeout`(기본 30분) 안에 결과가 오지 않으면 다음 `claim-next`가 다시 가져갈 수 있다.
+- 검사를 마친 Worker는 결과서를 `POST /inspection-requests/{id}/report`로 제출한다(`{findings, toolCalls}`).
 
 - 분석을 마친 Worker는 모델을 `POST /analysis-requests/{id}/model`로 제출한다. 목록 필드(`components`·`relations`·
   `patterns`·`decisions`·`intents`·`claims`)를 빠뜨리거나 `baseCommit`이 비어 있으면 `400`이고(보고할 것이 없으면

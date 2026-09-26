@@ -7,7 +7,8 @@ namespace Momos.Host.Endpoints;
 /// <summary>
 /// Rejects requests to the endpoints it's applied to unless they carry
 /// <c>Authorization: Bearer {WorkerAuthOptions.ApiKey}</c>. Scoped to the worker-facing
-/// write endpoints (claim-next/report/fail) via <c>AddEndpointFilter</c> — project and
+/// write endpoints (claim-next, report, fail and the project-model submission) via
+/// <c>AddEndpointFilter</c> — project and
 /// inspection-request read/create endpoints are a separate integration surface and are
 /// not covered by this filter.
 ///

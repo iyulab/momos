@@ -10,7 +10,7 @@ public static class AnalysisRequestEndpoints
     public static IEndpointRouteBuilder MapAnalysisRequestEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/projects/{projectId:guid}/analysis-requests", async (
-            Guid projectId, CreateAnalysisRequestRequest request, MomosDbContext db, CancellationToken cancellationToken) =>
+            Guid projectId, CreateAnalysisRequestRequest? request, MomosDbContext db, CancellationToken cancellationToken) =>
         {
             var project = await db.Projects.FindAsync([projectId], cancellationToken);
             if (project is null)
@@ -31,7 +31,7 @@ public static class AnalysisRequestEndpoints
             {
                 ProjectId = projectId,
                 Kind = InspectionRequestKind.Analysis,
-                CommitRef = request.CommitRef,
+                CommitRef = request?.CommitRef,
             };
             db.InspectionRequests.Add(analysisRequest);
             await db.SaveChangesAsync(cancellationToken);

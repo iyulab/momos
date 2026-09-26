@@ -30,9 +30,9 @@ public static class KnowledgeEndpoints
                 },
                 cancellationToken);
 
-            return Results.Created(
-                $"/projects/{projectId}/knowledge/documents/{documentId}",
-                new RegisterKnowledgeDocumentResponse(documentId));
+            // No Location: there is no route that reads a single document back, and pointing a
+            // client at one would only produce a 404.
+            return Results.Created((string?)null, new RegisterKnowledgeDocumentResponse(documentId));
         })
             .WithName("RegisterKnowledgeDocument")
             .Produces<RegisterKnowledgeDocumentResponse>(StatusCodes.Status201Created)

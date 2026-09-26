@@ -10,7 +10,7 @@ public static class InspectionRequestEndpoints
 {
     public static IEndpointRouteBuilder MapInspectionRequestEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/projects/{projectId:guid}/inspection-requests", async (Guid projectId, CreateInspectionRequestRequest request, MomosDbContext db, CancellationToken cancellationToken) =>
+        app.MapPost("/projects/{projectId:guid}/inspection-requests", async (Guid projectId, CreateInspectionRequestRequest? request, MomosDbContext db, CancellationToken cancellationToken) =>
         {
             var project = await db.Projects.FindAsync([projectId], cancellationToken);
             if (project is null)
@@ -18,7 +18,7 @@ public static class InspectionRequestEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Project not found.");
             }
 
-            if (!string.IsNullOrEmpty(request.CommitRef) && string.IsNullOrEmpty(project.RepositoryUrl))
+            if (!string.IsNullOrEmpty(request?.CommitRef) && string.IsNullOrEmpty(project.RepositoryUrl))
             {
                 // A CommitRef only means something once the Worker clones RepositoryUrl and
                 // checks it out (PullExecutionBackgroundService) — without a RepositoryUrl
@@ -32,8 +32,8 @@ public static class InspectionRequestEndpoints
             var inspectionRequest = new InspectionRequest
             {
                 ProjectId = projectId,
-                Focus = request.Focus,
-                CommitRef = request.CommitRef,
+                Focus = request?.Focus,
+                CommitRef = request?.CommitRef,
             };
 
             db.InspectionRequests.Add(inspectionRequest);
