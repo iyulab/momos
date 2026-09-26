@@ -44,7 +44,8 @@ JSON 필드 이름은 camelCase이고, enum 값은 PascalCase 문자열로 오�
 - **프로젝트 등록** — `POST /projects`:
   - 필수: `name`, `purpose`, `vision`, `scope`(비어 있으면 `400`).
   - 선택: `repositoryUrl`(검사가 체크아웃할 리포 — 분석 요청과 `commitRef`에 필요), `deploymentUrl`(배포된 앱 주소 — 현재
-    Worker는 아직 사용하지 않는다).
+    Worker는 아직 사용하지 않는다). 비공개 리포는 그 요청을 처리하는 Worker의 운영자가 허용한 경우에만 체크아웃된다(README
+    「비공개 리포」) — 허용되지 않았으면 요청은 체크아웃 단계에서 실패하고 `failureReason`에 git의 오류가 담긴다.
   - 선택, 셋이 함께: `appInstallerUri`, `appInstallPlatform`, `appInstallLaunchCommand`(하나라도 있으면 셋 다 있어야 하며
     아니면 `400`), 그리고 `appInstallArgs`. 설치형 앱 자료이며 현재 Worker는 아직 사용하지 않는다.
   - 성공하면 `201 Created`와 프로젝트(`id` 포함), `Location: /projects/{id}`.
