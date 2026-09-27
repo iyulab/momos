@@ -252,4 +252,24 @@ public class CodeExecutionToolsTests
         Assert.Equal("42 tests passed", result?.ToString());
         Assert.Equal("dotnet", provider.LastExecuted!.Value.Command.Name);
     }
+
+    [Fact]
+    public async Task RunCommand_WithAnOutputCap_CutsLongOutputAndSaysHowToReadTheRest()
+    {
+        var provider = new FakeExecutionRuntimeProvider { NextResult = new ExecutionCommandResult(true, new string('x', 50), null, 1) };
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("s"), new ToolCallTraceSink(), NullLogger<CodeExecutionTools>.Instance, maxOutputChars: 10);
+
+        var output = await tools.RunCommand("cat", ["big.txt"]);
+
+        Assert.StartsWith(new string('x', 10) + "\n[Output truncated: 50 characters in all", output);
+    }
+
+    [Fact]
+    public async Task RunCommand_WithoutACap_ReturnsTheWholeOutput()
+    {
+        var provider = new FakeExecutionRuntimeProvider { NextResult = new ExecutionCommandResult(true, new string('x', 50_000), null, 1) };
+        var tools = new CodeExecutionTools(provider, new ExecutionSessionHandle("s"), new ToolCallTraceSink(), NullLogger<CodeExecutionTools>.Instance);
+
+        Assert.Equal(50_000, (await tools.RunCommand("cat", ["big.txt"])).Length);
+    }
 }

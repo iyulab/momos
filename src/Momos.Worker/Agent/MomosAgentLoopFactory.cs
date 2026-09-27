@@ -66,13 +66,13 @@ public sealed class MomosAgentLoopFactory(
 
     public async Task<IAgentLoop> CreateAnalysisLoopAsync(
         ExecutionSessionHandle session, Guid projectId, IReadOnlyList<AIFunction> proposalTools, string? model, string systemPrompt,
-        CancellationToken cancellationToken)
+        int maxCommandOutputChars, CancellationToken cancellationToken)
     {
         var toolCalls = new ToolCallTraceSink();
         var tools = new List<AIFunction>
         {
             AIFunctionFactory.Create(
-                new CodeExecutionTools(executionRuntimeProvider, session, toolCalls, loggerFactory.CreateLogger<CodeExecutionTools>()).RunCommand),
+                new CodeExecutionTools(executionRuntimeProvider, session, toolCalls, loggerFactory.CreateLogger<CodeExecutionTools>(), maxCommandOutputChars).RunCommand),
             AIFunctionFactory.Create(
                 new KnowledgeQueryTools(hostApiClient, projectId, toolCalls, loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge),
         };

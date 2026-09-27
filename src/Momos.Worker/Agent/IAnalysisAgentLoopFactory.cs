@@ -17,5 +17,6 @@ public interface IAnalysisAgentLoopFactory
         IReadOnlyList<AIFunction> proposalTools,
         string? model,
         string systemPrompt,
+        int maxCommandOutputChars,
         CancellationToken cancellationToken);
 }

@@ -42,7 +42,7 @@ public sealed class ManualSynthesizer(
         deadline.CancelAfter(o.MaxDuration);
 
         var overview = draft.Stage(section: null);
-        var failure = await RunPassAsync(new SynthesisTools(overview, verifier, o.MaxChapters).ForOverview(),
+        var failure = await RunPassAsync(new SynthesisTools(overview, verifier, o.MaxChapters, logger).ForOverview(),
             AnalysisPrompts.Overview(project, skeleton, o.MaxChapters));
         if (failure is not null)
         {
@@ -54,7 +54,7 @@ public sealed class ManualSynthesizer(
         foreach (var section in draft.Sections.ToList())
         {
             var stage = draft.Stage(section);
-            failure = await RunPassAsync(new SynthesisTools(stage, verifier, o.MaxChapters).ForChapter(), AnalysisPrompts.Chapter(section, draft));
+            failure = await RunPassAsync(new SynthesisTools(stage, verifier, o.MaxChapters, logger).ForChapter(), AnalysisPrompts.Chapter(section, draft));
             if (failure is null)
             {
                 stage.Commit();
@@ -88,7 +88,7 @@ public sealed class ManualSynthesizer(
             {
                 using (TokenBudget.Enter(new TokenBudget(o.MaxChapterTokens, total)))
                 {
-                    var loop = await loops.CreateAnalysisLoopAsync(session, project.Id, passTools, model, AnalysisPrompts.System, deadline.Token);
+                    var loop = await loops.CreateAnalysisLoopAsync(session, project.Id, passTools, model, AnalysisPrompts.System, o.MaxCommandOutputChars, deadline.Token);
                     await loop.RunAsync(prompt, deadline.Token);
                 }
 

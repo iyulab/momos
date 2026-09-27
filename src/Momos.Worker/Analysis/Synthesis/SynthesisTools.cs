@@ -1,7 +1,9 @@
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Momos.Worker.Execution;
 
 namespace Momos.Worker.Analysis.Synthesis;
@@ -33,8 +35,10 @@ public sealed record ProposedFlowStep(
 /// The only way an analysis agent changes the model: each tool checks its proposal at once — the
 /// model rules, then the evidence against the analyzed commit — and answers "Recorded as …" or
 /// "Rejected: …" so the agent can correct itself. Accepted proposals wait in the pass's stage.
+/// Each rejection is logged by tool and reason (the coverage keeps only the counts) — the message
+/// itself only where it cannot echo repository text back into the Worker's log.
 /// </summary>
-public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, int maxChapters)
+public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, int maxChapters, ILogger? logger = null)
 {
     public static JsonSerializerOptions ToolJson { get; } = CreateToolJson();
 
@@ -243,22 +247,22 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
         Tool(ProposePattern), Tool(ProposeDecision), Tool(AddBlock), Tool(SetOwnerSummary),
     ];
 
-    private string AddElement(string prefix, string topic, string text, string[] claimKeys, OutlineBlockKind kind, Action<string> add)
+    private string AddElement(string prefix, string topic, string text, string[] claimKeys, OutlineBlockKind kind, Action<string> add, [CallerMemberName] string tool = "")
     {
         if (string.IsNullOrWhiteSpace(topic) || string.IsNullOrWhiteSpace(text))
         {
-            return Reject(RejectionReason.InvalidElement, "A topic and a name or statement are required.");
+            return Reject(RejectionReason.InvalidElement, "A topic and a name or statement are required.", tool);
         }
 
         var id = ModelIds.Element(prefix, topic);
         if (stage.HasElement(kind, id))
         {
-            return Reject(RejectionReason.DuplicateTopic, $"Topic '{topic}' is already used by {id}.");
+            return Reject(RejectionReason.DuplicateTopic, $"Topic '{topic}' is already used by {id}.", tool);
         }
 
         if (DraftRules.CheckClaimRefs(claimKeys, stage.FindClaim) is { Accepted: false } refs)
         {
-            return Reject(refs);
+            return Reject(refs, tool);
         }
 
         add(id);
@@ -273,11 +277,17 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
 
     private static string Recorded(string id) => $"Recorded as {id}.";
 
-    private string Reject(Verdict verdict) => Reject(verdict.Reason!, verdict.Message);
+    private string Reject(Verdict verdict, [CallerMemberName] string tool = "") => Reject(verdict.Reason!, verdict.Message, tool);
 
-    private string Reject(string reason, string message)
+    private string Reject(string reason, string message, [CallerMemberName] string tool = "")
     {
         stage.Draft.Reject(reason);
+        if (logger is not null)
+        {
+            var echoesRepository = reason is RejectionReason.EvidenceNotFound or RejectionReason.UnresolvedReference or RejectionReason.DuplicateTopic;
+            logger.LogInformation("{Tool} proposal rejected — {Reason}: {Detail}", tool, reason, echoesRepository ? "(detail withheld)" : message);
+        }
+
         return $"Rejected: {message}";
     }
 

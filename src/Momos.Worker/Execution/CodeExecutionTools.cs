@@ -12,12 +12,19 @@ namespace Momos.Worker.Execution;
 /// capabilities. No MCP transport is involved: the capability is already in-process
 /// (code-beaker is a direct project dependency), so nothing needs to cross a process
 /// boundary to reach it.
+/// <para>
+/// <paramref name="maxOutputChars"/>, when set, caps what one command returns to the agent. An
+/// inspection leaves it unset — a finding quotes the output it saw. An analysis reads far more than
+/// it runs, and every returned output stays in the conversation the model is sent again on each
+/// turn, so there a whole file listing or source file would crowd out the chapter being written.
+/// </para>
 /// </summary>
 public sealed class CodeExecutionTools(
     IExecutionRuntimeProvider runtimeProvider,
     ExecutionSessionHandle session,
     ToolCallTraceSink trace,
-    ILogger<CodeExecutionTools> logger)
+    ILogger<CodeExecutionTools> logger,
+    int? maxOutputChars = null)
 {
     [Description("Run a shell command inside the sandboxed inspection workspace and return its output.")]
     public async Task<string> RunCommand(
@@ -51,9 +58,9 @@ public sealed class CodeExecutionTools(
                 command, result.Success, result.DurationMs);
             trace.Add(new ToolCallEntry(nameof(RunCommand), $"{command} {argsJoined}".TrimEnd(), result.Success, result.DurationMs));
 
-            return result.Success
+            return Cap(result.Success
                 ? result.Output ?? string.Empty
-                : FormatFailure(result);
+                : FormatFailure(result));
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -61,6 +68,11 @@ public sealed class CodeExecutionTools(
             throw;
         }
     }
+
+    private string Cap(string output) =>
+        maxOutputChars is { } max && output.Length > max
+            ? $"{output[..max]}\n[Output truncated: {output.Length} characters in all, the first {max} shown. Read a narrower part — a line range (sed -n '120,180p' <file>), grep for what you need, or head/tail.]"
+            : output;
 
     /// <summary>
     /// A failed command's stdout is kept alongside its error: tools such as test runners

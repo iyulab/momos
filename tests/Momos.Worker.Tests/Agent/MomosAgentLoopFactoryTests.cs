@@ -288,7 +288,7 @@ public class MomosAgentLoopFactoryTests
         var proposal = AIFunctionFactory.Create((string topic) => "Recorded.", "ProposeClaim");
 
         var loop = await AnalysisFactory(chatClientProvider).CreateAnalysisLoopAsync(
-            new ExecutionSessionHandle("s"), Guid.NewGuid(), [proposal], model: null, "rules", CancellationToken.None);
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [proposal], model: null, "rules", 8_000, CancellationToken.None);
         await loop.RunAsync("zzz unrelated words");
 
         var names = chatClientProvider.LastClient!.LastOptions!.Tools!.Select(t => t.Name).ToList();
@@ -304,7 +304,7 @@ public class MomosAgentLoopFactoryTests
         var chatClientProvider = new FakeChatClientProvider("hi");
 
         var loop = await AnalysisFactory(chatClientProvider).CreateAnalysisLoopAsync(
-            new ExecutionSessionHandle("s"), Guid.NewGuid(), [], model: null, "You write a manual.", CancellationToken.None);
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [], model: null, "You write a manual.", 8_000, CancellationToken.None);
         await loop.RunAsync("go");
 
         Assert.Contains(chatClientProvider.LastClient!.LastMessages!, m => m.Role == ChatRole.System && m.Text.Contains("You write a manual.", StringComparison.Ordinal));
