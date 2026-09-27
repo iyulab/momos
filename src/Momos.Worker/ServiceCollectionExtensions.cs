@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
 using Momos.Worker.Analysis;
+using Momos.Worker.Analysis.Synthesis;
 using Momos.Worker.Execution;
 using Momos.Worker.SelfUpdate;
 
@@ -47,6 +48,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISessionManager, SessionManager>();
         services.AddSingleton<IExecutionRuntimeProvider, CodeBeakerExecutionRuntimeProvider>();
         services.AddSingleton<IProjectModelExtractor, ProjectModelExtractor>();
+        services
+            .AddOptions<AnalysisOptions>()
+            .Bind(configuration.GetSection(AnalysisOptions.SectionName))
+            .Validate(AnalysisOptions.IsValid, $"{AnalysisOptions.SectionName} limits must all be greater than zero")
+            .ValidateOnStart();
+        services.AddSingleton<IManualSynthesizer, ManualSynthesizer>();
+        services.AddSingleton<IProjectAnalyzer, ProjectAnalyzer>();
         services
             .AddOptions<GitCredentialOptions>()
             .Bind(configuration.GetSection(GitCredentialOptions.SectionName))

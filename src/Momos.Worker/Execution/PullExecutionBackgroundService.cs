@@ -10,8 +10,8 @@ namespace Momos.Worker.Execution;
 /// <summary>
 /// Polls Host for the next Pending request — an inspection or an analysis — checks the target
 /// repository out into a fresh execution session's workspace, and reports the outcome back.
-/// An analysis runs the deterministic project-model extractor over the checkout and submits the
-/// model. An inspection runs the agent loop, which has a code-execution tool and a
+/// An analysis builds the project model from the checkout — deterministic extraction, then
+/// language-model passes that propose only what they can cite — and submits it. An inspection runs the agent loop, which has a code-execution tool and a
 /// finding-reporting tool; the agent decides what, if anything, to report, and an inspection
 /// that reproduces nothing submits zero findings rather than an unsupported one. Screen-driven
 /// (computer-use) interaction is not enabled here.
@@ -20,7 +20,7 @@ public sealed class PullExecutionBackgroundService(
     IHostApiClient hostApiClient,
     ISessionAwareAgentLoopFactory agentLoopFactory,
     IExecutionRuntimeProvider executionRuntimeProvider,
-    IProjectModelExtractor modelExtractor,
+    IProjectAnalyzer analyzer,
     IGitCredentialSource gitCredentials,
     IWorkerSelfUpdater selfUpdater,
     IOptions<PullExecutionOptions> options,
@@ -197,13 +197,14 @@ public sealed class PullExecutionBackgroundService(
             if (request.Kind == InspectionRequestKind.Analysis)
             {
                 // Same checkout, different job: an analysis reads the repository to build the
-                // project model instead of exercising it, so no agent loop runs. A failed
-                // extraction throws into the catch below and is reported like any failed run,
-                // so the request never stays Running.
-                var model = await modelExtractor.ExtractAsync(session, cancellationToken);
+                // project model instead of exercising it. The deterministic extraction runs first;
+                // language-model passes then add what they can verify (see ProjectAnalyzer). A failed
+                // extraction throws into the catch below and is reported like any failed run, so the
+                // request never stays Running.
+                var model = await analyzer.AnalyzeAsync(session, project, cancellationToken);
                 logger.LogInformation(
-                    "Analysis for request {RequestId} extracted {ComponentCount} component(s) and {ClaimCount} claim(s) at {BaseCommit}",
-                    request.Id, model.Components.Count, model.Claims.Count, model.BaseCommit);
+                    "Analysis for request {RequestId} built {ComponentCount} component(s), {ClaimCount} claim(s) and {ChapterCount} chapter(s) at {BaseCommit}",
+                    request.Id, model.Components.Count, model.Claims.Count, model.Outline.Count, model.BaseCommit);
                 await hostApiClient.SubmitModelAsync(request.Id, model, cancellationToken);
                 return;
             }

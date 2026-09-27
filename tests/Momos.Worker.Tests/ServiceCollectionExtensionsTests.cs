@@ -3,6 +3,7 @@ using CodeBeaker.Core.Interfaces;
 using CodeBeaker.Core.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Momos.Worker.Analysis;
 using Momos.Worker.Execution;
 
 namespace Momos.Worker.Tests;
@@ -128,6 +129,23 @@ public class ServiceCollectionExtensionsTests
         var failure = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(
             () => provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GitCredentialOptions>>().Value);
         Assert.Contains("CredentialedRepositories", failure.Message);
+    }
+
+    [Fact]
+    public void AddMomosWorker_WithANonPositiveAnalysisLimit_FailsValidation()
+    {
+        var services = new ServiceCollection();
+        services.AddMomosWorker(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"{AnalysisOptions.SectionName}:MaxDuration"] = "00:00:00",
+            })
+            .Build());
+        using var provider = services.BuildServiceProvider();
+
+        var failure = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(
+            () => provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AnalysisOptions>>().Value);
+        Assert.Contains(AnalysisOptions.SectionName, failure.Message);
     }
 
     [Fact]
