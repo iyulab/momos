@@ -32,11 +32,26 @@ public sealed class ClaimNextCompatibilityTests : IClassFixture<MomosHostFactory
         do
         {
             var r = await client.PostAsJsonAsync(
-                "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 3, WorkerVersion: "0.1.0"));
+                "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: TestProtocol.Current, WorkerVersion: "0.1.0"));
             drained = await r.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value);
         } while (drained!.Request is not null);
 
         Assert.False(drained.UpdateRequired);
         Assert.Null(drained.Request);
+    }
+
+    [Fact]
+    public async Task ClaimNext_FromAProtocol3Worker_AsksForAnUpdate()
+    {
+        // Protocol 4 added required model fields; a protocol 3 Worker would fail late, at
+        // submission, so it must not be handed work at all.
+        var client = _factory.CreateAuthorizedClient();
+        var response = await client.PostAsJsonAsync(
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 3, WorkerVersion: "0.1.0"));
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value);
+        Assert.True(body!.UpdateRequired);
+        Assert.Null(body.Request);
     }
 }

@@ -50,6 +50,7 @@ public sealed class ProjectModelExtractor(IExecutionRuntimeProvider runtime) : I
             .ToList();
 
         var projects = new List<(string Path, XDocument Document)>();
+        var unread = new List<CoverageGapPayload>();
         foreach (var path in paths)
         {
             var content = await RunAsync(session, ["show", $"HEAD:{path}"], cancellationToken);
@@ -57,9 +58,12 @@ public sealed class ProjectModelExtractor(IExecutionRuntimeProvider runtime) : I
             {
                 projects.Add((path, document));
             }
-
-            // Otherwise one malformed project file shouldn't cost the whole model; it is simply
-            // absent, and the model makes no claim about it.
+            else
+            {
+                // One malformed project file shouldn't cost the whole model; the model makes no
+                // claim about it, and says so.
+                unread.Add(new CoverageGapPayload("project-manifests", $"{path} is not a well-formed MSBuild project file."));
+            }
         }
 
         var lookup = new ProjectLookup(projects.Select(p => p.Path));
@@ -111,7 +115,20 @@ public sealed class ProjectModelExtractor(IExecutionRuntimeProvider runtime) : I
             }
         }
 
-        return new ProjectModelPayload(baseCommit, components, relations, [], [], [], claims);
+        var coverage = new CoveragePayload(
+            [
+                new CoverageAreaPayload("project-manifests", $"{projects.Count} of {paths.Count} project files (*.csproj) tracked at the analyzed commit."),
+                new CoverageAreaPayload("git-history", "Commits under each project's directory, and commits whose message names the project."),
+            ],
+            [
+                .. unread,
+                new CoverageGapPayload("source-files", "Only project files and git history are read; source code is not analyzed."),
+                new CoverageGapPayload("non-dotnet-projects", "Only .NET project files (*.csproj) are recognized; other build systems are not read."),
+            ],
+            [],
+            Generator: null);
+
+        return new ProjectModelPayload(baseCommit, components, relations, [], [], [], [], [], [], coverage, claims);
     }
 
     /// <summary>

@@ -28,4 +28,17 @@ internal static class JsonColumnExtensions
                     v => JsonSerializer.Serialize(v, Options).GetHashCode(StringComparison.Ordinal),
                     v => JsonSerializer.Deserialize<List<T>>(JsonSerializer.Serialize(v, Options), Options)!))
             .HasColumnType("jsonb");
+
+    /// <summary>A single value record as one <c>jsonb</c> column. A null value stays a SQL null —
+    /// EF does not pass nulls through a value converter.</summary>
+    public static PropertyBuilder<T?> HasJsonObjectColumn<T>(this PropertyBuilder<T?> property) where T : class =>
+        property
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, Options),
+                v => JsonSerializer.Deserialize<T>(v, Options),
+                new ValueComparer<T?>(
+                    (a, b) => JsonSerializer.Serialize(a, Options) == JsonSerializer.Serialize(b, Options),
+                    v => JsonSerializer.Serialize(v, Options).GetHashCode(StringComparison.Ordinal),
+                    v => v == null ? null : JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(v, Options), Options)))
+            .HasColumnType("jsonb");
 }

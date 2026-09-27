@@ -44,6 +44,42 @@ public sealed record ModelDecision(string Id, string Summary, IReadOnlyList<stri
 
 public sealed record ModelIntent(string Id, string Statement, IntentSource Source, IReadOnlyList<string> Claims);
 
+/// <summary>What an outline block points at. Relations have no id of their own, so they are shown
+/// through the component block of either end rather than as a block.</summary>
+public enum OutlineBlockKind { Claim, Component, Pattern, Decision, Intent, Flow, Invariant }
+
+/// <summary>One step of a flow: the claim that says what happens, and the component it happens in
+/// when the step belongs to one.</summary>
+public sealed record FlowStep(string? ComponentId, string ClaimKey);
+
+/// <summary>An ordered path through the code — how a request, a job or an event actually moves.</summary>
+public sealed record ModelFlow(string Id, string Name, IReadOnlyList<FlowStep> Steps, IReadOnlyList<string> Claims);
+
+/// <summary>Something the code relies on staying true. <see cref="Kind"/> is a free label (contract,
+/// data-ownership, security, concurrency, …) — a reading aid, not a closed category.</summary>
+public sealed record ModelInvariant(string Id, string Statement, string Kind, IReadOnlyList<string> AppliesTo, IReadOnlyList<string> Claims);
+
+public sealed record OutlineBlock(OutlineBlockKind Kind, string Ref);
+
+/// <summary>One chapter of the report. The analysis decides the chapters — they are named, merged,
+/// dropped or added per project — and the renderer only lays them out. <see cref="Title"/> and
+/// <see cref="Purpose"/> are headings, not statements: anything the chapter asserts is a claim.</summary>
+public sealed record OutlineSection(string Id, string Path, string Title, string Purpose, IReadOnlyList<string> OwnerSummaryClaims, IReadOnlyList<OutlineBlock> Blocks);
+
+public sealed record CoverageArea(string Area, string Detail);
+
+public sealed record CoverageGap(string Area, string Reason);
+
+public sealed record CoverageRejection(string Reason, int Count);
+
+/// <summary>The language model and prompt version behind the synthesized claims, so a run can be
+/// reproduced; absent for a purely deterministic analysis.</summary>
+public sealed record CoverageGenerator(string Model, string PromptVersion);
+
+/// <summary>What the analysis read, what it left unread and why, and what it proposed but threw
+/// away — the raw material of the report's "what this does not know".</summary>
+public sealed record ModelCoverage(IReadOnlyList<CoverageArea> Analyzed, IReadOnlyList<CoverageGap> NotAnalyzed, IReadOnlyList<CoverageRejection> Rejected, CoverageGenerator? Generator);
+
 /// <summary>
 /// Momos's understanding of a project's design at one commit — the source of truth that both the
 /// developer-facing deep report and the inspection agent (through the derived knowledge index) read.
@@ -66,6 +102,16 @@ public sealed class ProjectModel
     public List<ModelPattern> Patterns { get; init; } = [];
     public List<ModelDecision> Decisions { get; init; } = [];
     public List<ModelIntent> Intents { get; init; } = [];
+    public List<ModelFlow> Flows { get; init; } = [];
+    public List<ModelInvariant> Invariants { get; init; } = [];
+
+    /// <summary>The report's chapters in order. Empty for a model that brings none (every model
+    /// before the manual elements, and a purely deterministic analysis): the report then uses its
+    /// fixed layout.</summary>
+    public List<OutlineSection> Outline { get; init; } = [];
+
+    /// <summary>Null only on versions stored before coverage was recorded; a submission always carries one.</summary>
+    public ModelCoverage? Coverage { get; init; }
     public ICollection<ModelClaim> Claims { get; init; } = new List<ModelClaim>();
 }
 

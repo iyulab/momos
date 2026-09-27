@@ -63,7 +63,7 @@ public sealed partial class DeepReportRendererTests
     [GeneratedRegex(@"\]\(([^)#\s]+\.md)(#[^)]*)?\)")]
     private static partial Regex MarkdownLink();
 
-    [GeneratedRegex(@"^(index|components/[a-z0-9][a-z0-9._-]*|claims/[a-z0-9][a-z0-9._-]*)\.md$")]
+    [GeneratedRegex(@"^(index|unknowns|[a-z0-9][a-z0-9-]{0,63}|components/[a-z0-9][a-z0-9._-]*|claims/[a-z0-9][a-z0-9._-]*)\.md$")]
     private static partial Regex SafePath();
 
     private static void AssertEveryRelativeLinkResolves(IReadOnlyList<ReportDocument> tree)
@@ -92,7 +92,7 @@ public sealed partial class DeepReportRendererTests
     {
         var tree = DeepReportRenderer.Render("acme", Model());
 
-        string[] expected = ["claims/clm.app.md", "claims/clm.lib.md", "claims/clm.ref.md", "components/cmp.app.md", "components/cmp.lib.md", "index.md"];
+        string[] expected = ["claims/clm.app.md", "claims/clm.lib.md", "claims/clm.ref.md", "components/cmp.app.md", "components/cmp.lib.md", "index.md", "unknowns.md"];
         Assert.Equal(expected, tree.Select(d => d.Path).Order(StringComparer.Ordinal).ToArray());
     }
 
@@ -131,12 +131,12 @@ public sealed partial class DeepReportRendererTests
     }
 
     [Fact]
-    public void Index_ListsDecisionsWhoseRationaleWasNeverRecorded()
+    public void Index_PointsDecisionsWithoutARecordedRationaleAtTheUnknownsPage()
     {
         var index = Doc(DeepReportRenderer.Render("acme", Model()), "index.md");
 
-        Assert.Contains("## Decisions without a recorded rationale", index);
         Assert.Contains("App depends on Lib, never the reverse", index);
+        Assert.Contains("Decisions without a recorded rationale are asked about in [what this report does not know](unknowns.md).", index);
     }
 
     [Fact]
@@ -280,7 +280,9 @@ public sealed partial class DeepReportRendererTests
         var index = Doc(tree, "index.md");
         Assert.DoesNotContain("```mermaid", index);
         Assert.Contains("No components were extracted", index);
-        Assert.Single(tree);
+        // Even an empty model keeps the spine: the unknowns page is never dropped.
+        Assert.Equal(["index.md", "unknowns.md"], tree.Select(d => d.Path));
+        Assert.Contains("[1 open question](unknowns.md)", index);
     }
 
     [Fact]
@@ -394,5 +396,236 @@ public sealed partial class DeepReportRendererTests
         var backing = page.IndexOf("Backed by", StringComparison.Ordinal);
         Assert.True(responsibility >= 0 && backing > responsibility, page);
         Assert.Contains("(../claims/clm.app.md)", page[backing..]);
+    }
+
+    [Fact]
+    public void Unknowns_AsksWhyForEveryDecisionWithoutARecordedRationale()
+    {
+        var unknowns = Doc(DeepReportRenderer.Render("acme", Model()), "unknowns.md");
+
+        Assert.Contains("## Why was this decided?", unknowns);
+        Assert.Contains("- App depends on Lib, never the reverse — why?", unknowns);
+        Assert.Contains("record the reason in the repository", unknowns);
+    }
+
+    [Fact]
+    public void Unknowns_AsksWhetherEachUnreviewedLowConfidenceReadingIsRight_AndNamesTheVerdictRoute()
+    {
+        var model = RichModel();
+        var unknowns = Doc(DeepReportRenderer.Render("acme", model), "unknowns.md");
+
+        Assert.Contains("## Is this reading right?", unknowns);
+        Assert.Contains("The library looks deliberately UI-free", unknowns);
+        Assert.Contains($"/projects/{model.ProjectId}/model/claims/{{claimKey}}/corrections", unknowns);
+    }
+
+    [Fact]
+    public void Unknowns_ListsDisputedClaims_AndDropsAReadingOnceADeveloperHasJudgedIt()
+    {
+        var unknowns = Doc(DeepReportRenderer.Render("acme", RichModel(m =>
+        {
+            m.Claims.Single(c => c.Key == "clm.split").Status = ClaimStatus.Confirmed;
+            m.Claims.Single(c => c.Key == "clm.ref").Status = ClaimStatus.Disputed;
+        })), "unknowns.md");
+
+        Assert.DoesNotContain("## Is this reading right?", unknowns);
+        Assert.Contains("## Disputed claims", unknowns);
+        Assert.Contains("App references Lib", unknowns);
+    }
+
+    private static ProjectModel WithCoverage(ModelCoverage? coverage, Action<ProjectModel>? configure = null)
+    {
+        var source = Model(configure);
+        var model = new ProjectModel
+        {
+            Id = source.Id,
+            ProjectId = source.ProjectId,
+            ModelVersion = source.ModelVersion,
+            BaseCommit = source.BaseCommit,
+            AnalysisRequestId = source.AnalysisRequestId,
+            CreatedAt = source.CreatedAt,
+            Coverage = coverage,
+        };
+        model.Components.AddRange(source.Components);
+        model.Relations.AddRange(source.Relations);
+        model.Patterns.AddRange(source.Patterns);
+        model.Decisions.AddRange(source.Decisions);
+        model.Intents.AddRange(source.Intents);
+        model.Flows.AddRange(source.Flows);
+        model.Invariants.AddRange(source.Invariants);
+        model.Outline.AddRange(source.Outline);
+        foreach (var c in source.Claims)
+        {
+            model.Claims.Add(c);
+        }
+
+        return model;
+    }
+
+    [Fact]
+    public void Unknowns_ListsTheAreasTheAnalysisLeftUnread_AndWhatItDiscarded()
+    {
+        var unknowns = Doc(DeepReportRenderer.Render("acme", WithCoverage(new ModelCoverage(
+            [new CoverageArea("project-manifests", "2 of 2 project files")],
+            [new CoverageGap("source-files", "Only project files and git history are read.")],
+            [new CoverageRejection("evidence does not locate", 3)],
+            null))), "unknowns.md");
+
+        Assert.Contains("## Areas not analyzed", unknowns);
+        Assert.Contains("**source-files** — Only project files and git history are read.", unknowns);
+        Assert.Contains("## Discarded during analysis", unknowns);
+        Assert.Contains("evidence does not locate: 3", unknowns);
+    }
+
+    [Fact]
+    public void Unknowns_ForAModelWithoutCoverage_SaysSoInsteadOfClaimingNothingWasSkipped()
+    {
+        var unknowns = Doc(DeepReportRenderer.Render("acme", Model()), "unknowns.md");
+
+        Assert.Contains("records no analysis coverage", unknowns);
+        Assert.DoesNotContain("recorded no unread areas", unknowns);
+    }
+
+    [Fact]
+    public void Index_LinksTheUnknownsPageWithItsCount_AndShowsUnderstandingAsAnUnvalidatedMeasure()
+    {
+        var index = Doc(DeepReportRenderer.Render("acme", RichModel(m =>
+            m.Claims.Single(c => c.Key == "clm.app").Status = ClaimStatus.Confirmed)), "index.md");
+
+        // RichModel: 1 unrecorded decision + 1 low-confidence proposed reading + no coverage (1).
+        Assert.Contains("[3 open questions](unknowns.md)", index);
+        Assert.Contains("## Understanding", index);
+        Assert.Contains("not a validated metric", index);
+        Assert.Contains("| Confirmed | 1 |", index);
+        Assert.Contains("| Not yet reviewed | 3 |", index);
+        Assert.Contains("| Decisions without a recorded rationale | 1 |", index);
+    }
+
+    private static ProjectModel Outlined(Action<ProjectModel>? configure = null) => RichModel(m =>
+    {
+        m.Flows.Add(new ModelFlow("flw.build", "Build", [new FlowStep("cmp.app", "clm.app"), new FlowStep(null, "clm.ref")], ["clm.ref"]));
+        m.Invariants.Add(new ModelInvariant("inv.layering", "Lib never references App", "contract", ["cmp.lib"], ["clm.ref"]));
+        m.Outline.Add(new OutlineSection("sec.map", "system-map.md", "System map", "What the parts are and how they connect", ["clm.app"],
+            [new OutlineBlock(OutlineBlockKind.Component, "cmp.app"), new OutlineBlock(OutlineBlockKind.Pattern, "pat.layers")]));
+        m.Outline.Add(new OutlineSection("sec.flows", "core-flows.md", "Core flows", "How a build moves", [],
+            [new OutlineBlock(OutlineBlockKind.Flow, "flw.build"), new OutlineBlock(OutlineBlockKind.Invariant, "inv.layering"),
+             new OutlineBlock(OutlineBlockKind.Decision, "dec.layering"), new OutlineBlock(OutlineBlockKind.Intent, "int.split"),
+             new OutlineBlock(OutlineBlockKind.Claim, "clm.lib")]));
+        m.Outline.Add(new OutlineSection("sec.risks", "risks.md", "Risks", "What could break", [], []));
+        configure?.Invoke(m);
+    });
+
+    [Fact]
+    public void AnOutlinedModel_GetsOnePagePerChapter_PlusTheSpine()
+    {
+        var tree = DeepReportRenderer.Render("acme", Outlined());
+
+        var pages = tree.Select(d => d.Path).Where(p => !p.Contains('/')).Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(["core-flows.md", "index.md", "risks.md", "system-map.md", "unknowns.md"], pages);
+        Assert.All(tree, d => Assert.Matches(SafePath(), d.Path));
+        AssertEveryRelativeLinkResolves(tree);
+    }
+
+    [Fact]
+    public void TheOutlinedIndex_ListsChaptersInOrder_WithTheirOwnerSummaryClaims()
+    {
+        var index = Doc(DeepReportRenderer.Render("acme", Outlined()), "index.md");
+
+        var map = index.IndexOf("[System map](system-map.md)", StringComparison.Ordinal);
+        var flows = index.IndexOf("[Core flows](core-flows.md)", StringComparison.Ordinal);
+        Assert.True(map >= 0 && flows > map, "chapters must appear in outline order");
+        Assert.Contains("_What the parts are and how they connect_", index);
+        Assert.Contains("App is a .NET project", index); // sec.map's owner summary claim, quoted
+        // The chapters lead; structure and the claims table follow so no page is left unreachable.
+        Assert.True(index.IndexOf("## Structure", StringComparison.Ordinal) > flows, "structure must follow the chapters");
+    }
+
+    [Fact]
+    public void ASectionPage_ShowsPurposeAsASubtitleNotAClaim()
+    {
+        var page = Doc(DeepReportRenderer.Render("acme", Outlined()), "system-map.md");
+
+        Assert.StartsWith("# System map\n\n_What the parts are and how they connect_\n", page);
+        Assert.Contains("## Owner summary", page);
+        Assert.Contains("- App is a .NET project (", page);
+    }
+
+    [Fact]
+    public void EveryBlockKind_RendersItsElementBesideTheClaimsThatBackIt()
+    {
+        var page = Doc(DeepReportRenderer.Render("acme", Outlined()), "core-flows.md");
+
+        Assert.Contains("### Flow: Build", page);
+        Assert.Contains("1. [App](components/cmp.app.md) — App is a .NET project ([`clm.app`](claims/clm.app.md))", page);
+        Assert.Contains("2. App references Lib ([`clm.ref`](claims/clm.ref.md))", page);
+        Assert.Contains("### Invariant: Lib never references App", page);
+        Assert.Contains("### Decision: App depends on Lib, never the reverse", page);
+        Assert.Contains("Rationale: _unrecorded_", page);
+        Assert.Contains("### Intent: Keep the library free of UI concerns", page);
+        Assert.Contains("- Lib is a .NET project — Fact · High", page);
+        // Element text never stands alone: each element block carries its backing claims.
+        Assert.Equal(4, CountOf(page, "_Backed by "));
+    }
+
+    [Fact]
+    public void AChapterWithNothingInIt_SaysNoEvidenceWasFound_AndIsCountedAsUnknown()
+    {
+        var tree = DeepReportRenderer.Render("acme", Outlined());
+
+        Assert.Contains("No evidence for this chapter was found in this repository.", Doc(tree, "risks.md"));
+        // The summary says so too: a reader of the index alone must not take the chapter for covered.
+        var index = Doc(tree, "index.md");
+        var risks = index[index.IndexOf("[Risks](risks.md)", StringComparison.Ordinal)..];
+        Assert.Contains("No evidence for this chapter was found in this repository.", risks);
+        Assert.Contains("[Risks](risks.md)", Doc(tree, "unknowns.md"));
+    }
+
+    [Fact]
+    public void AComponentBlock_LinksItsPage_WhereRelationsAreShown()
+    {
+        var page = Doc(DeepReportRenderer.Render("acme", Outlined()), "system-map.md");
+
+        Assert.Contains("### Component: [App](components/cmp.app.md)", page);
+    }
+
+    private static int CountOf(string text, string value)
+    {
+        var count = 0;
+        for (var i = text.IndexOf(value, StringComparison.Ordinal); i >= 0; i = text.IndexOf(value, i + value.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    [Fact]
+    public void AKeyEndingInANewline_StillGetsASafeFileName()
+    {
+        // `$` also matches before a final newline; a stem check that uses it would let "a\n" through as-is.
+        var tree = DeepReportRenderer.Render("acme", Model(m => m.Claims.Add(Fact(m, "clm.x\n", "X is a project"))));
+
+        Assert.All(tree, d => Assert.Matches(SafePath(), d.Path));
+    }
+
+    [Fact]
+    public void InAnOutlinedReport_EveryPageIsReachableFromSomeLink()
+    {
+        // A chapter cites only some claims and components; the rest still need a way in.
+        var tree = DeepReportRenderer.Render("acme", Outlined(m => m.Claims.Add(Fact(m, "clm.orphan", "Nothing cites this"))));
+
+        var targets = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var doc in tree)
+        {
+            var dir = doc.Path.Contains('/') ? doc.Path[..doc.Path.LastIndexOf('/')] : "";
+            foreach (Match link in MarkdownLink().Matches(doc.Content))
+            {
+                var href = link.Groups[1].Value;
+                targets.Add(href.StartsWith("../", StringComparison.Ordinal) ? href[3..] : (dir.Length == 0 ? "" : dir + "/") + href);
+            }
+        }
+
+        Assert.All(tree.Where(d => d.Path != "index.md"), d => Assert.Contains(d.Path, targets));
+        Assert.Contains("```mermaid", Doc(tree, "index.md"));
     }
 }

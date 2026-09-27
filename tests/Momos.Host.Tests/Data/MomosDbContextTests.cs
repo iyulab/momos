@@ -211,6 +211,55 @@ public sealed class MomosDbContextTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SavesAndReloadsTheManualElements_AndACoverageThatIsPresentOrAbsent()
+    {
+        ProjectModel withCoverage, withoutCoverage;
+        using (var seedDb = NewContext())
+        {
+            var project = new Project { Name = "p", Purpose = "x", Vision = "x", Scope = "x" };
+            seedDb.Projects.Add(project);
+            var analysisRequest = new InspectionRequest { ProjectId = project.Id, Kind = InspectionRequestKind.Analysis };
+            seedDb.InspectionRequests.Add(analysisRequest);
+
+            withCoverage = new ProjectModel
+            {
+                ProjectId = project.Id,
+                ModelVersion = 1,
+                BaseCommit = "abc123",
+                AnalysisRequestId = analysisRequest.Id,
+                Flows = [new ModelFlow("flw.submit", "Submit", [new FlowStep("cmp.app", "clm.app"), new FlowStep(null, "clm.lib")], ["clm.app"])],
+                Invariants = [new ModelInvariant("inv.one", "One report per request", "data-ownership", ["cmp.app"], ["clm.app"])],
+                Outline =
+                [
+                    new OutlineSection("sec.flows", "core-flows.md", "Core flows", "How a request moves", ["clm.app"],
+                        [new OutlineBlock(OutlineBlockKind.Flow, "flw.submit"), new OutlineBlock(OutlineBlockKind.Claim, "clm.lib")]),
+                ],
+                Coverage = new ModelCoverage(
+                    [new CoverageArea("project-manifests", "2 of 2 project files")],
+                    [new CoverageGap("source-files", "Only project files and git history are read.")],
+                    [new CoverageRejection("evidence does not locate", 3)],
+                    new CoverageGenerator("model-x", "p1")),
+            };
+            withoutCoverage = new ProjectModel { ProjectId = project.Id, ModelVersion = 2, BaseCommit = "def456", AnalysisRequestId = analysisRequest.Id };
+            seedDb.ProjectModels.AddRange(withCoverage, withoutCoverage);
+            await seedDb.SaveChangesAsync();
+        }
+
+        using var freshDb = NewContext();
+        var first = await freshDb.ProjectModels.SingleAsync(m => m.Id == withCoverage.Id);
+        Assert.Equal(withCoverage.Flows.Single().Steps, first.Flows.Single().Steps);
+        Assert.Equal(withCoverage.Invariants.Single().AppliesTo, first.Invariants.Single().AppliesTo);
+        Assert.Equal(OutlineBlockKind.Flow, first.Outline.Single().Blocks[0].Kind);
+        Assert.Equal("p1", first.Coverage!.Generator!.PromptVersion);
+        Assert.Equal(3, first.Coverage.Rejected.Single().Count);
+
+        var second = await freshDb.ProjectModels.SingleAsync(m => m.Id == withoutCoverage.Id);
+        Assert.Null(second.Coverage);
+        Assert.Empty(second.Flows);
+        Assert.Empty(second.Outline);
+    }
+
+    [Fact]
     public async Task DeletingARequestCascadesToItsToolCalls()
     {
         Guid requestId;

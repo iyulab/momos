@@ -260,6 +260,24 @@ public sealed class ProjectModelExtractorTests
     }
 
     [Fact]
+    public async Task Extract_RecordsWhatItReadAndWhatItLeftUnread_IncludingAnUnparseableProjectFile()
+    {
+        var model = await ExtractAsync(new() { ["src/App/App.csproj"] = Lib, ["src/Broken/Broken.csproj"] = "<Project" });
+
+        Assert.Equal(["project-manifests", "git-history"], model.Coverage.Analyzed.Select(a => a.Area));
+        Assert.Contains("1 of 2", model.Coverage.Analyzed[0].Detail);
+        var broken = Assert.Single(model.Coverage.NotAnalyzed, g => g.Reason.Contains("src/Broken/Broken.csproj", StringComparison.Ordinal));
+        Assert.Equal("project-manifests", broken.Area);
+        Assert.Contains(model.Coverage.NotAnalyzed, g => g.Area == "source-files");
+        Assert.Contains(model.Coverage.NotAnalyzed, g => g.Area == "non-dotnet-projects");
+        Assert.Empty(model.Coverage.Rejected);
+        Assert.Null(model.Coverage.Generator);
+        Assert.Empty(model.Outline);
+        Assert.Empty(model.Flows);
+        Assert.Empty(model.Invariants);
+    }
+
+    [Fact]
     public async Task Extract_AnUnparseableProjectFile_IsSkippedRatherThanFailingTheWholeAnalysis()
     {
         var model = await ExtractAsync(new() { ["src/Bad/Bad.csproj"] = "<Project", ["src/Lib/Lib.csproj"] = Lib });

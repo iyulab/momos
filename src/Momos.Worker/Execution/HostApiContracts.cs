@@ -167,6 +167,51 @@ public sealed record DecisionPayload(string Id, string Summary, IReadOnlyList<st
 /// <summary>Mirrors Host's ModelIntentDto wire shape (Momos.Host.Contracts.ModelIntentDto).</summary>
 public sealed record IntentPayload(string Id, string Statement, IntentSource Source, IReadOnlyList<string> Claims);
 
+/// <summary>Mirrors <c>Momos.Host.Domain.OutlineBlockKind</c>'s wire shape — see
+/// <see cref="ClaimedInspectionRequest"/>'s doc comment for why this is a local copy.</summary>
+public enum OutlineBlockKind
+{
+    Claim,
+    Component,
+    Pattern,
+    Decision,
+    Intent,
+    Flow,
+    Invariant,
+}
+
+/// <summary>Mirrors Host's FlowStepDto wire shape.</summary>
+public sealed record FlowStepPayload(string? ComponentId, string ClaimKey);
+
+/// <summary>Mirrors Host's ModelFlowDto wire shape.</summary>
+public sealed record FlowPayload(string Id, string Name, IReadOnlyList<FlowStepPayload> Steps, IReadOnlyList<string> Claims);
+
+/// <summary>Mirrors Host's ModelInvariantDto wire shape.</summary>
+public sealed record InvariantPayload(string Id, string Statement, string Kind, IReadOnlyList<string> AppliesTo, IReadOnlyList<string> Claims);
+
+/// <summary>Mirrors Host's OutlineBlockDto wire shape.</summary>
+public sealed record OutlineBlockPayload(OutlineBlockKind Kind, string Ref);
+
+/// <summary>Mirrors Host's OutlineSectionDto wire shape.</summary>
+public sealed record OutlineSectionPayload(string Id, string Path, string Title, string Purpose, IReadOnlyList<string> OwnerSummaryClaims, IReadOnlyList<OutlineBlockPayload> Blocks);
+
+/// <summary>Mirrors Host's CoverageAreaDto wire shape.</summary>
+public sealed record CoverageAreaPayload(string Area, string Detail);
+
+/// <summary>Mirrors Host's CoverageGapDto wire shape.</summary>
+public sealed record CoverageGapPayload(string Area, string Reason);
+
+/// <summary>Mirrors Host's CoverageRejectionDto wire shape.</summary>
+public sealed record CoverageRejectionPayload(string Reason, int Count);
+
+/// <summary>Mirrors Host's CoverageGeneratorDto wire shape.</summary>
+public sealed record CoverageGeneratorPayload(string Model, string PromptVersion);
+
+/// <summary>Mirrors Host's ModelCoverageDto wire shape — what the analysis read, left unread, and discarded.</summary>
+public sealed record CoveragePayload(
+    IReadOnlyList<CoverageAreaPayload> Analyzed, IReadOnlyList<CoverageGapPayload> NotAnalyzed,
+    IReadOnlyList<CoverageRejectionPayload> Rejected, CoverageGeneratorPayload? Generator);
+
 /// <summary>Mirrors Host's SubmitProjectModelRequest wire shape
 /// (Momos.Host.Contracts.SubmitProjectModelRequest) — the completion of an analysis request. Every
 /// list is required; send an empty list when there is nothing to report.</summary>
@@ -177,6 +222,10 @@ public sealed record ProjectModelPayload(
     IReadOnlyList<PatternPayload> Patterns,
     IReadOnlyList<DecisionPayload> Decisions,
     IReadOnlyList<IntentPayload> Intents,
+    IReadOnlyList<FlowPayload> Flows,
+    IReadOnlyList<InvariantPayload> Invariants,
+    IReadOnlyList<OutlineSectionPayload> Outline,
+    CoveragePayload Coverage,
     IReadOnlyList<ClaimPayload> Claims);
 
 /// <summary>Mirrors Host's QueryKnowledgeRequest wire shape (Momos.Host.Contracts.QueryKnowledgeRequest) —

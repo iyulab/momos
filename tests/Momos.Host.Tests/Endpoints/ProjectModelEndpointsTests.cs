@@ -7,7 +7,7 @@ namespace Momos.Host.Tests.Endpoints;
 
 public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClassFixture<MomosHostFactory>
 {
-    private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: 3, WorkerVersion: "0.1.0");
+    private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: TestProtocol.Current, WorkerVersion: "0.1.0");
     private readonly HttpClient _client = factory.CreateAuthorizedClient();
 
     /// <summary>Creates a project + analysis request and claims it, leaving it Running. Drains
@@ -77,16 +77,9 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         var (_, requestId) = await StartAnalysisAsync(_client);
 
         // A body that binds with Claims left null — a malformed submission, not a server fault.
-        var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model",
-            new
-            {
-                baseCommit = "abc123",
-                components = Array.Empty<object>(),
-                relations = Array.Empty<object>(),
-                patterns = Array.Empty<object>(),
-                decisions = Array.Empty<object>(),
-                intents = Array.Empty<object>()
-            });
+        var body = ModelFixtures.AnonymousBody(claims: []);
+        body.Remove("claims");
+        var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model", body);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var request = await _client.GetFromJsonAsync<InspectionRequestResponse>($"/analysis-requests/{requestId}", TestJsonOptions.Value);
@@ -101,26 +94,17 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         // A body whose claim omits origin: a submitter that doesn't say how it produced a claim
         // must not be taken as a deterministic extractor by default.
         var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model",
-            new
-            {
-                baseCommit = "abc123",
-                components = Array.Empty<object>(),
-                relations = Array.Empty<object>(),
-                patterns = Array.Empty<object>(),
-                decisions = Array.Empty<object>(),
-                intents = Array.Empty<object>(),
-                claims = new[]
+            ModelFixtures.AnonymousBody(claims:
+            [
+                new
                 {
-                    new
-                    {
-                        key = "clm.a",
-                        tier = "Fact",
-                        statement = "A is a project",
-                        evidence = new[] { new { kind = "Code", path = "src/A/A.csproj" } },
-                        confidence = "High",
-                    },
+                    key = "clm.a",
+                    tier = "Fact",
+                    statement = "A is a project",
+                    evidence = new[] { new { kind = "Code", path = "src/A/A.csproj" } },
+                    confidence = "High",
                 },
-            });
+            ]));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         // The problem body is JSON, which escapes the quotes around the key — assert on the parts.
@@ -132,6 +116,36 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         Assert.DoesNotContain("empty list", body);
     }
 
+    [Theory]
+    [InlineData("tier", ".Tier")]
+    [InlineData("confidence", ".Confidence")]
+    public async Task Submit_AClaimOmittingAScalarGrade_Returns400NamingIt(string omitted, string named)
+    {
+        var (_, requestId) = await StartAnalysisAsync(_client);
+
+        // Both enums have a first member (Fact, High) that an omitted value would silently bind to —
+        // the most authoritative grade. An omission has to be named, not defaulted.
+        var claim = new Dictionary<string, object>
+        {
+            ["key"] = "clm.a",
+            ["tier"] = "Fact",
+            ["statement"] = "A is a project",
+            ["evidence"] = new[] { new { kind = "Code", path = "src/A/A.csproj" } },
+            ["confidence"] = "High",
+            ["origin"] = "Deterministic",
+        };
+        claim.Remove(omitted);
+
+        var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model",
+            ModelFixtures.AnonymousBody(claims: [claim]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("clm.a", body);
+        Assert.Contains(named, body);
+        Assert.DoesNotContain("empty list", body);
+    }
+
     [Fact]
     public async Task Submit_AClaimWithAnUnknownOrigin_Returns400NamingIt()
     {
@@ -140,27 +154,18 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         // A body whose claim's origin is a value the enum never named — must not silently bind
         // and be stored as though it were one of the known origins.
         var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model",
-            new
-            {
-                baseCommit = "abc123",
-                components = Array.Empty<object>(),
-                relations = Array.Empty<object>(),
-                patterns = Array.Empty<object>(),
-                decisions = Array.Empty<object>(),
-                intents = Array.Empty<object>(),
-                claims = new[]
+            ModelFixtures.AnonymousBody(claims:
+            [
+                new
                 {
-                    new
-                    {
-                        key = "clm.a",
-                        tier = "Fact",
-                        statement = "A is a project",
-                        evidence = new[] { new { kind = "Code", path = "src/A/A.csproj" } },
-                        confidence = "High",
-                        origin = 7,
-                    },
+                    key = "clm.a",
+                    tier = "Fact",
+                    statement = "A is a project",
+                    evidence = new[] { new { kind = "Code", path = "src/A/A.csproj" } },
+                    confidence = "High",
+                    origin = 7,
                 },
-            });
+            ]));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
@@ -350,7 +355,8 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
     public async Task GetReport_ReturnsTheDocumentTree()
     {
         var (projectId, requestId) = await StartAnalysisAsync(_client);
-        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+        // Without an outline: the fixed layout, whose summary draws the structure.
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission() with { Outline = [] });
 
         var report = await _client.GetFromJsonAsync<ProjectModelReportResponse>($"/projects/{projectId}/model/report", TestJsonOptions.Value);
 
@@ -360,6 +366,20 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         Assert.Contains("# acme-model", index);
         Assert.Contains("```mermaid", index);
         Assert.Contains(report.Documents, d => d.Path == "claims/clm.ref.md");
+        Assert.Contains(report.Documents, d => d.Path == "unknowns.md");
+    }
+
+    [Fact]
+    public async Task GetReport_ForAModelWithAnOutline_HasAPagePerChapter()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+
+        var report = await _client.GetFromJsonAsync<ProjectModelReportResponse>($"/projects/{projectId}/model/report", TestJsonOptions.Value);
+
+        var chapter = Assert.Single(report!.Documents, d => d.Path == "system-map.md").Content;
+        Assert.Contains("### Flow: Build", chapter);
+        Assert.Contains("[System map](system-map.md)", Assert.Single(report.Documents, d => d.Path == "index.md").Content);
     }
 
     [Fact]
@@ -408,5 +428,49 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         var response = await _client.GetAsync($"/projects/{projectId}/model");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Submit_TheManualElements_AreReturnedByTheModelEndpoint()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        (await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission())).EnsureSuccessStatusCode();
+
+        var model = await _client.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+
+        Assert.Equal(["cmp.app", "cmp.lib"], model!.Flows.Single().Steps.Select(s => s.ComponentId));
+        Assert.Equal("contract", model.Invariants.Single().Kind);
+        Assert.Equal(OutlineBlockKind.Flow, model.Outline.Single().Blocks[1].Kind);
+        Assert.Equal("source-files", model.Coverage!.NotAnalyzed.Single().Area);
+    }
+
+    [Theory]
+    [InlineData("flows")]
+    [InlineData("invariants")]
+    [InlineData("outline")]
+    [InlineData("coverage")]
+    public async Task Submit_WithoutAManualElementField_Returns400NamingIt(string omitted)
+    {
+        var (_, requestId) = await StartAnalysisAsync(_client);
+        var body = ModelFixtures.AnonymousBody(claims: []);
+        body.Remove(omitted);
+
+        var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains($"'{char.ToUpperInvariant(omitted[0])}{omitted[1..]}' is required", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Submit_AnOutlineBlockWithoutAKind_Returns400NamingIt()
+    {
+        var (_, requestId) = await StartAnalysisAsync(_client);
+        var body = ModelFixtures.AnonymousBody(claims: []);
+        body["outline"] = new[] { new { id = "sec.a", path = "a.md", title = "A", purpose = "", ownerSummaryClaims = Array.Empty<string>(), blocks = new[] { new { @ref = "clm.a" } } } };
+
+        var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Outline['sec.a'].Blocks[1].Kind", await response.Content.ReadAsStringAsync());
     }
 }

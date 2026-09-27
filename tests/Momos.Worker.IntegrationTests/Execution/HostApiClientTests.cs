@@ -200,6 +200,8 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
     [InlineData(typeof(Momos.Worker.Execution.ClaimConfidence), typeof(Momos.Host.Domain.ClaimConfidence))]
     [InlineData(typeof(Momos.Worker.Execution.EvidenceKind), typeof(Momos.Host.Domain.EvidenceKind))]
     [InlineData(typeof(Momos.Worker.Execution.IntentSource), typeof(Momos.Host.Domain.IntentSource))]
+    [InlineData(typeof(Momos.Worker.Execution.ClaimOrigin), typeof(Momos.Host.Domain.ClaimOrigin))]
+    [InlineData(typeof(Momos.Worker.Execution.OutlineBlockKind), typeof(Momos.Host.Domain.OutlineBlockKind))]
     public void MirroredEnums_HaveTheHostsMembersInTheHostsOrder(Type workerEnum, Type hostEnum)
     {
         // Enums travel by name, so a renamed or missing member would only fail at runtime on the
@@ -225,7 +227,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         await _client.SubmitModelAsync(claimed.Id, new ProjectModelPayload(
             "abc123",
             [new ComponentPayload("cmp.app", "App", "executable", null, ["clm.app"])],
-            [], [], [], [],
+            [], [], [], [], [], [], [], new CoveragePayload([], [], [], null),
             [new ClaimPayload("clm.app", Momos.Worker.Execution.ClaimTier.Fact, "App is a .NET project",
                 [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/App/App.csproj")], Momos.Worker.Execution.ClaimConfidence.High,
                 Momos.Worker.Execution.ClaimOrigin.Deterministic)]),
@@ -262,6 +264,27 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
             [new PatternPayload("pat.layers", "Layered", ["cmp.app", "cmp.lib"], ["clm.layers"])],
             [new DecisionPayload("dec.split", "Split the library out", ["Keep one project"], "unrecorded", ["clm.split"])],
             [new IntentPayload("int.api", "Serve an HTTP API", Momos.Worker.Execution.IntentSource.Document, ["clm.app"])],
+            [new FlowPayload("flw.build", "Build", [new FlowStepPayload(null, "clm.lib"), new FlowStepPayload("cmp.app", "clm.app")], ["clm.app.refs"])],
+            [new InvariantPayload("inv.layers", "Lib never references App", "contract", ["cmp.lib"], ["clm.app.refs"])],
+            [
+                new OutlineSectionPayload("sec.map", "system-map.md", "System map", "What the parts are", ["clm.app"],
+                [
+                    // Every block kind once, each pointing at an element of its kind in this payload.
+                    new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Claim, "clm.app"),
+                    new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Component, "cmp.app"),
+                    new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Pattern, "pat.layers"),
+                    new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Decision, "dec.split"),
+                    new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Intent, "int.api"),
+                    new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Flow, "flw.build"),
+                    new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Invariant, "inv.layers"),
+                ]),
+                new OutlineSectionPayload("sec.risks", "risks.md", "Risks", "", [], []),
+            ],
+            new CoveragePayload(
+                [new CoverageAreaPayload("project-manifests", "2 of 2 project files")],
+                [new CoverageGapPayload("source-files", "not read")],
+                [new CoverageRejectionPayload("evidence does not locate", 2)],
+                new CoverageGeneratorPayload("model-x", "p-1")),
             [
                 new ClaimPayload("clm.app", Momos.Worker.Execution.ClaimTier.Fact, "App is an executable .NET project",
                     [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/App/App.csproj", Symbol: "OutputType", Lines: "3-5")],
@@ -294,7 +317,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         var sent = JsonSerializer.SerializeToNode(payload, TestJsonOptions.Value)!.AsObject();
         var served = JsonNode.Parse(await httpClient.GetStringAsync($"/projects/{projectId}/model"))!.AsObject();
         Assert.Equal(sent["baseCommit"]!.GetValue<string>(), served["baseCommit"]!.GetValue<string>());
-        foreach (var collection in new[] { "components", "relations", "patterns", "decisions", "intents" })
+        foreach (var collection in new[] { "components", "relations", "patterns", "decisions", "intents", "flows", "invariants", "outline", "coverage" })
         {
             Assert.True(JsonNode.DeepEquals(sent[collection], served[collection]),
                 $"{collection}: sent {sent[collection]!.ToJsonString()} but served {served[collection]!.ToJsonString()}");

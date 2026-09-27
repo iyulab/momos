@@ -29,7 +29,19 @@ public static partial class DeepReportRenderer
     public static IReadOnlyList<ReportDocument> Render(string projectName, ProjectModel model)
     {
         var tree = new Tree(model);
-        var documents = new List<ReportDocument> { new("index.md", Index(projectName, model, tree)) };
+
+        // A model that brings an outline decides its chapters; one that doesn't (every
+        // deterministic analysis, every version before outlines) gets the fixed layout.
+        var documents = new List<ReportDocument>
+        {
+            new("index.md", model.Outline.Count > 0 ? OutlineIndex(projectName, model, tree) : Index(projectName, model, tree)),
+            new(UnknownsPage, Unknowns(model, tree)),
+        };
+        foreach (var section in model.Outline)
+        {
+            documents.Add(new(section.Path, SectionPage(section, model, tree)));
+        }
+
         foreach (var component in tree.Components)
         {
             documents.Add(new($"components/{tree.ComponentFile(component.Id)}", ComponentPage(component, model, tree)));
@@ -52,7 +64,80 @@ public static partial class DeepReportRenderer
             .Line("Every statement in this report is a graded claim with evidence, on a page of its own. A developer verdict never replaces the original claim — both are shown.")
             .Line("Origin says how a claim was produced: Deterministic claims are read mechanically from the repository; Synthesized claims are a language model's reading of the same evidence.")
             .Line()
-            .Line("## Structure")
+            .Line($"What this report does not know: {UnknownsLink(model, tree)}.")
+            .Line();
+        Understanding(md, model, tree);
+        Structure(md, model, tree);
+
+        if (model.Patterns.Count > 0)
+        {
+            md.Line("## Patterns").Line();
+            foreach (var p in model.Patterns)
+            {
+                var appliesTo = string.Join(", ", p.AppliesTo.Select(id => tree.ComponentLink(id, "components/")));
+                md.Line($"- **{Inline(p.Name)}** — applies to {appliesTo} ({tree.ClaimLinks(p.Claims, "claims/")})");
+            }
+
+            md.Line();
+        }
+
+        if (model.Flows.Count > 0)
+        {
+            md.Line("## Flows").Line();
+            foreach (var f in model.Flows)
+            {
+                md.Line($"- **{Inline(f.Name)}** — {f.Steps.Count} steps ({tree.ClaimLinks(f.Claims, "claims/")})");
+            }
+
+            md.Line();
+        }
+
+        if (model.Invariants.Count > 0)
+        {
+            md.Line("## Invariants").Line();
+            foreach (var i in model.Invariants)
+            {
+                md.Line($"- {Inline(i.Statement)} — {Inline(i.Kind)} ({tree.ClaimLinks(i.Claims, "claims/")})");
+            }
+
+            md.Line();
+        }
+
+        if (model.Decisions.Count > 0)
+        {
+            md.Line("## Decisions").Line();
+            foreach (var d in model.Decisions)
+            {
+                var rationale = d.Rationale == ModelDecision.Unrecorded ? "_unrecorded_" : Inline(d.Rationale);
+                md.Line($"- **{Inline(d.Summary)}** — rationale: {rationale} ({tree.ClaimLinks(d.Claims, "claims/")})");
+            }
+
+            md.Line();
+            if (model.Decisions.Any(d => d.Rationale == ModelDecision.Unrecorded))
+            {
+                md.Line($"Decisions without a recorded rationale are asked about in [what this report does not know]({UnknownsPage}).").Line();
+            }
+        }
+
+        if (model.Intents.Count > 0)
+        {
+            md.Line("## Intents").Line();
+            foreach (var i in model.Intents)
+            {
+                md.Line($"- {Inline(i.Statement)} — source: {i.Source} ({tree.ClaimLinks(i.Claims, "claims/")})");
+            }
+
+            md.Line();
+        }
+
+        ClaimsTable(md, tree);
+        return md.ToString();
+    }
+
+    /// <summary>The structure diagram and component list — the way into every component page.</summary>
+    private static void Structure(StringBuilder md, ProjectModel model, Tree tree)
+    {
+        md.Line("## Structure")
             .Line();
 
         if (tree.Components.Count == 0)
@@ -84,55 +169,11 @@ public static partial class DeepReportRenderer
 
             md.Line();
         }
+    }
 
-        if (model.Patterns.Count > 0)
-        {
-            md.Line("## Patterns").Line();
-            foreach (var p in model.Patterns)
-            {
-                var appliesTo = string.Join(", ", p.AppliesTo.Select(id => tree.ComponentLink(id, "components/")));
-                md.Line($"- **{Inline(p.Name)}** — applies to {appliesTo} ({tree.ClaimLinks(p.Claims, "claims/")})");
-            }
-
-            md.Line();
-        }
-
-        if (model.Decisions.Count > 0)
-        {
-            md.Line("## Decisions").Line();
-            foreach (var d in model.Decisions)
-            {
-                var rationale = d.Rationale == ModelDecision.Unrecorded ? "_unrecorded_" : Inline(d.Rationale);
-                md.Line($"- **{Inline(d.Summary)}** — rationale: {rationale} ({tree.ClaimLinks(d.Claims, "claims/")})");
-            }
-
-            md.Line();
-            var unrecorded = model.Decisions.Where(d => d.Rationale == ModelDecision.Unrecorded).ToList();
-            if (unrecorded.Count > 0)
-            {
-                md.Line("## Decisions without a recorded rationale").Line()
-                  .Line("These decisions are visible in the code, but nothing records why they were made. Momos does not guess; writing the reason down is worth doing.")
-                  .Line();
-                foreach (var d in unrecorded)
-                {
-                    md.Line($"- {Inline(d.Summary)}");
-                }
-
-                md.Line();
-            }
-        }
-
-        if (model.Intents.Count > 0)
-        {
-            md.Line("## Intents").Line();
-            foreach (var i in model.Intents)
-            {
-                md.Line($"- {Inline(i.Statement)} — source: {i.Source} ({tree.ClaimLinks(i.Claims, "claims/")})");
-            }
-
-            md.Line();
-        }
-
+    /// <summary>Every claim with its grade and status — the way into every claim page.</summary>
+    private static void ClaimsTable(StringBuilder md, Tree tree)
+    {
         if (tree.Claims.Count > 0)
         {
             md.Line("## Claims").Line()
@@ -144,8 +185,6 @@ public static partial class DeepReportRenderer
 
             md.Line();
         }
-
-        return md.ToString();
     }
 
     private static string ComponentPage(ModelComponent component, ProjectModel model, Tree tree)
@@ -306,7 +345,8 @@ public static partial class DeepReportRenderer
         .Replace("<", "#lt;", StringComparison.Ordinal)
         .Replace(">", "#gt;", StringComparison.Ordinal);
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9._-]{0,79}$")]
+    // \z, not $: $ also matches before a final newline.
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9._-]{0,79}\z")]
     private static partial Regex SafeFileStem();
 
     [GeneratedRegex("[^a-z0-9._-]+")]
@@ -357,7 +397,23 @@ public static partial class DeepReportRenderer
                     Claims.Add(c);
                 }
             }
+
+            foreach (var p in model.Patterns) { Patterns.TryAdd(p.Id, p); }
+            foreach (var d in model.Decisions) { Decisions.TryAdd(d.Id, d); }
+            foreach (var i in model.Intents) { Intents.TryAdd(i.Id, i); }
+            foreach (var f in model.Flows) { Flows.TryAdd(f.Id, f); }
+            foreach (var i in model.Invariants) { Invariants.TryAdd(i.Id, i); }
         }
+
+        public Dictionary<string, ModelPattern> Patterns { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, ModelDecision> Decisions { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, ModelIntent> Intents { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, ModelFlow> Flows { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, ModelInvariant> Invariants { get; } = new(StringComparer.Ordinal);
+
+        public ModelClaim? Claim(string key) => _claims.GetValueOrDefault(key);
+
+        public ModelComponent? Component(string id) => _components.GetValueOrDefault(id);
 
         public List<ModelComponent> Components { get; } = [];
 
@@ -382,7 +438,7 @@ public static partial class DeepReportRenderer
     }
 }
 
-file static class MarkdownLines
+internal static class MarkdownLines
 {
     /// <summary>Appends a line ending in <c>\n</c> on every platform, unlike
     /// <see cref="StringBuilder.AppendLine()"/>.</summary>
