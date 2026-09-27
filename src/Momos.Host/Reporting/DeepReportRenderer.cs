@@ -29,7 +29,11 @@ public static partial class DeepReportRenderer
     public static IReadOnlyList<ReportDocument> Render(string projectName, ProjectModel model)
     {
         var tree = new Tree(model);
-        var documents = new List<ReportDocument> { new("index.md", Index(projectName, model, tree)) };
+        var documents = new List<ReportDocument>
+        {
+            new("index.md", Index(projectName, model, tree)),
+            new(UnknownsPage, Unknowns(model, tree)),
+        };
         foreach (var component in tree.Components)
         {
             documents.Add(new($"components/{tree.ComponentFile(component.Id)}", ComponentPage(component, model, tree)));
@@ -52,7 +56,10 @@ public static partial class DeepReportRenderer
             .Line("Every statement in this report is a graded claim with evidence, on a page of its own. A developer verdict never replaces the original claim — both are shown.")
             .Line("Origin says how a claim was produced: Deterministic claims are read mechanically from the repository; Synthesized claims are a language model's reading of the same evidence.")
             .Line()
-            .Line("## Structure")
+            .Line($"What this report does not know: {UnknownsLink(model, tree)}.")
+            .Line();
+        Understanding(md, model, tree);
+        md.Line("## Structure")
             .Line();
 
         if (tree.Components.Count == 0)
@@ -97,6 +104,28 @@ public static partial class DeepReportRenderer
             md.Line();
         }
 
+        if (model.Flows.Count > 0)
+        {
+            md.Line("## Flows").Line();
+            foreach (var f in model.Flows)
+            {
+                md.Line($"- **{Inline(f.Name)}** — {f.Steps.Count} steps ({tree.ClaimLinks(f.Claims, "claims/")})");
+            }
+
+            md.Line();
+        }
+
+        if (model.Invariants.Count > 0)
+        {
+            md.Line("## Invariants").Line();
+            foreach (var i in model.Invariants)
+            {
+                md.Line($"- {Inline(i.Statement)} — {Inline(i.Kind)} ({tree.ClaimLinks(i.Claims, "claims/")})");
+            }
+
+            md.Line();
+        }
+
         if (model.Decisions.Count > 0)
         {
             md.Line("## Decisions").Line();
@@ -107,18 +136,9 @@ public static partial class DeepReportRenderer
             }
 
             md.Line();
-            var unrecorded = model.Decisions.Where(d => d.Rationale == ModelDecision.Unrecorded).ToList();
-            if (unrecorded.Count > 0)
+            if (model.Decisions.Any(d => d.Rationale == ModelDecision.Unrecorded))
             {
-                md.Line("## Decisions without a recorded rationale").Line()
-                  .Line("These decisions are visible in the code, but nothing records why they were made. Momos does not guess; writing the reason down is worth doing.")
-                  .Line();
-                foreach (var d in unrecorded)
-                {
-                    md.Line($"- {Inline(d.Summary)}");
-                }
-
-                md.Line();
+                md.Line($"Decisions without a recorded rationale are asked about in [what this report does not know]({UnknownsPage}).").Line();
             }
         }
 
@@ -382,7 +402,7 @@ public static partial class DeepReportRenderer
     }
 }
 
-file static class MarkdownLines
+internal static class MarkdownLines
 {
     /// <summary>Appends a line ending in <c>\n</c> on every platform, unlike
     /// <see cref="StringBuilder.AppendLine()"/>.</summary>
