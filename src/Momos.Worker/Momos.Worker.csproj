@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="IronHive.Agent" />
-    <PackageReference Include="IronHive.Core" />
+    <PackageReference Include="IronHive.Extensions.AI" />
     <PackageReference Include="IronHive.Providers.OpenAI.Compatible" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />

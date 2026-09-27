@@ -1,5 +1,5 @@
 using IronHive.Agent.Providers;
-using IronHive.Core.Microsoft;
+using IronHive.Extensions.AI;
 using IronHive.Providers.OpenAI.Compatible;
 using IronHive.Providers.OpenAI.Compatible.GpuStack;
 using Microsoft.Extensions.AI;

@@ -50,7 +50,7 @@ public class GpuStackChatClientProviderTests
     [Fact]
     public async Task GetChatClientAsync_WithValidConfig_ReturnsChatClient()
     {
-        // No network call happens here — this only proves the IronHive.Core →
+        // No network call happens here — this only proves the IronHive generator →
         // ChatClientAdapter wiring assembles correctly.
         var provider = new GpuStackChatClientProvider(Options.Create(ValidOptions()));
 
