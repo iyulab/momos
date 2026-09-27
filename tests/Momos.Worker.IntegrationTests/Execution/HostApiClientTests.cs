@@ -370,6 +370,14 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         Assert.Equal(3, model.Relations.Count);
         Assert.Equal(extracted.Claims.Count, model.Claims.Count);
         Assert.Equal(8, model.Claims.Count(c => c.Tier == Momos.Host.Domain.ClaimTier.History));
+
+        // The history reaches the report: the component's page links its history claim, whose page cites the commits.
+        var report = await httpClient.GetFromJsonAsync<ProjectModelReportResponse>($"/projects/{projectId}/model/report", TestJsonOptions.Value);
+        var historyKey = ModelIds.Claim("history|src/Lib/Lib.csproj");
+        Assert.Contains($"claims/{historyKey}.md", Assert.Single(report!.Documents, d => d.Path == $"components/{ModelIds.Component("src/Lib/Lib.csproj")}.md").Content);
+        var claimPage = Assert.Single(report.Documents, d => d.Path == $"claims/{historyKey}.md").Content;
+        Assert.Contains("| History | High | Deterministic | Proposed |", claimPage);
+        Assert.Contains($"commit `{repository.Head}`", claimPage);
         var request = await httpClient.GetFromJsonAsync<InspectionRequestResponse>($"/analysis-requests/{analysisRequestId}", TestJsonOptions.Value);
         Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Completed, request!.Status);
     }
