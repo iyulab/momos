@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Momos.Host.Domain;
 
 public sealed record ModelElements(
@@ -5,7 +7,11 @@ public sealed record ModelElements(
     IReadOnlyList<ModelRelation> Relations,
     IReadOnlyList<ModelPattern> Patterns,
     IReadOnlyList<ModelDecision> Decisions,
-    IReadOnlyList<ModelIntent> Intents);
+    IReadOnlyList<ModelIntent> Intents,
+    IReadOnlyList<ModelFlow> Flows,
+    IReadOnlyList<ModelInvariant> Invariants,
+    IReadOnlyList<OutlineSection> Outline,
+    ModelCoverage? Coverage);
 
 /// <summary>
 /// Enforces the evidence contract on a submitted model: no claim of any tier without evidence,
@@ -14,10 +20,21 @@ public sealed record ModelElements(
 /// point at the claim it interprets, and it cannot rise above low confidence unless a reproduced
 /// finding backs it. A claim built on other claims can be no more certain than the least certain of them, claims
 /// may not cite one another in a circle, and a decision that states its rationale needs a history
-/// claim — a reason nobody recorded is <see cref="ModelDecision.Unrecorded"/>.
+/// claim — a reason nobody recorded is <see cref="ModelDecision.Unrecorded"/>. A flow step, an
+/// invariant and every outline block must resolve inside the model, and a chapter's path is a plain
+/// file name at the report's root.
 /// </summary>
 public static class ClaimValidator
 {
+    public const int MaxTitleLength = 80;
+    public const int MaxPurposeLength = 200;
+
+    /// <summary>A chapter is one markdown file at the root of the report: lowercase, no spaces, no
+    /// directories — so it can never land on a claim or component page, and every link from it has
+    /// the same shape. The spine's own pages are reserved.</summary>
+    private static readonly Regex SectionPath = new(@"^[a-z0-9][a-z0-9-]{0,63}\.md$", RegexOptions.CultureInvariant);
+    private static readonly HashSet<string> ReservedPaths = new(StringComparer.Ordinal) { "index.md", "unknowns.md" };
+
     public static IReadOnlyList<string> Validate(IReadOnlyList<ModelClaim> claims, ModelElements elements)
     {
         var errors = new List<string>();
@@ -136,6 +153,9 @@ public static class ClaimValidator
         RequireUniqueIds("Pattern", elements.Patterns.Select(p => p.Id));
         RequireUniqueIds("Decision", elements.Decisions.Select(d => d.Id));
         RequireUniqueIds("Intent", elements.Intents.Select(i => i.Id));
+        RequireUniqueIds("Flow", elements.Flows.Select(f => f.Id));
+        RequireUniqueIds("Invariant", elements.Invariants.Select(i => i.Id));
+        RequireUniqueIds("Outline section", elements.Outline.Select(s => s.Id));
         void RequireUniqueIds(string element, IEnumerable<string> ids)
         {
             foreach (var id in ids.GroupBy(id => id, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key))
@@ -203,6 +223,107 @@ public static class ClaimValidator
             }
 
             RequireClaims($"Intent '{i.Id}'", i.Claims);
+        }
+
+        foreach (var f in elements.Flows)
+        {
+            RequireClaims($"Flow '{f.Id}'", f.Claims);
+            if (f.Steps.Count == 0)
+            {
+                errors.Add($"Flow '{f.Id}' has no steps.");
+            }
+
+            for (var n = 0; n < f.Steps.Count; n++)
+            {
+                var step = f.Steps[n];
+                if (step.ComponentId is not null && !componentIds.Contains(step.ComponentId))
+                {
+                    errors.Add($"Flow '{f.Id}' step {n + 1} names a component that is not in this model.");
+                }
+
+                if (!keys.Contains(step.ClaimKey))
+                {
+                    errors.Add($"Flow '{f.Id}' step {n + 1} references a claim that is not in this model.");
+                }
+            }
+        }
+
+        foreach (var i in elements.Invariants)
+        {
+            RequireClaims($"Invariant '{i.Id}'", i.Claims);
+            if (string.IsNullOrWhiteSpace(i.Statement))
+            {
+                errors.Add($"Invariant '{i.Id}' has a blank statement.");
+            }
+
+            if (i.AppliesTo.Any(id => !componentIds.Contains(id)))
+            {
+                errors.Add($"Invariant '{i.Id}' applies to a component that is not in this model.");
+            }
+        }
+
+        var targets = new Dictionary<OutlineBlockKind, HashSet<string>>
+        {
+            [OutlineBlockKind.Claim] = keys,
+            [OutlineBlockKind.Component] = componentIds,
+            [OutlineBlockKind.Pattern] = elements.Patterns.Select(p => p.Id).ToHashSet(StringComparer.Ordinal),
+            [OutlineBlockKind.Decision] = elements.Decisions.Select(d => d.Id).ToHashSet(StringComparer.Ordinal),
+            [OutlineBlockKind.Intent] = elements.Intents.Select(i => i.Id).ToHashSet(StringComparer.Ordinal),
+            [OutlineBlockKind.Flow] = elements.Flows.Select(f => f.Id).ToHashSet(StringComparer.Ordinal),
+            [OutlineBlockKind.Invariant] = elements.Invariants.Select(i => i.Id).ToHashSet(StringComparer.Ordinal),
+        };
+        foreach (var s in elements.Outline)
+        {
+            var name = $"Outline section '{s.Id}'";
+            if (!SectionPath.IsMatch(s.Path) || ReservedPaths.Contains(s.Path))
+            {
+                errors.Add($"{name} has path '{s.Path}', which is not a lowercase file name at the report's root (index.md and unknowns.md are reserved).");
+            }
+
+            if (string.IsNullOrWhiteSpace(s.Title))
+            {
+                errors.Add($"{name} has a blank title.");
+            }
+            else if (s.Title.Length > MaxTitleLength)
+            {
+                errors.Add($"{name} has a title longer than {MaxTitleLength} characters.");
+            }
+
+            if (s.Purpose.Length > MaxPurposeLength)
+            {
+                errors.Add($"{name} has a purpose longer than {MaxPurposeLength} characters.");
+            }
+
+            if (s.OwnerSummaryClaims.Any(k => !keys.Contains(k)))
+            {
+                errors.Add($"{name} has an owner summary claim that is not in this model.");
+            }
+
+            for (var n = 0; n < s.Blocks.Count; n++)
+            {
+                var block = s.Blocks[n];
+                if (!Enum.IsDefined(block.Kind))
+                {
+                    errors.Add($"{name} block {n + 1} has an unknown kind '{(int)block.Kind}'.");
+                }
+                else if (!targets[block.Kind].Contains(block.Ref))
+                {
+                    errors.Add($"{name} block {n + 1} ({block.Kind} '{block.Ref}') does not resolve in this model.");
+                }
+            }
+        }
+
+        foreach (var path in elements.Outline.GroupBy(s => s.Path, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key))
+        {
+            errors.Add($"Outline path '{path}' is used by more than one section.");
+        }
+
+        foreach (var r in elements.Coverage?.Rejected ?? [])
+        {
+            if (r.Count < 1)
+            {
+                errors.Add($"Coverage rejection '{r.Reason}' has a count below 1.");
+            }
         }
 
         return errors;

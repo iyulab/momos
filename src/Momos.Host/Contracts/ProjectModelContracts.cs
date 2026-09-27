@@ -111,7 +111,8 @@ public sealed record SubmitProjectModelRequest(
         Relations.Select(r => new ModelRelation(r.From, r.To, r.Kind, r.Claims)).ToList(),
         Patterns.Select(p => new ModelPattern(p.Id, p.Name, p.AppliesTo, p.Claims)).ToList(),
         Decisions.Select(d => new ModelDecision(d.Id, d.Summary, d.Alternatives, d.Rationale, d.Claims)).ToList(),
-        Intents.Select(i => new ModelIntent(i.Id, i.Statement, i.Source, i.Claims)).ToList());
+        Intents.Select(i => new ModelIntent(i.Id, i.Statement, i.Source, i.Claims)).ToList(),
+        [], [], [], null);
 }
 
 /// <summary>A developer's verdict on one claim: Confirmed, Disputed, or Corrected (which

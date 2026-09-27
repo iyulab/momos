@@ -4,7 +4,7 @@ namespace Momos.Host.Tests.Domain;
 
 public sealed class ClaimValidatorTests
 {
-    private static readonly ModelElements NoElements = new([], [], [], [], []);
+    private static readonly ModelElements NoElements = new([], [], [], [], [], [], [], [], null);
 
     private static ModelClaim Claim(string key, ClaimTier tier, ClaimConfidence confidence, params ClaimEvidence[] evidence) => new()
     {
@@ -84,17 +84,17 @@ public sealed class ClaimValidatorTests
 
     [Fact]
     public void AComponentWithNoClaims_IsRejected() =>
-        Assert.NotEmpty(ClaimValidator.Validate([], new ModelElements([new ModelComponent("cmp.a", "A", "library", null, [])], [], [], [], [])));
+        Assert.NotEmpty(ClaimValidator.Validate([], new ModelElements([new ModelComponent("cmp.a", "A", "library", null, [])], [], [], [], [], [], [], [], null)));
 
     [Fact]
     public void AnElementReferencingAMissingClaim_IsRejected() =>
-        Assert.NotEmpty(ClaimValidator.Validate([], new ModelElements([new ModelComponent("cmp.a", "A", "library", null, ["clm.nope"])], [], [], [], [])));
+        Assert.NotEmpty(ClaimValidator.Validate([], new ModelElements([new ModelComponent("cmp.a", "A", "library", null, ["clm.nope"])], [], [], [], [], [], [], [], null)));
 
     [Fact]
     public void ARelationToAMissingComponent_IsRejected() =>
         Assert.NotEmpty(ClaimValidator.Validate(
             [Claim("clm.a", ClaimTier.Fact, ClaimConfidence.High, CodeAt)],
-            new ModelElements([new ModelComponent("cmp.a", "A", "library", null, ["clm.a"])], [new ModelRelation("cmp.a", "cmp.b", "references", ["clm.a"])], [], [], [])));
+            new ModelElements([new ModelComponent("cmp.a", "A", "library", null, ["clm.a"])], [new ModelRelation("cmp.a", "cmp.b", "references", ["clm.a"])], [], [], [], [], [], [], null)));
 
     public static TheoryData<ClaimEvidence> EvidenceMissingItsIdentifier() => new()
     {
@@ -134,7 +134,7 @@ public sealed class ClaimValidatorTests
             [],
             [new ModelPattern("pat.a", "P", ["cmp.a"], ["clm.a"]), new ModelPattern("pat.a", "P", ["cmp.a"], ["clm.a"])],
             [new ModelDecision("dec.a", "D", [], ModelDecision.Unrecorded, ["clm.a"]), new ModelDecision("dec.a", "D", [], ModelDecision.Unrecorded, ["clm.a"])],
-            [new ModelIntent("int.a", "I", IntentSource.Inferred, ["clm.a"]), new ModelIntent("int.a", "I", IntentSource.Inferred, ["clm.a"])]));
+            [new ModelIntent("int.a", "I", IntentSource.Inferred, ["clm.a"]), new ModelIntent("int.a", "I", IntentSource.Inferred, ["clm.a"])], [], [], [], null));
 
         foreach (var id in new[] { "cmp.a", "pat.a", "dec.a", "int.a" })
         {
@@ -146,13 +146,13 @@ public sealed class ClaimValidatorTests
     public void APatternApplyingToAMissingComponent_IsRejected() =>
         Assert.NotEmpty(ClaimValidator.Validate(
             [Claim("clm.a", ClaimTier.Fact, ClaimConfidence.High, CodeAt)],
-            new ModelElements([new ModelComponent("cmp.a", "A", "library", null, ["clm.a"])], [], [new ModelPattern("pat.a", "P", ["cmp.a", "cmp.b"], ["clm.a"])], [], [])));
+            new ModelElements([new ModelComponent("cmp.a", "A", "library", null, ["clm.a"])], [], [new ModelPattern("pat.a", "P", ["cmp.a", "cmp.b"], ["clm.a"])], [], [], [], [], [], null)));
 
     [Fact]
     public void AnIntentFromAWorkerClaimingDeveloperSource_IsRejected() =>
         Assert.NotEmpty(ClaimValidator.Validate(
             [Claim("clm.a", ClaimTier.Fact, ClaimConfidence.High, CodeAt)],
-            new ModelElements([], [], [], [], [new ModelIntent("int.a", "x", IntentSource.Developer, ["clm.a"])])));
+            new ModelElements([], [], [], [], [new ModelIntent("int.a", "x", IntentSource.Developer, ["clm.a"])], [], [], [], null)));
 
     private static ClaimEvidence Cites(string key) => new(EvidenceKind.Claim, ClaimKey: key);
 
@@ -208,7 +208,7 @@ public sealed class ClaimValidatorTests
         Assert.Contains(errors, e => e.Contains("more than once", StringComparison.Ordinal));
     }
 
-    private static ModelElements WithDecision(ModelDecision decision) => new([], [], [], [decision], []);
+    private static ModelElements WithDecision(ModelDecision decision) => new([], [], [], [decision], [], [], [], [], null);
 
     [Fact]
     public void ADecisionWithARationaleButNoHistoryClaim_IsRejected() =>
@@ -311,5 +311,149 @@ public sealed class ClaimValidatorTests
         // The undefined value is the error; checking the other rules against it only repeats it
         // in another form ("cannot exceed low confidence").
         Assert.Equal(["Claim 'clm.a' has an unknown confidence '7'."], errors);
+    }
+
+    private static readonly ModelComponent App = new("cmp.app", "App", "executable", null, ["clm.a"]);
+    private static IReadOnlyList<ModelClaim> Facts(params string[] keys) => [.. keys.Select(k => Claim(k, ClaimTier.Fact, ClaimConfidence.High, CodeAt))];
+    private static ModelElements With(
+        IReadOnlyList<ModelFlow>? flows = null, IReadOnlyList<ModelInvariant>? invariants = null,
+        IReadOnlyList<OutlineSection>? outline = null, ModelCoverage? coverage = null) =>
+        new([App], [], [], [], [], flows ?? [], invariants ?? [], outline ?? [], coverage);
+    private static OutlineSection Section(string path, string title = "Core flows", string purpose = "How a request moves",
+        IReadOnlyList<string>? summary = null, params OutlineBlock[] blocks) =>
+        new($"sec.{path}", path, title, purpose, summary ?? [], blocks);
+
+    [Fact]
+    public void AValidFlowInvariantAndOutline_PassWithoutErrors()
+    {
+        var errors = ClaimValidator.Validate(Facts("clm.a", "clm.b"), With(
+            flows: [new ModelFlow("flw.1", "Submit", [new FlowStep("cmp.app", "clm.a"), new FlowStep(null, "clm.b")], ["clm.a"])],
+            invariants: [new ModelInvariant("inv.1", "One report per request", "data-ownership", ["cmp.app"], ["clm.b"])],
+            outline: [Section("core-flows.md", summary: ["clm.a"], blocks: [new OutlineBlock(OutlineBlockKind.Flow, "flw.1"), new OutlineBlock(OutlineBlockKind.Invariant, "inv.1"), new OutlineBlock(OutlineBlockKind.Component, "cmp.app")])],
+            coverage: new ModelCoverage([], [new CoverageGap("source-files", "not read")], [new CoverageRejection("unlocated evidence", 2)], null)));
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void AnOutlineSection_WithNoClaimsAtAll_IsAllowed()
+    {
+        // A chapter the analysis found no evidence for is reported as such, not dropped.
+        Assert.Empty(ClaimValidator.Validate(Facts("clm.a"), With(outline: [Section("risks.md")])));
+    }
+
+    [Fact]
+    public void AFlowWithoutSteps_OrWithAStepThatDoesNotResolve_IsRejected()
+    {
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(flows:
+        [
+            new ModelFlow("flw.empty", "Empty", [], ["clm.a"]),
+            new ModelFlow("flw.bad", "Bad", [new FlowStep("cmp.ghost", "clm.a"), new FlowStep(null, "clm.ghost")], ["clm.a"]),
+        ]));
+
+        Assert.Contains("Flow 'flw.empty' has no steps.", errors);
+        Assert.Contains("Flow 'flw.bad' step 1 names a component that is not in this model.", errors);
+        Assert.Contains("Flow 'flw.bad' step 2 references a claim that is not in this model.", errors);
+    }
+
+    [Fact]
+    public void AnInvariant_WithABlankStatementOrAnUnknownComponent_IsRejected()
+    {
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(invariants:
+            [new ModelInvariant("inv.1", " ", "contract", ["cmp.ghost"], ["clm.a"])]));
+
+        Assert.Contains("Invariant 'inv.1' has a blank statement.", errors);
+        Assert.Contains("Invariant 'inv.1' applies to a component that is not in this model.", errors);
+    }
+
+    [Fact]
+    public void FlowsAndInvariants_NeedAClaimBehindThem()
+    {
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(
+            flows: [new ModelFlow("flw.1", "Submit", [new FlowStep(null, "clm.a")], [])],
+            invariants: [new ModelInvariant("inv.1", "Holds", "contract", [], [])]));
+
+        Assert.Contains("Flow 'flw.1' has no claim behind it.", errors);
+        Assert.Contains("Invariant 'inv.1' has no claim behind it.", errors);
+    }
+
+    [Theory]
+    [InlineData("index.md")]
+    [InlineData("unknowns.md")]
+    [InlineData("claims.md.bak")]
+    [InlineData("claims/x.md")]
+    [InlineData("../escape.md")]
+    [InlineData("/abs.md")]
+    [InlineData("Core-Flows.md")]
+    [InlineData("core flows.md")]
+    [InlineData("core-flows")]
+    public void AnOutlineSectionPath_ThatIsReservedOrUnsafe_IsRejected(string path)
+    {
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(outline: [Section(path)]));
+
+        Assert.Contains(errors, e => e.StartsWith($"Outline section 'sec.{path}' has path '{path}'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TwoOutlineSections_OnTheSamePath_AreRejected()
+    {
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(outline:
+            [Section("flows.md") with { Id = "sec.a" }, Section("flows.md") with { Id = "sec.b" }]));
+
+        Assert.Contains("Outline path 'flows.md' is used by more than one section.", errors);
+    }
+
+    [Fact]
+    public void AnOutlineSection_WithAnOverlongTitleOrPurpose_IsRejected()
+    {
+        // Title and purpose are headings; prose long enough to assert something belongs in a claim.
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(outline:
+            [Section("flows.md", title: new string('t', 81), purpose: new string('p', 201))]));
+
+        Assert.Contains("Outline section 'sec.flows.md' has a title longer than 80 characters.", errors);
+        Assert.Contains("Outline section 'sec.flows.md' has a purpose longer than 200 characters.", errors);
+    }
+
+    [Fact]
+    public void AnOutlineBlock_ThatDoesNotResolve_IsRejected()
+    {
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(outline:
+            [Section("flows.md", summary: ["clm.ghost"], blocks: [new OutlineBlock(OutlineBlockKind.Flow, "flw.ghost"), new OutlineBlock(OutlineBlockKind.Claim, "clm.ghost")])]));
+
+        Assert.Contains("Outline section 'sec.flows.md' has an owner summary claim that is not in this model.", errors);
+        Assert.Contains("Outline section 'sec.flows.md' block 1 (Flow 'flw.ghost') does not resolve in this model.", errors);
+        Assert.Contains("Outline section 'sec.flows.md' block 2 (Claim 'clm.ghost') does not resolve in this model.", errors);
+    }
+
+    [Fact]
+    public void AnOutlineBlock_WithAnUnknownKind_IsRejected()
+    {
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(outline:
+            [Section("flows.md", blocks: [new OutlineBlock((OutlineBlockKind)42, "clm.a")])]));
+
+        Assert.Contains("Outline section 'sec.flows.md' block 1 has an unknown kind '42'.", errors);
+    }
+
+    [Fact]
+    public void DuplicateFlowInvariantAndSectionIds_AreRejected()
+    {
+        var flow = new ModelFlow("flw.1", "Submit", [new FlowStep(null, "clm.a")], ["clm.a"]);
+        var invariant = new ModelInvariant("inv.1", "Holds", "contract", [], ["clm.a"]);
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(
+            flows: [flow, flow], invariants: [invariant, invariant],
+            outline: [Section("a.md") with { Id = "sec.x" }, Section("b.md") with { Id = "sec.x" }]));
+
+        Assert.Contains("Flow id 'flw.1' appears more than once.", errors);
+        Assert.Contains("Invariant id 'inv.1' appears more than once.", errors);
+        Assert.Contains("Outline section id 'sec.x' appears more than once.", errors);
+    }
+
+    [Fact]
+    public void ACoverageRejection_WithANonPositiveCount_IsRejected()
+    {
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(coverage:
+            new ModelCoverage([], [], [new CoverageRejection("unlocated evidence", 0)], null)));
+
+        Assert.Contains("Coverage rejection 'unlocated evidence' has a count below 1.", errors);
     }
 }
