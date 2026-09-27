@@ -23,20 +23,16 @@ updates:
       microsoft-extensions:
         patterns:
           - "Microsoft.Extensions.*"
-    ignore:
-      # These three move together as a test-platform migration, not a version bump:
-      # the 4.x visualstudio runner belongs to the xunit v3 line (this repo is on
-      # v2), that line requires Microsoft.Testing.Platform, and the coverlet
-      # collector is replaced rather than upgraded when leaving VSTest. Scheduling
-      # that migration is a decision, so it is kept out of automated updates — but
-      # only the migration: patches and minors within the current lines still arrive,
-      # since ignoring a package outright hides its fixes too.
-      - dependency-name: "xunit.runner.visualstudio"
-        versions: [">= 4.0.0"]
-      - dependency-name: "Microsoft.NET.Test.Sdk"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "coverlet.collector"
-        update-types: ["version-update:semver-major"]
+      # Each of these families is released together and its packages depend on one
+      # another, so bumping one member alone can leave the build resolving two
+      # releases of the family — a type that moved between packages then exists in
+      # neither place the code expects. One pull request per family.
+      ironhive:
+        patterns:
+          - "IronHive.*"
+      fluxindex:
+        patterns:
+          - "FluxIndex.*"
 
   # The Host image is what actually runs in production, so the .NET generation its
   # two stages are built from is a deployed artifact rather than a build detail —
