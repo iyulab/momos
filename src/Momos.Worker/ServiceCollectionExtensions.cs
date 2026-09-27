@@ -178,6 +178,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MomosAgentLoopFactory>();
         services.AddSingleton<IAgentLoopFactory>(sp => sp.GetRequiredService<MomosAgentLoopFactory>());
         services.AddSingleton<ISessionAwareAgentLoopFactory>(sp => sp.GetRequiredService<MomosAgentLoopFactory>());
+        services.AddSingleton<IAnalysisAgentLoopFactory>(sp => sp.GetRequiredService<MomosAgentLoopFactory>());
 
         return services;
     }

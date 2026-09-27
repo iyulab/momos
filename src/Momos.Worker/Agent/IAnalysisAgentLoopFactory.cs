@@ -1,0 +1,21 @@
+using IronHive.Agent.Loop;
+using Microsoft.Extensions.AI;
+using Momos.Worker.Execution;
+
+namespace Momos.Worker.Agent;
+
+/// <summary>
+/// Builds the agent loop for one analysis pass: the same command and knowledge tools an
+/// inspection has, the pass's proposal tools, and no way to report a finding — an analysis
+/// describes a project, it does not judge it.
+/// </summary>
+public interface IAnalysisAgentLoopFactory
+{
+    Task<IAgentLoop> CreateAnalysisLoopAsync(
+        ExecutionSessionHandle session,
+        Guid projectId,
+        IReadOnlyList<AIFunction> proposalTools,
+        string? model,
+        string systemPrompt,
+        CancellationToken cancellationToken);
+}

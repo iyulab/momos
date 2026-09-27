@@ -21,6 +21,20 @@ public sealed class FakeChatClientProvider : IChatClientProvider
     {
     }
 
+    /// <summary>Hands out <paramref name="clientsInOrder"/> one per requested client — one per agent
+    /// loop — and keeps handing out the last once they run out.</summary>
+    public FakeChatClientProvider(IEnumerable<FakeChatClient> clientsInOrder)
+        : this(Sequence(clientsInOrder))
+    {
+    }
+
+    private static Func<FakeChatClient> Sequence(IEnumerable<FakeChatClient> clients)
+    {
+        var queue = new Queue<FakeChatClient>(clients);
+        var last = queue.Last();
+        return () => queue.Count > 0 ? queue.Dequeue() : last;
+    }
+
     private FakeChatClientProvider(Func<FakeChatClient> clientFactory)
     {
         _clientFactory = clientFactory;

@@ -269,4 +269,44 @@ public class MomosAgentLoopFactoryTests
         await Assert.ThrowsAsync<UsageLimitExceededException>(
             () => agentLoop.RunAsync("look for problems in this repository"));
     }
+
+    private static IAnalysisAgentLoopFactory AnalysisFactory(FakeChatClientProvider chatClientProvider)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IChatClientProvider>(chatClientProvider);
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
+        services.AddSingleton<IExecutionRuntimeProvider>(new FakeExecutionRuntimeProvider());
+        services.AddSingleton<IHostApiClient>(new FakeHostApiClient([]));
+        services.AddIronHiveAgentEngine();
+        return services.BuildServiceProvider().GetRequiredService<IAnalysisAgentLoopFactory>();
+    }
+
+    [Fact]
+    public async Task AnAnalysisLoop_GetsTheProposalToolsButNeverReportFinding()
+    {
+        var chatClientProvider = new FakeChatClientProvider("hi");
+        var proposal = AIFunctionFactory.Create((string topic) => "Recorded.", "ProposeClaim");
+
+        var loop = await AnalysisFactory(chatClientProvider).CreateAnalysisLoopAsync(
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [proposal], model: null, "rules", CancellationToken.None);
+        await loop.RunAsync("zzz unrelated words");
+
+        var names = chatClientProvider.LastClient!.LastOptions!.Tools!.Select(t => t.Name).ToList();
+        Assert.Contains("ProposeClaim", names);
+        Assert.Contains(nameof(CodeExecutionTools.RunCommand), names);
+        Assert.Contains(nameof(KnowledgeQueryTools.QueryProjectKnowledge), names);
+        Assert.DoesNotContain(nameof(FindingReportingTools.ReportFinding), names);
+    }
+
+    [Fact]
+    public async Task AnAnalysisLoop_SendsTheSystemPromptItWasGiven()
+    {
+        var chatClientProvider = new FakeChatClientProvider("hi");
+
+        var loop = await AnalysisFactory(chatClientProvider).CreateAnalysisLoopAsync(
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [], model: null, "You write a manual.", CancellationToken.None);
+        await loop.RunAsync("go");
+
+        Assert.Contains(chatClientProvider.LastClient!.LastMessages!, m => m.Role == ChatRole.System && m.Text.Contains("You write a manual.", StringComparison.Ordinal));
+    }
 }
