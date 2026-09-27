@@ -11,6 +11,7 @@ namespace Momos.Worker.Agent;
 /// (see <c>ServiceCollectionExtensions.AddIronHiveAgentEngine</c>) so this runs once per
 /// tool-call iteration, not once per top-level <c>RunAsync</c> — the only vantage point that
 /// can stop a runaway loop mid-flight rather than after every iteration already ran.
+/// A <see cref="TokenBudget"/> entered around the call is enforced the same way.
 /// </summary>
 public sealed class UsageLimitingChatClient(IChatClient innerClient, UsageLimiter usageLimiter)
     : DelegatingChatClient(innerClient)
@@ -42,6 +43,11 @@ public sealed class UsageLimitingChatClient(IChatClient innerClient, UsageLimite
         {
             throw new UsageLimitExceededException(result.Message);
         }
+
+        if (TokenBudget.Current is { IsExhausted: true } budget)
+        {
+            throw new UsageLimitExceededException($"The token budget for this stretch of work ({budget.Limit} tokens) is spent.");
+        }
     }
 
     private void Record(UsageDetails? usage)
@@ -52,6 +58,7 @@ public sealed class UsageLimitingChatClient(IChatClient innerClient, UsageLimite
             // AgentLoopLimitsOptions): GPUStack's self-hosted model id has no pricing entry,
             // so estimated cost stays $0.00 regardless of usage. Token count is the real guard.
             usageLimiter.RecordTokenUsage((int)Math.Min(tokens, int.MaxValue), cost: 0m);
+            TokenBudget.Current?.Charge(tokens);
         }
     }
 }

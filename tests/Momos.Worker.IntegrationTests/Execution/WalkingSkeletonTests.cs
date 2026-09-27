@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Momos.Host.Contracts;
 using Momos.Worker.Agent;
 using Momos.Worker.Analysis;
+using Momos.Worker.Analysis.Synthesis;
 using Momos.Worker.Execution;
 using HostClaimStatus = Momos.Host.Domain.ClaimStatus;
 using HostRequestStatus = Momos.Host.Domain.InspectionRequestStatus;
@@ -105,7 +106,7 @@ public sealed partial class WalkingSkeletonTests(TestMomosHostFactory factory) :
             host,
             new AnalysisMustNotRunTheAgent(),
             _runtime,
-            new ProjectModelExtractor(_runtime),
+            DeterministicAnalyzer(_runtime),
             new NoGitCredentials(),
             new NoSelfUpdate(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(50) }),
@@ -209,5 +210,15 @@ public sealed partial class WalkingSkeletonTests(TestMomosHostFactory factory) :
     {
         public Task<GitCredential?> GetAsync(string repositoryUrl, CancellationToken cancellationToken = default) =>
             Task.FromResult<GitCredential?>(null);
+    }
+
+    /// <summary>The analysis path with the language-model passes switched off — these tests cover the pull loop, not the passes.</summary>
+    private static IProjectAnalyzer DeterministicAnalyzer(IExecutionRuntimeProvider runtime) =>
+        new ProjectAnalyzer(new ProjectModelExtractor(runtime), new UnusedSynthesizer(), Options.Create(new AnalysisOptions { Synthesis = false }), NullLogger<ProjectAnalyzer>.Instance);
+
+    private sealed class UnusedSynthesizer : IManualSynthesizer
+    {
+        public Task<ProjectModelPayload> SynthesizeAsync(ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("synthesis is switched off in these tests");
     }
 }

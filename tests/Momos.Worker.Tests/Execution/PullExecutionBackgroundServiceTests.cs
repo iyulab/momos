@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
 using Momos.Worker.Analysis;
+using Momos.Worker.Analysis.Synthesis;
 using Momos.Worker.Execution;
 using Momos.Worker.Tests.Agent;
 
@@ -59,7 +60,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -89,7 +90,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -119,7 +120,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -150,7 +151,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -174,7 +175,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -203,7 +204,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             credentials,
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -237,7 +238,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -267,7 +268,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -294,7 +295,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -320,7 +321,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -362,7 +363,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -401,7 +402,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -438,7 +439,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -474,7 +475,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -498,7 +499,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(5), ConsecutiveFailureLogThreshold = 3 }),
@@ -536,7 +537,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -560,7 +561,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             selfUpdater,
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -591,7 +592,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             selfUpdater,
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -624,7 +625,7 @@ public sealed class PullExecutionBackgroundServiceTests
             hostClient,
             agentLoopFactory,
             executionProvider,
-            new ProjectModelExtractor(executionProvider),
+            DeterministicAnalyzer(executionProvider),
             new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(throwsForFirstNCalls: 5),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(5), ConsecutiveFailureLogThreshold = 3 }),
@@ -668,7 +669,7 @@ public sealed class PullExecutionBackgroundServiceTests
             _ => new(false, null, $"unexpected command: {string.Join(' ', command.Args)}", 1),
         };
         var service = new PullExecutionBackgroundService(
-            hostClient, agentLoopFactory, executionProvider, new ProjectModelExtractor(executionProvider),
+            hostClient, agentLoopFactory, executionProvider, DeterministicAnalyzer(executionProvider),
  new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -701,7 +702,7 @@ public sealed class PullExecutionBackgroundServiceTests
             ? new(false, null, "not a git repository", 1)
             : new(true, "", null, 1);
         var service = new PullExecutionBackgroundService(
-            hostClient, agentLoopFactory, executionProvider, new ProjectModelExtractor(executionProvider),
+            hostClient, agentLoopFactory, executionProvider, DeterministicAnalyzer(executionProvider),
  new FakeGitCredentialSource(),
             new FakeWorkerSelfUpdater(),
             Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20) }),
@@ -716,5 +717,15 @@ public sealed class PullExecutionBackgroundServiceTests
         Assert.Equal(requestId, failure.Id);
         Assert.Contains("not a git repository", failure.Reason);
         Assert.Single(executionProvider.ClosedSessions);
+    }
+
+    /// <summary>The analysis path with the language-model passes switched off — these tests cover the pull loop, not the passes.</summary>
+    private static IProjectAnalyzer DeterministicAnalyzer(IExecutionRuntimeProvider runtime) =>
+        new ProjectAnalyzer(new ProjectModelExtractor(runtime), new UnusedSynthesizer(), Options.Create(new AnalysisOptions { Synthesis = false }), NullLogger<ProjectAnalyzer>.Instance);
+
+    private sealed class UnusedSynthesizer : IManualSynthesizer
+    {
+        public Task<ProjectModelPayload> SynthesizeAsync(ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("synthesis is switched off in these tests");
     }
 }

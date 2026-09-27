@@ -42,20 +42,31 @@ public sealed class FakeChatClient : IChatClient
     /// before it would reach a real LLM.</summary>
     public ChatOptions? LastOptions { get; private set; }
 
-    public Task<ChatResponse> GetResponseAsync(
+    /// <summary>The messages passed on the most recent call.</summary>
+    public IReadOnlyList<ChatMessage>? LastMessages { get; private set; }
+
+    /// <summary>How long each call waits before answering — honouring cancellation, so a test can
+    /// stand in for a slow model and observe a deadline or a shutdown cut it off.</summary>
+    public TimeSpan Delay { get; init; }
+
+    public async Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         LastOptions = options;
-        if (_scriptedResponses.Count > 0)
+        LastMessages = [.. messages];
+        if (Delay > TimeSpan.Zero)
         {
-            return Task.FromResult(_scriptedResponses.Dequeue());
+            await Task.Delay(Delay, cancellationToken);
         }
 
-        return _finalException is not null
-            ? Task.FromException<ChatResponse>(_finalException)
-            : Task.FromResult(_finalResponse!);
+        if (_scriptedResponses.Count > 0)
+        {
+            return _scriptedResponses.Dequeue();
+        }
+
+        return _finalException is not null ? throw _finalException : _finalResponse!;
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(

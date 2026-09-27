@@ -30,6 +30,8 @@ namespace Momos.Worker.Agent;
 /// owns that session itself and calls the <see cref="ISessionAwareAgentLoopFactory"/>
 /// overload; <see cref="CreateAsync(AgentLoopFactoryOptions,CancellationToken)"/> stays
 /// available for callers with no repo to check out, opening and owning its own session.
+/// Analysis passes get their loop from <see cref="CreateAnalysisLoopAsync"/>: the same command
+/// and knowledge tools, the caller's proposal tools, and no finding tool.
 /// </summary>
 public sealed class MomosAgentLoopFactory(
     IChatClientFactory chatClientFactory,
@@ -40,7 +42,7 @@ public sealed class MomosAgentLoopFactory(
     IToolRetriever toolRetriever,
     IExecutionRuntimeProvider executionRuntimeProvider,
     IHostApiClient hostApiClient,
-    ILoggerFactory loggerFactory) : ISessionAwareAgentLoopFactory
+    ILoggerFactory loggerFactory) : ISessionAwareAgentLoopFactory, IAnalysisAgentLoopFactory
 {
     public Task<IAgentLoop> CreateAsync(CancellationToken cancellationToken = default) =>
         CreateAsync(new AgentLoopFactoryOptions(), cancellationToken);
@@ -62,39 +64,56 @@ public sealed class MomosAgentLoopFactory(
         AgentLoopFactoryOptions options, ExecutionSessionHandle session, Guid? projectId = null, CancellationToken cancellationToken = default) =>
         BuildAgentLoopAsync(options, session, projectId, cancellationToken);
 
+    public async Task<IAgentLoop> CreateAnalysisLoopAsync(
+        ExecutionSessionHandle session, Guid projectId, IReadOnlyList<AIFunction> proposalTools, string? model, string systemPrompt,
+        int maxCommandOutputChars, CancellationToken cancellationToken)
+    {
+        var toolCalls = new ToolCallTraceSink();
+        var tools = new List<AIFunction>
+        {
+            AIFunctionFactory.Create(
+                new CodeExecutionTools(executionRuntimeProvider, session, toolCalls, loggerFactory.CreateLogger<CodeExecutionTools>(), maxCommandOutputChars).RunCommand),
+            AIFunctionFactory.Create(
+                new KnowledgeQueryTools(hostApiClient, projectId, toolCalls, loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge),
+        };
+        tools.AddRange(proposalTools);
+        return await BuildLoopAsync(new AgentLoopFactoryOptions { Model = model, SystemPrompt = systemPrompt }, tools, cancellationToken);
+    }
+
     private async Task<(IAgentLoop Loop, FindingSink Findings, ToolCallTraceSink ToolCalls)> BuildAgentLoopAsync(
         AgentLoopFactoryOptions options, ExecutionSessionHandle session, Guid? projectId, CancellationToken cancellationToken)
     {
+        var toolCalls = new ToolCallTraceSink();
+        var findings = new FindingSink();
+        var tools = new List<AIFunction>
+        {
+            AIFunctionFactory.Create(
+                new CodeExecutionTools(executionRuntimeProvider, session, toolCalls, loggerFactory.CreateLogger<CodeExecutionTools>()).RunCommand),
+            AIFunctionFactory.Create(new FindingReportingTools(findings).ReportFinding),
+        };
+        if (projectId is { } id)
+        {
+            tools.Add(AIFunctionFactory.Create(
+                new KnowledgeQueryTools(hostApiClient, id, toolCalls, loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge));
+        }
+
+        return (await BuildLoopAsync(options, tools, cancellationToken), findings, toolCalls);
+    }
+
+    private async Task<IAgentLoop> BuildLoopAsync(AgentLoopFactoryOptions options, IReadOnlyList<AIFunction> tools, CancellationToken cancellationToken)
+    {
         // usageLimiter is a single process-wide instance (see
         // ServiceCollectionExtensions.AddIronHiveAgentEngine) tracked against by
-        // UsageLimitingChatClient on every model call — reset it here so one inspection's
-        // usage never counts against the next. Safe because PullExecutionBackgroundService
-        // processes requests strictly sequentially; this factory is not built concurrently
-        // for two overlapping sessions.
+        // UsageLimitingChatClient on every model call — reset it here so one loop's usage never
+        // counts against the next. Safe because PullExecutionBackgroundService processes requests
+        // strictly sequentially; this factory is not built concurrently for two overlapping
+        // sessions. An analysis's passes are separate loops too; the allowance that spans them
+        // is a TokenBudget, which this reset does not touch.
         usageLimiter.Reset();
 
         var chatClient = string.IsNullOrEmpty(options.Provider)
             ? await chatClientFactory.CreateAsync(options.Model, cancellationToken)
             : await chatClientFactory.CreateAsync(options.Provider, options.Model, cancellationToken);
-
-        var toolCalls = new ToolCallTraceSink();
-        var codeExecutionTool = AIFunctionFactory.Create(
-            new CodeExecutionTools(executionRuntimeProvider, session, toolCalls, loggerFactory.CreateLogger<CodeExecutionTools>()).RunCommand);
-        var findings = new FindingSink();
-        var reportFindingTool = AIFunctionFactory.Create(
-            new FindingReportingTools(findings).ReportFinding);
-
-        // AgentOptions.Tools is IList<AITool> — List<AIFunction> isn't assignment-compatible
-        // with it (IList<T> isn't covariant), so this is typed to the base AITool.
-        var tools = new List<AITool> { codeExecutionTool, reportFindingTool };
-        var alwaysIncludeToolNames = new List<string> { codeExecutionTool.Name, reportFindingTool.Name };
-        if (projectId is { } id)
-        {
-            var knowledgeQueryTool = AIFunctionFactory.Create(
-                new KnowledgeQueryTools(hostApiClient, id, toolCalls, loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge);
-            tools.Add(knowledgeQueryTool);
-            alwaysIncludeToolNames.Add(knowledgeQueryTool.Name);
-        }
 
         var agentOptions = new AgentOptions
         {
@@ -102,7 +121,9 @@ public sealed class MomosAgentLoopFactory(
             ModelId = options.Model,
             Temperature = options.Temperature,
             MaxTokens = options.MaxTokens,
-            Tools = tools,
+            // AgentOptions.Tools is IList<AITool> — List<AIFunction> isn't assignment-compatible
+            // with it (IList<T> isn't covariant), so this is copied into the base AITool.
+            Tools = [.. tools.Cast<AITool>()],
             // Momos's tool retriever (KeywordToolRetriever) scores tools against the
             // prompt's keywords and drops anything under its relevance threshold —
             // a filter meant for large, discoverable tool sets. None of these tools are
@@ -110,10 +131,9 @@ public sealed class MomosAgentLoopFactory(
             // knowledge-query tool, which is only situationally *useful*, must still be
             // visible to the agent every time it's present) — they must always survive
             // retrieval regardless of what the prompt happens to say.
-            ToolRetrievalOptions = new ToolRetrievalOptions { AlwaysInclude = alwaysIncludeToolNames },
+            ToolRetrievalOptions = new ToolRetrievalOptions { AlwaysInclude = [.. tools.Select(t => t.Name)] },
         };
 
-        var agentLoop = new AgentLoop(chatClient, agentOptions, usageTracker, contextManager, errorRecovery, toolRetriever);
-        return (agentLoop, findings, toolCalls);
+        return new AgentLoop(chatClient, agentOptions, usageTracker, contextManager, errorRecovery, toolRetriever);
     }
 }
