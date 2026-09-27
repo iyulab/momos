@@ -20,6 +20,10 @@ public sealed class EvidenceVerifierTests
         {
             Respond = command => command.Args switch
             {
+                ["cat-file", "-t", var spec] when spec.StartsWith(Base + ":", StringComparison.Ordinal)
+                    => Files.ContainsKey(spec[(Base.Length + 1)..]) ? new(true, "blob\n", null, 1)
+                    : spec[(Base.Length + 1)..] == "src/App" ? new(true, "tree\n", null, 1)
+                    : new(false, "", "exit 128", 1),
                 ["show", var spec] when spec.StartsWith(Base + ":", StringComparison.Ordinal) && Files.TryGetValue(spec[(Base.Length + 1)..], out var content)
                     => new(true, content, null, 1),
                 ["rev-parse", "--verify", "--quiet", var rev] when rev.StartsWith("2222222", StringComparison.Ordinal) => new(true, Old + "\n", null, 1),
@@ -42,6 +46,8 @@ public sealed class EvidenceVerifierTests
         { "lines past the end", new(EvidenceKind.Code, Path: "src/App/Queue.cs", Symbol: "Claim()", Lines: "4-40"), false },
         { "reversed lines", new(EvidenceKind.Code, Path: "src/App/Queue.cs", Symbol: "Claim()", Lines: "4-2"), false },
         { "unreadable lines", new(EvidenceKind.Code, Path: "src/App/Queue.cs", Symbol: "Claim()", Lines: "around 4"), false },
+        { "a directory, whose listing names the symbol", new(EvidenceKind.Code, Path: "src/App", Symbol: "Queue.cs"), false },
+        { "a line number too large to read", new(EvidenceKind.Code, Path: "src/App/Queue.cs", Symbol: "Claim()", Lines: "99999999999"), false },
         { "a file not at the analyzed commit", new(EvidenceKind.Code, Path: "src/App/New.cs", Symbol: "x"), false },
         { "a path climbing out", new(EvidenceKind.Code, Path: "../secrets.txt", Symbol: "x"), false },
         { "a path that reads as a flag", new(EvidenceKind.Code, Path: "--output=x", Symbol: "x"), false },
@@ -100,8 +106,9 @@ public sealed class EvidenceVerifierTests
         await verifier.VerifyAsync(new(EvidenceKind.Code, Path: "src/App/Queue.cs", Symbol: "Queue"), CancellationToken.None);
         await verifier.VerifyAsync(new(EvidenceKind.Code, Path: "src/App/Queue.cs", Symbol: "Claim"), CancellationToken.None);
 
-        var read = Assert.Single(runtime.ExecutedCommands).Command;
-        Assert.Equal("git", read.Name);
-        Assert.Equal(["show", $"{Base}:src/App/Queue.cs"], read.Args);
+        var reads = runtime.ExecutedCommands.Select(c => c.Command.Args).ToList();
+        Assert.Equal(2, reads.Count);
+        Assert.Equal(["cat-file", "-t", $"{Base}:src/App/Queue.cs"], reads[0]);
+        Assert.Equal(["show", $"{Base}:src/App/Queue.cs"], reads[1]);
     }
 }

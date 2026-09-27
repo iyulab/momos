@@ -19,6 +19,7 @@ public sealed class SynthesisToolsTests
         {
             Respond = command => command.Args switch
             {
+                ["cat-file", "-t", "abc123:src/App/Queue.cs"] => new(true, "blob\n", null, 1),
                 ["show", "abc123:src/App/Queue.cs"] => new(true, "public sealed class Queue { public void Claim() { } }\n", null, 1),
                 _ => new(false, "", "exit 1", 1),
             },

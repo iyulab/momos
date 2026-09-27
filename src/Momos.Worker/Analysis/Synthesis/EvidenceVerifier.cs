@@ -48,8 +48,17 @@ public sealed partial class EvidenceVerifier(IExecutionRuntimeProvider runtime, 
                 return (NotFound($"Lines '{e.Lines}' is not a line number or a range like 12-20."), e);
             }
 
-            var start = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-            var end = match.Groups[2].Success ? int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture) : start;
+            if (!int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var start))
+            {
+                return (NotFound($"Lines '{e.Lines}' is not a line number or a range like 12-20."), e);
+            }
+
+            var end = start;
+            if (match.Groups[2].Success && !int.TryParse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out end))
+            {
+                return (NotFound($"Lines '{e.Lines}' is not a line number or a range like 12-20."), e);
+            }
+
             var lines = content.Split('\n');
             var count = content.EndsWith('\n') ? lines.Length - 1 : lines.Length;
             if (start < 1 || end < start || end > count)
@@ -106,7 +115,10 @@ public sealed partial class EvidenceVerifier(IExecutionRuntimeProvider runtime, 
     {
         if (!_files.TryGetValue(path, out var content))
         {
-            content = await GitAsync(["show", $"{baseCommit}:{path}"], cancellationToken);
+            // Only a file counts: "git show" on a directory succeeds too, printing the entry names,
+            // and a symbol matched against those would be evidence that no file contains.
+            var type = await GitAsync(["cat-file", "-t", $"{baseCommit}:{path}"], cancellationToken);
+            content = type?.Trim() == "blob" ? await GitAsync(["show", $"{baseCommit}:{path}"], cancellationToken) : null;
             _files[path] = content;
         }
 

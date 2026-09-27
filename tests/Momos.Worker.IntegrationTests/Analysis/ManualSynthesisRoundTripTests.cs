@@ -91,6 +91,7 @@ public sealed class ManualSynthesisRoundTripTests : IAsyncLifetime
         var model = await AnalyzeAsync();
 
         Assert.DoesNotContain(model.Claims, c => c.Key == Key("planted"));
+        Assert.DoesNotContain(model.Claims, c => c.Key == Key("directory"));
         Assert.Contains(model.Claims, c => c.Key == Key("queue type") && c.Origin == ClaimOrigin.Synthesized);
         Assert.Contains(model.Claims, c => c.Key == Key("issue link"));
         var history = Assert.Single(model.Claims, c => c.Key == Key("claim rule history"));
@@ -102,7 +103,7 @@ public sealed class ManualSynthesisRoundTripTests : IAsyncLifetime
     {
         var model = await AnalyzeAsync();
 
-        Assert.Equal(3, model.Coverage.Rejected.Sum(r => r.Count));
+        Assert.Equal(4, model.Coverage.Rejected.Sum(r => r.Count));
         Assert.Contains(model.Coverage.Analyzed, a => a.Area == "manual-synthesis" && a.Detail.StartsWith("2 of 2 chapters", StringComparison.Ordinal));
         Assert.DoesNotContain(model.Coverage.NotAnalyzed, g => g.Area == "source-files");
         Assert.Equal(["invariants.md", "system-map.md"], model.Outline.Select(s => s.Path));
@@ -129,6 +130,8 @@ public sealed class ManualSynthesisRoundTripTests : IAsyncLifetime
                 new ProposedEvidence(ProposedEvidenceKind.Code, Path: "src/Lib/Queue.cs", Symbol: "sealed class Queue"))),
             Call("ProposeClaim", Claim("planted", ClaimTier.Fact, "Lib has a planted type.", ClaimConfidence.High,
                 new ProposedEvidence(ProposedEvidenceKind.Code, Path: "src/Lib/Planted.cs", Symbol: "sealed class Queue"))),
+            Call("ProposeClaim", Claim("directory", ClaimTier.Fact, "Lib keeps its queue in one file.", ClaimConfidence.High,
+                new ProposedEvidence(ProposedEvidenceKind.Code, Path: "src/Lib", Symbol: "Queue.cs"))),
             Call("ProposeClaim", Claim("claim rule history", ClaimTier.History, "Claiming was narrowed to pending work.", ClaimConfidence.High,
                 new ProposedEvidence(ProposedEvidenceKind.Commit, Sha: _narrowingCommit[..7]))),
             Call("ProposeInvariant", new()
