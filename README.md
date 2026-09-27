@@ -17,7 +17,7 @@ CI/CD 파이프라인 안에서, 개별 프로젝트 개발자가 릴리스 전 
 
 Walking Skeleton 구현 진행 중. `.NET` solution(`Momos.Host`/`Momos.Worker`)이 존재하며, 둘은 별도 프로세스로 배포된다 — Worker가 Host를 poll해 대기 중인 검사 신청서를 가져와 실행하고 결과서를 제출한다. Host의 프로젝트 등록·검사 신청/결과 조회 API가 구현되어 있다: `POST /projects`, `GET /projects/{id}`, `POST /projects/{id}/inspection-requests`, `GET /inspection-requests/{id}`, `GET /inspection-requests/{id}/report`(자세한 내용은 [통합 계약](docs/integration-contract.md) 참고). 신청서는 제출 후 실제로 Worker에 의해 실행된다 — 대상 리포를 체크아웃하고, 샌드박스 환경에서 명령을 실행하며, 실제로 재현한 결함이 있으면 근거(명령 출력)와 함께 보고하고, 없으면 정직하게 지적 0건으로 완료한다. 실제 대상 리포에 대한 엔드투엔드 실행(Host+Worker+LLM+실행 샌드박스)이 검증됐다 — 남은 것은 지적 품질을 평가할 비교 방법론을 다듬는 것이다.
 
-프로젝트 설계 이해 모델도 첫 단계가 구현되어 있다: `POST /projects/{id}/analysis-requests`로 분석을 요청하면 Worker가 대상 리포의 .NET 프로젝트 파일에서 구조(프로젝트)와 프로젝트 참조 관계를 결정적으로 추출해(LLM 호출 없음) 근거가 붙은 진술로 이뤄진 모델을 제출한다. 모델은 `GET /projects/{id}/model`로, 개발자용 딥 리포트(마크다운 문서 트리)는 `GET /projects/{id}/model/report`로 조회하고, 각 진술은 `POST /projects/{id}/model/claims/{claimKey}/corrections`로 확인·반박·교정할 수 있다. 모델 진술과 교정은 검사 에이전트가 지식 조회로 읽는 맥락이 된다. 증분 분석, 패턴 식별, 이력 추출, 평가(`Assessment`) 진술 생성은 아직 구현되지 않았다 — 자세한 내용은 [통합 계약](docs/integration-contract.md#프로젝트-모델) 참고.
+프로젝트 설계 이해 모델도 첫 단계가 구현되어 있다: `POST /projects/{id}/analysis-requests`로 분석을 요청하면 Worker가 대상 리포의 .NET 프로젝트 파일에서 구조(프로젝트)와 프로젝트 참조 관계를, git 이력에서 구성 요소별 변경 이력(커밋 수·최근 변경·이름을 언급한 커밋)을 결정적으로 추출해(LLM 호출 없음) 근거가 붙은 진술로 이뤄진 모델을 제출한다. 모델은 `GET /projects/{id}/model`로, 개발자용 딥 리포트(마크다운 문서 트리)는 `GET /projects/{id}/model/report`로 조회하고, 각 진술은 `POST /projects/{id}/model/claims/{claimKey}/corrections`로 확인·반박·교정할 수 있다. 모델 진술과 교정은 검사 에이전트가 지식 조회로 읽는 맥락이 된다. 증분 분석, 패턴 식별, PR·이슈 이력 추출, 평가(`Assessment`) 진술 생성은 아직 구현되지 않았다 — 자세한 내용은 [통합 계약](docs/integration-contract.md#프로젝트-모델) 참고.
 
 ## 설정
 

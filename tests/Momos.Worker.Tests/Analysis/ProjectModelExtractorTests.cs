@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Momos.Worker.Analysis;
 using Momos.Worker.Execution;
 using Momos.Worker.Tests.Execution;
@@ -8,7 +9,15 @@ public sealed class ProjectModelExtractorTests
 {
     private static readonly ExecutionSessionHandle Session = new("s");
 
-    private static FakeExecutionRuntimeProvider Repo(Dictionary<string, string> files, string head = "abc123\n")
+    /// <summary>A commit in the fake repository's history. <paramref name="Message"/> is the full
+    /// message (subject first); <paramref name="Paths"/> are the files it changed.</summary>
+    private sealed record Commit(string Sha, string Date, string Message, params string[] Paths)
+    {
+        public string Subject => Message.Split('\n')[0];
+    }
+
+    /// <param name="commits">The history, newest first.</param>
+    private static FakeExecutionRuntimeProvider Repo(Dictionary<string, string> files, string head = "abc123\n", IReadOnlyList<Commit>? commits = null)
     {
         var fake = new FakeExecutionRuntimeProvider();
         fake.Respond = command => (command.Name, command.Args) switch
@@ -17,9 +26,28 @@ public sealed class ProjectModelExtractorTests
             ("git", ["ls-files", "-z", "--", "*.csproj"]) => new(true, string.Concat(files.Keys.Select(k => k + "\0")), null, 1),
             ("git", ["show", var spec]) when spec.StartsWith("HEAD:", StringComparison.Ordinal) && files.TryGetValue(spec[5..], out var content)
                 => new(true, content, null, 1),
+            ("git", ["rev-list", "--count", ..]) => new(true, $"{Select(command.Args, commits ?? []).Count}\n", null, 1),
+            ("git", ["log", "-z", "--no-show-signature", "--max-count=5", "--format=%H%x1f%cs%x1f%s", ..]) =>
+                new(true, string.Concat(Select(command.Args, commits ?? []).Take(5).Select(c => $"{c.Sha}\u001f{c.Date}\u001f{c.Subject}\0")), null, 1),
             _ => new(false, null, $"unexpected command: {command.Name} {string.Join(' ', command.Args)}", 1),
         };
         return fake;
+    }
+
+    /// <summary>What git would select from <paramref name="commits"/> for a rev-list/log argument
+    /// list: a <c>:(top)</c> / <c>:(top,literal)dir</c> pathspec after <c>--</c>, and an
+    /// <c>-E --grep</c> pattern read as the POSIX expression the extractor writes.</summary>
+    private static List<Commit> Select(IReadOnlyList<string> args, IReadOnlyList<Commit> commits)
+    {
+        var separator = args.ToList().IndexOf("--");
+        var pathspecs = args.Skip(separator + 1).ToList();
+        var grep = args.FirstOrDefault(a => a.StartsWith("--grep=", StringComparison.Ordinal))?["--grep=".Length..];
+        var pattern = grep is null ? null : new Regex(grep.Replace("[:alnum:]", "a-zA-Z0-9", StringComparison.Ordinal), RegexOptions.Multiline);
+        return commits
+            .Where(c => pathspecs.All(spec => spec == ":(top)"
+                || c.Paths.Any(p => p.StartsWith(spec[":(top,literal)".Length..] + "/", StringComparison.Ordinal))))
+            .Where(c => pattern is null || pattern.IsMatch(c.Message))
+            .ToList();
     }
 
     private static Task<ProjectModelPayload> ExtractAsync(Dictionary<string, string> files) =>
@@ -260,7 +288,142 @@ public sealed class ProjectModelExtractorTests
         {
             Assert.Equal(Session, e.Session);
             Assert.Equal("git", e.Command.Name);
-            Assert.Contains(e.Command.Args[0], new[] { "rev-parse", "ls-files", "show" });
+            Assert.Contains(e.Command.Args[0], new[] { "rev-parse", "ls-files", "show", "rev-list", "log" });
         });
+    }
+
+    private static readonly Commit[] History =
+    [
+        new("c7", "2026-09-20", "Tighten Lib validation", "src/Lib/Validate.cs"),
+        new("c6", "2026-09-19", "Rename App.Tests fixtures", "src/App.Tests/Fixture.cs"),
+        new("c5", "2026-09-18", "Move App startup into Program", "src/App/Program.cs"),
+        new("c4", "2026-09-17", "Lib: add parser\n\nThe parser moves out of App.", "src/Lib/Parse.cs", "src/App/Program.cs"),
+        new("c3", "2026-09-16", "Library cleanup", "src/Lib/Old.cs"),
+        new("c2", "2026-09-15", "Docs", "README.md"),
+        new("c1", "2026-09-14", "Seed", "src/Lib/Lib.csproj", "src/App/App.csproj"),
+    ];
+
+    private static Task<ProjectModelPayload> ExtractWithHistoryAsync(IReadOnlyList<Commit> commits, string head = "abc123\n") =>
+        new ProjectModelExtractor(Repo(new() { ["src/App/App.csproj"] = App, ["src/Lib/Lib.csproj"] = Lib }, head, commits))
+            .ExtractAsync(Session, CancellationToken.None);
+
+    private static ClaimPayload ClaimFor(ProjectModelPayload model, string component, string keyKind, string projectPath)
+    {
+        var key = ModelIds.Claim($"{keyKind}|{projectPath}");
+        Assert.Contains(key, Assert.Single(model.Components, c => c.Name == component).Claims);
+        return Assert.Single(model.Claims, c => c.Key == key);
+    }
+
+    [Fact]
+    public async Task Extract_GivesEachComponentAHistoryClaimCitingTheLatestCommitsUnderItsDirectory()
+    {
+        var model = await ExtractWithHistoryAsync(History);
+
+        var lib = ClaimFor(model, "Lib", "history", "src/Lib/Lib.csproj");
+        Assert.Equal(ClaimTier.History, lib.Tier);
+        Assert.Equal(ClaimConfidence.High, lib.Confidence);
+        Assert.Equal(ClaimOrigin.Deterministic, lib.Origin);
+        Assert.Equal("Lib: 4 commits changed files under src/Lib/; the latest, c7 on 2026-09-20, is \"Tighten Lib validation\".", lib.Statement);
+        Assert.Equal(["c7", "c4", "c3", "c1"], lib.Evidence.Select(e => e.Sha));
+        Assert.All(lib.Evidence, e => Assert.Equal(EvidenceKind.Commit, e.Kind));
+
+        // src/App.Tests/ is a sibling directory, not under src/App/.
+        var app = ClaimFor(model, "App", "history", "src/App/App.csproj");
+        Assert.Equal(["c5", "c4", "c1"], app.Evidence.Select(e => e.Sha));
+    }
+
+    [Fact]
+    public async Task Extract_CitesAtMostFiveCommitsButCountsThemAll()
+    {
+        var commits = Enumerable.Range(1, 8).Reverse()
+            .Select(i => new Commit($"s{i}", $"2026-09-0{i}", $"change {i}", "src/Lib/File.cs"))
+            .ToList();
+
+        var lib = ClaimFor(await ExtractWithHistoryAsync(commits), "Lib", "history", "src/Lib/Lib.csproj");
+
+        Assert.StartsWith("Lib: 8 commits changed files under src/Lib/; the latest, s8 on 2026-09-08,", lib.Statement);
+        Assert.Equal(["s8", "s7", "s6", "s5", "s4"], lib.Evidence.Select(e => e.Sha));
+    }
+
+    [Fact]
+    public async Task Extract_AddsAMentionClaimForCommitMessagesThatNameTheComponent()
+    {
+        var model = await ExtractWithHistoryAsync(History);
+
+        var lib = ClaimFor(model, "Lib", "mentions", "src/Lib/Lib.csproj");
+        Assert.Equal(ClaimTier.History, lib.Tier);
+        Assert.Equal("2 commits name Lib in the message; the latest, c7 on 2026-09-20, is \"Tighten Lib validation\".", lib.Statement);
+
+        // "Library" is a longer word, not the name.
+        Assert.Equal(["c7", "c4"], lib.Evidence.Select(e => e.Sha));
+    }
+
+    [Fact]
+    public async Task Extract_AMentionIsAWholeName_NotAPrefixOfADottedName()
+    {
+        var model = await ExtractWithHistoryAsync(History);
+
+        // c6 names App.Tests, not App; c4's body names App at the end of a sentence; c5 names it mid-sentence.
+        var app = ClaimFor(model, "App", "mentions", "src/App/App.csproj");
+        Assert.Equal(["c5", "c4"], app.Evidence.Select(e => e.Sha));
+    }
+
+    [Fact]
+    public async Task Extract_NoMentionClaimWhenNoMessageNamesTheComponent()
+    {
+        var model = await ExtractWithHistoryAsync([new("c1", "2026-09-14", "Seed", "src/Lib/Lib.csproj", "src/App/App.csproj")]);
+
+        Assert.DoesNotContain(model.Claims, c => c.Key == ModelIds.Claim("mentions|src/Lib/Lib.csproj"));
+        Assert.Equal(2, Assert.Single(model.Components, c => c.Name == "Lib").Claims.Count);
+    }
+
+    [Fact]
+    public async Task Extract_TheSameCommitGivesTheSameModel()
+    {
+        var first = await ExtractWithHistoryAsync(History);
+        var second = await ExtractWithHistoryAsync(History);
+
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(first), System.Text.Json.JsonSerializer.Serialize(second));
+    }
+
+    [Fact]
+    public async Task Extract_CountsHistoryFromTheCommitItReadNotFromWhereverHeadMoves()
+    {
+        var fake = Repo(new() { ["src/Lib/Lib.csproj"] = Lib }, "abc123\n", History);
+
+        await new ProjectModelExtractor(fake).ExtractAsync(Session, CancellationToken.None);
+
+        Assert.All(fake.ExecutedCommands.Where(e => e.Command.Args[0] is "rev-list" or "log"),
+            e => Assert.Contains("abc123", e.Command.Args));
+    }
+
+    [Fact]
+    public async Task Extract_ADirectoryNameIsReadLiterallyNotAsAGlob()
+    {
+        var fake = Repo(new() { ["src/[Lib]*/Lib.csproj"] = Lib }, commits: History);
+
+        await new ProjectModelExtractor(fake).ExtractAsync(Session, CancellationToken.None);
+
+        Assert.Contains(fake.ExecutedCommands, e => e.Command.Args[0] == "log" && e.Command.Args[^1] == ":(top,literal)src/[Lib]*");
+    }
+
+    [Fact]
+    public async Task Extract_AProjectAtTheRepositoryRootCountsEveryCommit()
+    {
+        var model = await new ProjectModelExtractor(Repo(new() { ["Lib.csproj"] = Lib }, commits: History))
+            .ExtractAsync(Session, CancellationToken.None);
+
+        var lib = ClaimFor(model, "Lib", "history", "Lib.csproj");
+        Assert.StartsWith("Lib: 7 commits changed files under the repository root;", lib.Statement);
+    }
+
+    [Fact]
+    public async Task Extract_WhenGitLogFails_Throws()
+    {
+        var fake = Repo(new() { ["src/Lib/Lib.csproj"] = Lib }, commits: History);
+        var respond = fake.Respond!;
+        fake.Respond = c => c.Args[0] == "log" ? new(false, null, "fatal: bad object", 1) : respond(c);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new ProjectModelExtractor(fake).ExtractAsync(Session, CancellationToken.None));
     }
 }

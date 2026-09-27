@@ -369,6 +369,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
         Assert.Equal(["Api", "App", "App.Tests", "Lib"], model.Components.Select(c => c.Name).Order(StringComparer.Ordinal));
         Assert.Equal(3, model.Relations.Count);
         Assert.Equal(extracted.Claims.Count, model.Claims.Count);
+        Assert.Equal(8, model.Claims.Count(c => c.Tier == Momos.Host.Domain.ClaimTier.History));
         var request = await httpClient.GetFromJsonAsync<InspectionRequestResponse>($"/analysis-requests/{analysisRequestId}", TestJsonOptions.Value);
         Assert.Equal(Momos.Host.Domain.InspectionRequestStatus.Completed, request!.Status);
     }
@@ -404,6 +405,10 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
                 ("git", ["ls-files", "-z", "--", "*.csproj"]) => new(true, string.Concat(files.Keys.Select(k => k + "\0")), null, 1),
                 ("git", ["show", var spec]) when spec.StartsWith("HEAD:", StringComparison.Ordinal) && files.TryGetValue(spec[5..], out var content)
                     => new(true, content, null, 1),
+
+                // Every component and every name has the same two-commit history.
+                ("git", ["rev-list", "--count", ..]) => new(true, "2\n", null, 1),
+                ("git", ["log", ..]) => new(true, $"{Head}\u001f2026-09-20\u001fSecond\0{new string('f', 40)}\u001f2026-09-19\u001fFirst\0", null, 1),
                 _ => new(false, null, $"unexpected command: {command.Name} {string.Join(' ', command.Args)}", 1),
             });
 
