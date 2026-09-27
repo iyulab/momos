@@ -67,38 +67,7 @@ public static partial class DeepReportRenderer
             .Line($"What this report does not know: {UnknownsLink(model, tree)}.")
             .Line();
         Understanding(md, model, tree);
-        md.Line("## Structure")
-            .Line();
-
-        if (tree.Components.Count == 0)
-        {
-            md.Line("No components were extracted from this commit.").Line();
-        }
-        else
-        {
-            var nodes = tree.Components
-                .Select((c, i) => (c.Id, Node: $"c{i}"))
-                .ToDictionary(x => x.Id, x => x.Node, StringComparer.Ordinal);
-            md.Line("```mermaid").Line("graph LR");
-            foreach (var c in tree.Components)
-            {
-                md.Line($"    {nodes[c.Id]}[\"{MermaidLabel(c.Name)}\"]");
-            }
-
-            foreach (var r in model.Relations.Where(r => nodes.ContainsKey(r.From) && nodes.ContainsKey(r.To)))
-            {
-                md.Line($"    {nodes[r.From]} -->|{MermaidLabel(r.Kind)}| {nodes[r.To]}");
-            }
-
-            md.Line("```").Line()
-              .Line("| Component | Kind |").Line("|---|---|");
-            foreach (var c in tree.Components)
-            {
-                md.Line($"| {Cell(tree.ComponentLink(c.Id, "components/"))} | {Cell(Inline(c.Kind))} |");
-            }
-
-            md.Line();
-        }
+        Structure(md, model, tree);
 
         if (model.Patterns.Count > 0)
         {
@@ -161,6 +130,50 @@ public static partial class DeepReportRenderer
             md.Line();
         }
 
+        ClaimsTable(md, tree);
+        return md.ToString();
+    }
+
+    /// <summary>The structure diagram and component list — the way into every component page.</summary>
+    private static void Structure(StringBuilder md, ProjectModel model, Tree tree)
+    {
+        md.Line("## Structure")
+            .Line();
+
+        if (tree.Components.Count == 0)
+        {
+            md.Line("No components were extracted from this commit.").Line();
+        }
+        else
+        {
+            var nodes = tree.Components
+                .Select((c, i) => (c.Id, Node: $"c{i}"))
+                .ToDictionary(x => x.Id, x => x.Node, StringComparer.Ordinal);
+            md.Line("```mermaid").Line("graph LR");
+            foreach (var c in tree.Components)
+            {
+                md.Line($"    {nodes[c.Id]}[\"{MermaidLabel(c.Name)}\"]");
+            }
+
+            foreach (var r in model.Relations.Where(r => nodes.ContainsKey(r.From) && nodes.ContainsKey(r.To)))
+            {
+                md.Line($"    {nodes[r.From]} -->|{MermaidLabel(r.Kind)}| {nodes[r.To]}");
+            }
+
+            md.Line("```").Line()
+              .Line("| Component | Kind |").Line("|---|---|");
+            foreach (var c in tree.Components)
+            {
+                md.Line($"| {Cell(tree.ComponentLink(c.Id, "components/"))} | {Cell(Inline(c.Kind))} |");
+            }
+
+            md.Line();
+        }
+    }
+
+    /// <summary>Every claim with its grade and status — the way into every claim page.</summary>
+    private static void ClaimsTable(StringBuilder md, Tree tree)
+    {
         if (tree.Claims.Count > 0)
         {
             md.Line("## Claims").Line()
@@ -172,8 +185,6 @@ public static partial class DeepReportRenderer
 
             md.Line();
         }
-
-        return md.ToString();
     }
 
     private static string ComponentPage(ModelComponent component, ProjectModel model, Tree tree)
@@ -334,7 +345,8 @@ public static partial class DeepReportRenderer
         .Replace("<", "#lt;", StringComparison.Ordinal)
         .Replace(">", "#gt;", StringComparison.Ordinal);
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9._-]{0,79}$")]
+    // \z, not $: $ also matches before a final newline.
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9._-]{0,79}\z")]
     private static partial Regex SafeFileStem();
 
     [GeneratedRegex("[^a-z0-9._-]+")]

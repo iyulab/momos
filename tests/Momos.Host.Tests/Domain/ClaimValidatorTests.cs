@@ -387,6 +387,8 @@ public sealed class ClaimValidatorTests
     [InlineData("Core-Flows.md")]
     [InlineData("core flows.md")]
     [InlineData("core-flows")]
+    [InlineData("index.md\n")]
+    [InlineData("flows.md\n")]
     public void AnOutlineSectionPath_ThatIsReservedOrUnsafe_IsRejected(string path)
     {
         var errors = ClaimValidator.Validate(Facts("clm.a"), With(outline: [Section(path)]));
@@ -455,5 +457,26 @@ public sealed class ClaimValidatorTests
             new ModelCoverage([], [], [new CoverageRejection("unlocated evidence", 0)], null)));
 
         Assert.Contains("Coverage rejection 'unlocated evidence' has a count below 1.", errors);
+    }
+
+    [Fact]
+    public void NullOrBlankTextInTheNewElements_IsRejectedRatherThanThrownOrStored()
+    {
+        // JSON binding leaves a missing string null despite its non-nullable type; the validator
+        // must report it, not throw on it, and must not let it reach storage (the report would then
+        // fail on every read).
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(
+            flows: [new ModelFlow("flw.1", null!, [new FlowStep(null, "clm.a")], ["clm.a"])],
+            invariants: [new ModelInvariant("inv.1", "Holds", " ", [], ["clm.a"])],
+            outline: [new OutlineSection("sec.1", null!, "Title", null!, [], [])],
+            coverage: new ModelCoverage([new CoverageArea(null!, "x")], [new CoverageGap("source-files", null!)], [new CoverageRejection(" ", 1)], null)));
+
+        Assert.Contains("Flow 'flw.1' has a blank name.", errors);
+        Assert.Contains("Invariant 'inv.1' has a blank kind.", errors);
+        Assert.Contains(errors, e => e.StartsWith("Outline section 'sec.1' has path ''", StringComparison.Ordinal));
+        Assert.Contains("Outline section 'sec.1' has no purpose (send an empty string when there is none).", errors);
+        Assert.Contains("Coverage has an analyzed area with a blank area or detail.", errors);
+        Assert.Contains("Coverage has an unanalyzed area with a blank area or reason.", errors);
+        Assert.Contains("Coverage has a rejection with a blank reason.", errors);
     }
 }

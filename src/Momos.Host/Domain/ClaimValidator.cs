@@ -32,7 +32,8 @@ public static class ClaimValidator
     /// <summary>A chapter is one markdown file at the root of the report: lowercase, no spaces, no
     /// directories — so it can never land on a claim or component page, and every link from it has
     /// the same shape. The spine's own pages are reserved.</summary>
-    private static readonly Regex SectionPath = new(@"^[a-z0-9][a-z0-9-]{0,63}\.md$", RegexOptions.CultureInvariant);
+    // \z, not $: $ also matches before a final newline, which would let "index.md\n" past the reserved names.
+    private static readonly Regex SectionPath = new(@"^[a-z0-9][a-z0-9-]{0,63}\.md\z", RegexOptions.CultureInvariant);
     private static readonly HashSet<string> ReservedPaths = new(StringComparer.Ordinal) { "index.md", "unknowns.md" };
 
     public static IReadOnlyList<string> Validate(IReadOnlyList<ModelClaim> claims, ModelElements elements)
@@ -228,6 +229,11 @@ public static class ClaimValidator
         foreach (var f in elements.Flows)
         {
             RequireClaims($"Flow '{f.Id}'", f.Claims);
+            if (string.IsNullOrWhiteSpace(f.Name))
+            {
+                errors.Add($"Flow '{f.Id}' has a blank name.");
+            }
+
             if (f.Steps.Count == 0)
             {
                 errors.Add($"Flow '{f.Id}' has no steps.");
@@ -256,6 +262,11 @@ public static class ClaimValidator
                 errors.Add($"Invariant '{i.Id}' has a blank statement.");
             }
 
+            if (string.IsNullOrWhiteSpace(i.Kind))
+            {
+                errors.Add($"Invariant '{i.Id}' has a blank kind.");
+            }
+
             if (i.AppliesTo.Any(id => !componentIds.Contains(id)))
             {
                 errors.Add($"Invariant '{i.Id}' applies to a component that is not in this model.");
@@ -275,9 +286,10 @@ public static class ClaimValidator
         foreach (var s in elements.Outline)
         {
             var name = $"Outline section '{s.Id}'";
-            if (!SectionPath.IsMatch(s.Path) || ReservedPaths.Contains(s.Path))
+            var path = s.Path ?? "";
+            if (!SectionPath.IsMatch(path) || ReservedPaths.Contains(path))
             {
-                errors.Add($"{name} has path '{s.Path}', which is not a lowercase file name at the report's root (index.md and unknowns.md are reserved).");
+                errors.Add($"{name} has path '{path}', which is not a lowercase file name at the report's root (index.md and unknowns.md are reserved).");
             }
 
             if (string.IsNullOrWhiteSpace(s.Title))
@@ -289,7 +301,11 @@ public static class ClaimValidator
                 errors.Add($"{name} has a title longer than {MaxTitleLength} characters.");
             }
 
-            if (s.Purpose.Length > MaxPurposeLength)
+            if (s.Purpose is null)
+            {
+                errors.Add($"{name} has no purpose (send an empty string when there is none).");
+            }
+            else if (s.Purpose.Length > MaxPurposeLength)
             {
                 errors.Add($"{name} has a purpose longer than {MaxPurposeLength} characters.");
             }
@@ -313,9 +329,29 @@ public static class ClaimValidator
             }
         }
 
-        foreach (var path in elements.Outline.GroupBy(s => s.Path, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key))
+        foreach (var path in elements.Outline.GroupBy(s => s.Path ?? "", StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key))
         {
             errors.Add($"Outline path '{path}' is used by more than one section.");
+        }
+
+        if (elements.Coverage is { } coverage)
+        {
+            // Coverage text reaches the report's unknowns page on every read; a null there would
+            // fail the report, not just this submission.
+            if (coverage.Analyzed.Any(a => string.IsNullOrWhiteSpace(a.Area) || string.IsNullOrWhiteSpace(a.Detail)))
+            {
+                errors.Add("Coverage has an analyzed area with a blank area or detail.");
+            }
+
+            if (coverage.NotAnalyzed.Any(g => string.IsNullOrWhiteSpace(g.Area) || string.IsNullOrWhiteSpace(g.Reason)))
+            {
+                errors.Add("Coverage has an unanalyzed area with a blank area or reason.");
+            }
+
+            if (coverage.Rejected.Any(r => string.IsNullOrWhiteSpace(r.Reason)))
+            {
+                errors.Add("Coverage has a rejection with a blank reason.");
+            }
         }
 
         foreach (var r in elements.Coverage?.Rejected ?? [])

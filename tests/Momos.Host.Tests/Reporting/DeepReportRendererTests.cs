@@ -536,7 +536,8 @@ public sealed partial class DeepReportRendererTests
         Assert.True(map >= 0 && flows > map, "chapters must appear in outline order");
         Assert.Contains("_What the parts are and how they connect_", index);
         Assert.Contains("App is a .NET project", index); // sec.map's owner summary claim, quoted
-        Assert.DoesNotContain("## Structure", index); // the fixed layout is not used alongside an outline
+        // The chapters lead; structure and the claims table follow so no page is left unreachable.
+        Assert.True(index.IndexOf("## Structure", StringComparison.Ordinal) > flows, "structure must follow the chapters");
     }
 
     [Fact]
@@ -596,5 +597,35 @@ public sealed partial class DeepReportRendererTests
         }
 
         return count;
+    }
+
+    [Fact]
+    public void AKeyEndingInANewline_StillGetsASafeFileName()
+    {
+        // `$` also matches before a final newline; a stem check that uses it would let "a\n" through as-is.
+        var tree = DeepReportRenderer.Render("acme", Model(m => m.Claims.Add(Fact(m, "clm.x\n", "X is a project"))));
+
+        Assert.All(tree, d => Assert.Matches(SafePath(), d.Path));
+    }
+
+    [Fact]
+    public void InAnOutlinedReport_EveryPageIsReachableFromSomeLink()
+    {
+        // A chapter cites only some claims and components; the rest still need a way in.
+        var tree = DeepReportRenderer.Render("acme", Outlined(m => m.Claims.Add(Fact(m, "clm.orphan", "Nothing cites this"))));
+
+        var targets = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var doc in tree)
+        {
+            var dir = doc.Path.Contains('/') ? doc.Path[..doc.Path.LastIndexOf('/')] : "";
+            foreach (Match link in MarkdownLink().Matches(doc.Content))
+            {
+                var href = link.Groups[1].Value;
+                targets.Add(href.StartsWith("../", StringComparison.Ordinal) ? href[3..] : (dir.Length == 0 ? "" : dir + "/") + href);
+            }
+        }
+
+        Assert.All(tree.Where(d => d.Path != "index.md"), d => Assert.Contains(d.Path, targets));
+        Assert.Contains("```mermaid", Doc(tree, "index.md"));
     }
 }

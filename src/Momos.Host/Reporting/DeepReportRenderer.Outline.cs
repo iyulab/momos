@@ -32,6 +32,9 @@ public static partial class DeepReportRenderer
             OwnerSummary(md, s, tree, emptyText: s.Blocks.Count == 0 ? NoEvidence : null);
         }
 
+        // Chapters cite only some components and claims; these keep every page reachable.
+        Structure(md, model, tree);
+        ClaimsTable(md, tree);
         return md.ToString();
     }
 
