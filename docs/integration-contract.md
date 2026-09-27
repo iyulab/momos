@@ -90,7 +90,7 @@ sha다. 인용한 제목은 커밋 자신의 문장일 뿐 변경 이유에 대�
   (`{kind, ref}`, `kind`: `Claim`·`Component`·`Pattern`·`Decision`·`Intent`·`Flow`·`Invariant`·`Map`)은 모델 안의
   그 종류를 가리켜야 한다 — `Map`은 구조 도식이고 `ref`가 `*`면 전체, 구성 요소 id면 그 구성 요소와 직접 이웃이다. 장은 진술이 없어도 된다(리포트가 근거를 찾지 못했다고 쓴다). 분석 범위(`coverage`)는 읽은 영역
   (`analyzed: [{area, detail}]`)·읽지 않은 영역(`notAnalyzed: [{area, reason}]`)·분석 중 폐기한 제안의 사유별 수
-  (`rejected: [{reason, count}]`, 수는 1 이상)·생성기(`generator: {model, promptVersion}`, 결정적 분석이면 `null`)다.
+  (`rejected: [{reason, count}]`, 수는 1 이상)·생성기(`generator: {model, promptVersion}`, 결정적 분석이면 `null`)다. 분석 범위의 텍스트(영역·설명·사유)는 뒷받침하는 진술 없이 리포트에 실리므로 각각 200자 이내다.
   분석 범위를 기록하기 전에 만들어진 모델 버전은 `coverage`가 `null`이다. 어긋나면 `400`이다.
 - **딥 리포트** — `GET /projects/{id}/model/report`는 `{modelVersion, baseCommit, documents: [{path, content}]}`를
   돌려준다. `documents`는 마크다운 문서 트리다 — `index.md`가 요약이고(미지 항목 수와 개발자가 판정한 진술 수 — 검증된 지표가
