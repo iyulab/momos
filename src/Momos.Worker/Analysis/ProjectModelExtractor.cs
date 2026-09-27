@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 using Momos.Worker.Execution;
@@ -6,12 +7,22 @@ using Momos.Worker.Execution;
 namespace Momos.Worker.Analysis;
 
 /// <summary>
-/// Extracts the structural layer of a project model from .NET project files — no language model
-/// involved, so every claim it makes is a fact whose evidence is the file (and line) it was read
-/// from. Only read-only git commands run in the session; nothing is written to the repository.
+/// Extracts the structural layer of a project model from .NET project files, and each component's
+/// change history from the repository's commits — no language model involved, so every claim it
+/// makes is either a fact whose evidence is the file (and line) it was read from or a history claim
+/// whose evidence is the commits it counted. Only read-only git commands run in the session;
+/// nothing is written to the repository.
 /// </summary>
 public sealed class ProjectModelExtractor(IExecutionRuntimeProvider runtime) : IProjectModelExtractor
 {
+    /// <summary>How many commits a history claim cites as evidence — the most recent ones. The
+    /// claim's count covers them all; the citations are where a reader starts.</summary>
+    private const int CitedCommits = 5;
+
+    /// <summary>One commit per NUL-terminated record: full sha, committer date (as stored in the
+    /// commit, so the same commit always reads the same) and subject, split by the unit separator.</summary>
+    private const string CommitFormat = "--format=%H%x1f%cs%x1f%s";
+
     /// <summary>Project files come from the repository under analysis, so they are untrusted input:
     /// no DTD (no entity expansion) and no resolution of anything outside the file.</summary>
     private static readonly XmlReaderSettings ReaderSettings = new()
@@ -65,7 +76,14 @@ public sealed class ProjectModelExtractor(IExecutionRuntimeProvider runtime) : I
             claims.Add(new ClaimPayload(claimKey, ClaimTier.Fact, $"{name} is a .NET project ({kind}) defined in {path}.",
                 [new EvidencePayload(EvidenceKind.Code, Path: path, Symbol: sdk is null ? "Project" : $"Project Sdk=\"{sdk}\"")],
                 ClaimConfidence.High, ClaimOrigin.Deterministic));
-            components.Add(new ComponentPayload(ModelIds.Component(path), name, kind, null, [claimKey]));
+            var componentClaims = new List<string> { claimKey };
+            foreach (var history in await HistoryAsync(session, baseCommit, path, name, cancellationToken))
+            {
+                claims.Add(history);
+                componentClaims.Add(history.Key);
+            }
+
+            components.Add(new ComponentPayload(ModelIds.Component(path), name, kind, null, componentClaims));
 
             var referenced = new HashSet<string>(StringComparer.Ordinal);
             foreach (var reference in document.Descendants().Where(e => e.Name.LocalName == "ProjectReference"))
@@ -95,6 +113,95 @@ public sealed class ProjectModelExtractor(IExecutionRuntimeProvider runtime) : I
 
         return new ProjectModelPayload(baseCommit, components, relations, [], [], [], claims);
     }
+
+    /// <summary>
+    /// History claims for the component whose project file is at <paramref name="projectPath"/>:
+    /// how often the files under its directory changed and when last, and which commit messages
+    /// name it. Both are counted back from <paramref name="baseCommit"/>; neither says why a change
+    /// was made — the subject quoted is the commit's own words.
+    /// </summary>
+    private async Task<IReadOnlyList<ClaimPayload>> HistoryAsync(
+        ExecutionSessionHandle session, string baseCommit, string projectPath, string name, CancellationToken cancellationToken)
+    {
+        var slash = projectPath.LastIndexOf('/');
+        var directory = slash < 0 ? "" : projectPath[..slash];
+
+        // top: relative to the repository root whatever the working directory; literal: a
+        // directory named with '*' or '[' is a path, not a glob.
+        var pathspec = directory.Length == 0 ? ":(top)" : $":(top,literal){directory}";
+        var claims = new List<ClaimPayload>();
+
+        var (changes, recent) = await CommitsAsync(session, baseCommit, [], [pathspec], cancellationToken);
+        if (recent.Count > 0)
+        {
+            var where = directory.Length == 0 ? "the repository root" : $"{directory}/";
+            claims.Add(HistoryClaim(ModelIds.Claim($"history|{projectPath}"),
+                $"{name}: {Commits(changes)} changed files under {where}; the latest, {Latest(recent[0])}.", recent));
+        }
+
+        var (mentions, named) = await CommitsAsync(session, baseCommit, ["-E", $"--grep={MentionPattern(name)}"], [], cancellationToken);
+        if (named.Count > 0)
+        {
+            claims.Add(HistoryClaim(ModelIds.Claim($"mentions|{projectPath}"),
+                $"{Commits(mentions)} {(mentions == 1 ? "names" : "name")} {name} in the message; the latest, {Latest(named[0])}.", named));
+        }
+
+        return claims;
+
+        static string Commits(int count) => count == 1 ? "1 commit" : $"{count.ToString(CultureInfo.InvariantCulture)} commits";
+
+        static string Latest(CommitSummary commit) => $"{commit.Sha[..Math.Min(10, commit.Sha.Length)]} on {commit.Date}, is \"{commit.Subject}\"";
+
+        static ClaimPayload HistoryClaim(string key, string statement, IReadOnlyList<CommitSummary> cited) =>
+            new(key, ClaimTier.History, statement,
+                [.. cited.Select(c => new EvidencePayload(EvidenceKind.Commit, Sha: c.Sha))],
+                ClaimConfidence.High, ClaimOrigin.Deterministic);
+    }
+
+    /// <summary>Counts the commits reachable from <paramref name="baseCommit"/> that the given
+    /// revision options and pathspecs select, and reads the most recent of them.</summary>
+    private async Task<(int Count, IReadOnlyList<CommitSummary> Recent)> CommitsAsync(
+        ExecutionSessionHandle session, string baseCommit, IReadOnlyList<string> options, IReadOnlyList<string> pathspecs, CancellationToken cancellationToken)
+    {
+        var counted = (await RunAsync(session, ["rev-list", "--count", .. options, baseCommit, "--", .. pathspecs], cancellationToken)).Trim();
+        if (!int.TryParse(counted, NumberStyles.None, CultureInfo.InvariantCulture, out var count))
+        {
+            throw new InvalidOperationException($"git rev-list --count returned '{counted}', not a number.");
+        }
+
+        var log = await RunAsync(session,
+            ["log", "-z", "--no-show-signature", $"--max-count={CitedCommits}", CommitFormat, .. options, baseCommit, "--", .. pathspecs],
+            cancellationToken);
+        var recent = log.Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            .Select(record => record.Trim('\n').Split('\u001f'))
+            .Where(fields => fields.Length == 3 && fields[0].Length > 0)
+            .Select(fields => new CommitSummary(fields[0], fields[1], fields[2]))
+            .ToList();
+        return (count, recent);
+    }
+
+    /// <summary>An extended regular expression (POSIX, as git's <c>--grep</c> with <c>-E</c> reads
+    /// it) that finds <paramref name="name"/> as a whole name in a commit message: not inside a
+    /// longer word, and not as the prefix of a dotted name (<c>App</c> is not named by
+    /// <c>App.Tests</c>), while a sentence-ending period still counts. Case-sensitive — a message has
+    /// to use the name.</summary>
+    private static string MentionPattern(string name)
+    {
+        var escaped = new StringBuilder(name.Length * 2);
+        foreach (var ch in name)
+        {
+            if (@".[]()*+?{}|^$\".Contains(ch, StringComparison.Ordinal))
+            {
+                escaped.Append('\\');
+            }
+
+            escaped.Append(ch);
+        }
+
+        return $"(^|[^[:alnum:]_.]){escaped}([^[:alnum:]_.]|[.]([^[:alnum:]_]|$)|$)";
+    }
+
+    private sealed record CommitSummary(string Sha, string Date, string Subject);
 
     private static XDocument? TryParse(string content)
     {

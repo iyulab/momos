@@ -663,6 +663,8 @@ public sealed class PullExecutionBackgroundServiceTests
             ["ls-files", ..] => new(true, "src/Lib/Lib.csproj\0", null, 1),
             ["show", "HEAD:src/Lib/Lib.csproj"] => new(true, """<Project Sdk="Microsoft.NET.Sdk" />""", null, 1),
             ["clone", ..] => new(true, "", null, 1),
+            ["rev-list", "--count", ..] => new(true, "0\n", null, 1),
+            ["log", ..] => new(true, "", null, 1),
             _ => new(false, null, $"unexpected command: {string.Join(' ', command.Args)}", 1),
         };
         var service = new PullExecutionBackgroundService(
