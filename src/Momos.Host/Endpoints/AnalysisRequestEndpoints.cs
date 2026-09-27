@@ -106,6 +106,8 @@ public static class AnalysisRequestEndpoints
                     Statement = submitted.Statement,
                     Evidence = submitted.Evidence.Select(e => e.ToDomain()).ToList(),
                     Confidence = submitted.Confidence,
+                    // MissingFields() has already rejected a claim without an origin.
+                    Origin = submitted.Origin!.Value,
                 };
 
                 // A developer's verdict describes a statement, so it carries over only while the

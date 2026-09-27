@@ -57,6 +57,7 @@ public sealed class ProjectModelExtractorTests
         var fact = Assert.Single(model.Claims, c => c.Key == Assert.Single(app.Claims));
         Assert.Equal(ClaimTier.Fact, fact.Tier);
         Assert.Equal(ClaimConfidence.High, fact.Confidence);
+        Assert.Equal(ClaimOrigin.Deterministic, fact.Origin);
         var evidence = Assert.Single(fact.Evidence);
         Assert.Equal(EvidenceKind.Code, evidence.Kind);
         Assert.Equal("src/App/App.csproj", evidence.Path);

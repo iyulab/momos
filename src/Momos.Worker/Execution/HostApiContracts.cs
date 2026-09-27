@@ -141,8 +141,16 @@ public sealed record EvidencePayload(
     Guid? InspectionRequestId = null,
     string? ClaimKey = null);
 
+/// <summary>Mirrors <c>Momos.Host.Domain.ClaimOrigin</c>'s wire shape — see
+/// <see cref="ClaimedInspectionRequest"/>'s doc comment for why this is a local copy.</summary>
+public enum ClaimOrigin
+{
+    Deterministic,
+    Synthesized,
+}
+
 /// <summary>Mirrors Host's SubmittedClaim wire shape (Momos.Host.Contracts.SubmittedClaim).</summary>
-public sealed record ClaimPayload(string Key, ClaimTier Tier, string Statement, IReadOnlyList<EvidencePayload> Evidence, ClaimConfidence Confidence);
+public sealed record ClaimPayload(string Key, ClaimTier Tier, string Statement, IReadOnlyList<EvidencePayload> Evidence, ClaimConfidence Confidence, ClaimOrigin Origin);
 
 /// <summary>Mirrors Host's ModelComponentDto wire shape (Momos.Host.Contracts.ModelComponentDto).</summary>
 public sealed record ComponentPayload(string Id, string Name, string Kind, string? Responsibility, IReadOnlyList<string> Claims);

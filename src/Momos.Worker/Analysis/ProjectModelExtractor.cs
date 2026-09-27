@@ -64,7 +64,7 @@ public sealed class ProjectModelExtractor(IExecutionRuntimeProvider runtime) : I
             var claimKey = ModelIds.Claim($"component|{path}");
             claims.Add(new ClaimPayload(claimKey, ClaimTier.Fact, $"{name} is a .NET project ({kind}) defined in {path}.",
                 [new EvidencePayload(EvidenceKind.Code, Path: path, Symbol: sdk is null ? "Project" : $"Project Sdk=\"{sdk}\"")],
-                ClaimConfidence.High));
+                ClaimConfidence.High, ClaimOrigin.Deterministic));
             components.Add(new ComponentPayload(ModelIds.Component(path), name, kind, null, [claimKey]));
 
             var referenced = new HashSet<string>(StringComparer.Ordinal);
@@ -87,7 +87,7 @@ public sealed class ProjectModelExtractor(IExecutionRuntimeProvider runtime) : I
                     var referenceKey = ModelIds.Claim($"reference|{path}|{target}");
                     claims.Add(new ClaimPayload(referenceKey, ClaimTier.Fact,
                         $"{name} references {Path.GetFileNameWithoutExtension(target)} (project reference).",
-                        [new EvidencePayload(EvidenceKind.Code, Path: path, Symbol: "ProjectReference", Lines: line)], ClaimConfidence.High));
+                        [new EvidencePayload(EvidenceKind.Code, Path: path, Symbol: "ProjectReference", Lines: line)], ClaimConfidence.High, ClaimOrigin.Deterministic));
                     relations.Add(new RelationPayload(ModelIds.Component(path), ModelIds.Component(target), "references", [referenceKey]));
                 }
             }

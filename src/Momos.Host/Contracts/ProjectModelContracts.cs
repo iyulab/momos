@@ -11,7 +11,9 @@ public sealed record ClaimEvidenceDto(
     public static ClaimEvidenceDto FromDomain(ClaimEvidence e) => new(e.Kind, e.Path, e.Symbol, e.Lines, e.Sha, e.Url, e.InspectionRequestId, e.ClaimKey);
 }
 
-public sealed record SubmittedClaim(string Key, ClaimTier Tier, string Statement, IReadOnlyList<ClaimEvidenceDto> Evidence, ClaimConfidence Confidence);
+/// <param name="Origin">Required. Nullable only so an omitted value is caught and named (see
+/// <see cref="SubmitProjectModelRequest.MissingFields"/>) instead of binding to the enum's first value.</param>
+public sealed record SubmittedClaim(string Key, ClaimTier Tier, string Statement, IReadOnlyList<ClaimEvidenceDto> Evidence, ClaimConfidence Confidence, ClaimOrigin? Origin);
 
 public sealed record ModelComponentDto(string Id, string Name, string Kind, string? Responsibility, IReadOnlyList<string> Claims);
 
@@ -39,11 +41,13 @@ public sealed record SubmitProjectModelRequest(
     public IReadOnlyList<string> MissingFields()
     {
         var missing = new List<string>();
-        void Require(string name, object? value)
+        void Require(string name, object? value, bool isList = true)
         {
             if (value is null)
             {
-                missing.Add($"'{name}' is required (send an empty list when there is nothing to report).");
+                missing.Add(isList
+                    ? $"'{name}' is required (send an empty list when there is nothing to report)."
+                    : $"'{name}' is required.");
             }
         }
 
@@ -93,6 +97,7 @@ public sealed record SubmitProjectModelRequest(
         foreach (var c in Claims)
         {
             Require($"Claims['{c.Key}'].Evidence", c.Evidence);
+            Require($"Claims['{c.Key}'].Origin", c.Origin, isList: false);
         }
 
         return missing;
@@ -112,11 +117,11 @@ public sealed record CorrectClaimRequest(ClaimStatus Status, string? Correction)
 
 public sealed record ClaimResponse(
     string Key, ClaimTier Tier, string Statement, IReadOnlyList<ClaimEvidenceDto> Evidence,
-    ClaimConfidence Confidence, ClaimStatus Status, string? Correction, DateTimeOffset? CorrectedAt)
+    ClaimConfidence Confidence, ClaimStatus Status, string? Correction, DateTimeOffset? CorrectedAt, ClaimOrigin Origin)
 {
     public static ClaimResponse FromEntity(ModelClaim c) => new(
         c.Key, c.Tier, c.Statement, c.Evidence.Select(ClaimEvidenceDto.FromDomain).ToList(),
-        c.Confidence, c.Status, c.Correction, c.CorrectedAt);
+        c.Confidence, c.Status, c.Correction, c.CorrectedAt, c.Origin);
 }
 
 public sealed record ProjectModelResponse(

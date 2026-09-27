@@ -14,6 +14,7 @@ public sealed class ClaimValidatorTests
         Statement = $"statement {key}",
         Evidence = [.. evidence],
         Confidence = confidence,
+        Origin = ClaimOrigin.Deterministic,
     };
 
     private static readonly ClaimEvidence CodeAt = new(EvidenceKind.Code, Path: "src/App/App.csproj");
@@ -152,4 +153,152 @@ public sealed class ClaimValidatorTests
         Assert.NotEmpty(ClaimValidator.Validate(
             [Claim("clm.a", ClaimTier.Fact, ClaimConfidence.High, CodeAt)],
             new ModelElements([], [], [], [], [new ModelIntent("int.a", "x", IntentSource.Developer, ["clm.a"])])));
+
+    private static ClaimEvidence Cites(string key) => new(EvidenceKind.Claim, ClaimKey: key);
+
+    [Fact]
+    public void AClaimMoreCertainThanTheClaimItCites_IsRejected() =>
+        Assert.Contains(ClaimValidator.Validate(
+        [
+            Claim("clm.f", ClaimTier.Fact, ClaimConfidence.Medium, CodeAt),
+            Claim("clm.sum", ClaimTier.Fact, ClaimConfidence.High, CodeAt, Cites("clm.f")),
+        ], NoElements), e => e.Contains("clm.sum", StringComparison.Ordinal) && e.Contains("cannot be more certain", StringComparison.Ordinal));
+
+    [Fact]
+    public void AClaimAsCertainAsTheLeastCertainClaimItCites_IsValid() =>
+        Assert.Empty(ClaimValidator.Validate(
+        [
+            Claim("clm.f", ClaimTier.Fact, ClaimConfidence.High, CodeAt),
+            Claim("clm.g", ClaimTier.Fact, ClaimConfidence.Medium, CodeAt),
+            Claim("clm.sum", ClaimTier.Fact, ClaimConfidence.Medium, CodeAt, Cites("clm.f"), Cites("clm.g")),
+        ], NoElements));
+
+    [Fact]
+    public void ClaimsCitingEachOtherInACircle_AreRejected() =>
+        Assert.Contains(ClaimValidator.Validate(
+        [
+            Claim("clm.a", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.b")),
+            Claim("clm.b", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.c")),
+            Claim("clm.c", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.a")),
+        ], NoElements), e => e.Contains("cycle", StringComparison.Ordinal) && e.Contains("clm.a", StringComparison.Ordinal));
+
+    [Fact]
+    public void AVeryLongCitationChain_IsCheckedWithoutOverflowingTheStack()
+    {
+        const int length = 5000;
+        var claims = Enumerable.Range(0, length)
+            .Select(i => i == length - 1
+                ? Claim($"clm.{i}", ClaimTier.Fact, ClaimConfidence.Low, CodeAt)
+                : Claim($"clm.{i}", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites($"clm.{i + 1}")))
+            .ToList();
+
+        Assert.Empty(ClaimValidator.Validate(claims, NoElements));
+    }
+
+    [Fact]
+    public void DuplicateKeysWithCitations_AreReportedWithoutThrowing()
+    {
+        var errors = ClaimValidator.Validate(
+        [
+            Claim("clm.a", ClaimTier.Fact, ClaimConfidence.Low, CodeAt),
+            Claim("clm.a", ClaimTier.Fact, ClaimConfidence.High, CodeAt, Cites("clm.b")),
+            Claim("clm.b", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.a")),
+        ], NoElements);
+
+        Assert.Contains(errors, e => e.Contains("more than once", StringComparison.Ordinal));
+    }
+
+    private static ModelElements WithDecision(ModelDecision decision) => new([], [], [], [decision], []);
+
+    [Fact]
+    public void ADecisionWithARationaleButNoHistoryClaim_IsRejected() =>
+        Assert.Contains(ClaimValidator.Validate(
+            [Claim("clm.f", ClaimTier.Fact, ClaimConfidence.High, CodeAt)],
+            WithDecision(new ModelDecision("dec.a", "Split host and worker", [], "Workers sit behind firewalls", ["clm.f"]))),
+            e => e.Contains("dec.a", StringComparison.Ordinal) && e.Contains("history", StringComparison.Ordinal));
+
+    [Fact]
+    public void ADecisionWithARationaleBackedByAHistoryClaim_IsValid() =>
+        Assert.Empty(ClaimValidator.Validate(
+            [Claim("clm.h", ClaimTier.History, ClaimConfidence.Medium, new ClaimEvidence(EvidenceKind.Commit, Sha: "abc"))],
+            WithDecision(new ModelDecision("dec.a", "Split host and worker", [], "Workers sit behind firewalls", ["clm.h"]))));
+
+    [Fact]
+    public void AnUnrecordedDecision_NeedsNoHistoryClaim() =>
+        Assert.Empty(ClaimValidator.Validate(
+            [Claim("clm.f", ClaimTier.Fact, ClaimConfidence.High, CodeAt)],
+            WithDecision(new ModelDecision("dec.a", "Split host and worker", [], ModelDecision.Unrecorded, ["clm.f"]))));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ADecisionWithABlankRationale_IsRejected(string rationale) =>
+        Assert.Contains(ClaimValidator.Validate(
+            [Claim("clm.h", ClaimTier.History, ClaimConfidence.Medium, new ClaimEvidence(EvidenceKind.Commit, Sha: "abc"))],
+            WithDecision(new ModelDecision("dec.a", "Split host and worker", [], rationale, ["clm.h"]))),
+            e => e.Contains("dec.a", StringComparison.Ordinal) && e.Contains("blank", StringComparison.Ordinal));
+
+    private static ModelClaim ClaimWith(string key, ClaimTier tier, ClaimConfidence confidence, ClaimOrigin origin, params ClaimEvidence[] evidence) => new()
+    {
+        ProjectModelId = Guid.Empty,
+        Key = key,
+        Tier = tier,
+        Statement = $"statement {key}",
+        Evidence = [.. evidence],
+        Confidence = confidence,
+        Origin = origin,
+    };
+
+    [Fact]
+    public void AClaimWithAnUnknownOrigin_IsRejected()
+    {
+        var claim = ClaimWith("clm.a", ClaimTier.Fact, ClaimConfidence.High, (ClaimOrigin)7, CodeAt);
+        Assert.Contains(ClaimValidator.Validate([claim], NoElements),
+            e => e.Contains("clm.a", StringComparison.Ordinal) && e.Contains("unknown origin", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AClaimWithAnUnknownTier_IsRejected()
+    {
+        var claim = ClaimWith("clm.a", (ClaimTier)7, ClaimConfidence.High, ClaimOrigin.Deterministic, CodeAt);
+        Assert.Contains(ClaimValidator.Validate([claim], NoElements),
+            e => e.Contains("clm.a", StringComparison.Ordinal) && e.Contains("unknown tier", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AClaimWithAnUnknownConfidence_IsRejected()
+    {
+        var claim = ClaimWith("clm.a", ClaimTier.Fact, (ClaimConfidence)7, ClaimOrigin.Deterministic, CodeAt);
+        Assert.Contains(ClaimValidator.Validate([claim], NoElements),
+            e => e.Contains("clm.a", StringComparison.Ordinal) && e.Contains("unknown confidence", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnUnknownTier_DoesNotAlsoTriggerAPerTierError()
+    {
+        var claim = ClaimWith("clm.a", (ClaimTier)7, ClaimConfidence.High, ClaimOrigin.Deterministic, CodeAt);
+        var errors = ClaimValidator.Validate([claim], NoElements);
+        Assert.Single(errors);
+        Assert.Contains(errors, e => e.Contains("unknown tier", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnAssessmentAboveLowThatCitesALessConfidentClaim_IsRejectedEvenWithAReproducedFinding() =>
+        Assert.Contains(ClaimValidator.Validate(
+        [
+            Claim("clm.f", ClaimTier.Fact, ClaimConfidence.Medium, CodeAt),
+            Claim("clm.x", ClaimTier.Assessment, ClaimConfidence.High,
+                Cites("clm.f"),
+                new ClaimEvidence(EvidenceKind.Finding, InspectionRequestId: Guid.NewGuid())),
+        ], NoElements), e => e.Contains("clm.x", StringComparison.Ordinal) && e.Contains("cannot be more certain", StringComparison.Ordinal));
+
+    [Fact]
+    public void ADiamondShapedCitationGraphWithNoBackEdge_IsValid() =>
+        Assert.Empty(ClaimValidator.Validate(
+        [
+            Claim("clm.a", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.b"), Cites("clm.c")),
+            Claim("clm.b", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.d")),
+            Claim("clm.c", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.d")),
+            Claim("clm.d", ClaimTier.Fact, ClaimConfidence.Low, CodeAt),
+        ], NoElements));
 }

@@ -61,7 +61,7 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         var (_, requestId) = await StartAnalysisAsync(_client);
         var invalid = ModelFixtures.ValidSubmission() with
         {
-            Claims = [.. ModelFixtures.ValidSubmission().Claims, new SubmittedClaim("clm.bare", ClaimTier.Assessment, "looks fine", [], ClaimConfidence.Low)],
+            Claims = [.. ModelFixtures.ValidSubmission().Claims, new SubmittedClaim("clm.bare", ClaimTier.Assessment, "looks fine", [], ClaimConfidence.Low, ClaimOrigin.Deterministic)],
         };
 
         var response = await SubmitAsync(_client, requestId, invalid);
@@ -91,6 +91,102 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var request = await _client.GetFromJsonAsync<InspectionRequestResponse>($"/analysis-requests/{requestId}", TestJsonOptions.Value);
         Assert.Equal(InspectionRequestStatus.Running, request!.Status);
+    }
+
+    [Fact]
+    public async Task Submit_AClaimWithoutAnOrigin_Returns400NamingIt()
+    {
+        var (_, requestId) = await StartAnalysisAsync(_client);
+
+        // A body whose claim omits origin: a submitter that doesn't say how it produced a claim
+        // must not be taken as a deterministic extractor by default.
+        var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model",
+            new
+            {
+                baseCommit = "abc123",
+                components = Array.Empty<object>(),
+                relations = Array.Empty<object>(),
+                patterns = Array.Empty<object>(),
+                decisions = Array.Empty<object>(),
+                intents = Array.Empty<object>(),
+                claims = new[]
+                {
+                    new
+                    {
+                        key = "clm.a",
+                        tier = "Fact",
+                        statement = "A is a project",
+                        evidence = new[] { new { kind = "Code", path = "src/A/A.csproj" } },
+                        confidence = "High",
+                    },
+                },
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // The problem body is JSON, which escapes the quotes around the key — assert on the parts.
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("clm.a", body);
+        Assert.Contains(".Origin", body);
+        // Origin is a scalar field, not a list — the "send an empty list" hint only makes sense
+        // for the list fields this same helper also names.
+        Assert.DoesNotContain("empty list", body);
+    }
+
+    [Fact]
+    public async Task Submit_AClaimWithAnUnknownOrigin_Returns400NamingIt()
+    {
+        var (_, requestId) = await StartAnalysisAsync(_client);
+
+        // A body whose claim's origin is a value the enum never named — must not silently bind
+        // and be stored as though it were one of the known origins.
+        var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model",
+            new
+            {
+                baseCommit = "abc123",
+                components = Array.Empty<object>(),
+                relations = Array.Empty<object>(),
+                patterns = Array.Empty<object>(),
+                decisions = Array.Empty<object>(),
+                intents = Array.Empty<object>(),
+                claims = new[]
+                {
+                    new
+                    {
+                        key = "clm.a",
+                        tier = "Fact",
+                        statement = "A is a project",
+                        evidence = new[] { new { kind = "Code", path = "src/A/A.csproj" } },
+                        confidence = "High",
+                        origin = 7,
+                    },
+                },
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("clm.a", body);
+        Assert.Contains("unknown origin", body);
+    }
+
+    [Fact]
+    public async Task Submit_KeepsEachClaimsOrigin()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        var submission = ModelFixtures.ValidSubmission() with
+        {
+            Claims =
+            [
+                .. ModelFixtures.ValidSubmission().Claims,
+                new SubmittedClaim("clm.why", ClaimTier.Assessment, "App and Lib look deliberately layered",
+                    [new ClaimEvidenceDto(EvidenceKind.Claim, ClaimKey: "clm.ref")], ClaimConfidence.Low, ClaimOrigin.Synthesized),
+            ],
+        };
+
+        Assert.Equal(HttpStatusCode.Created, (await SubmitAsync(_client, requestId, submission)).StatusCode);
+
+        var model = await _client.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+        Assert.Equal(ClaimOrigin.Synthesized, Assert.Single(model!.Claims, c => c.Key == "clm.why").Origin);
+        Assert.Equal(ClaimOrigin.Deterministic, Assert.Single(model.Claims, c => c.Key == "clm.app").Origin);
     }
 
     [Fact]

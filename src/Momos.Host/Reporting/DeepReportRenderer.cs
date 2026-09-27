@@ -50,6 +50,7 @@ public static partial class DeepReportRenderer
             .Line()
             .Line($"Project model version {model.ModelVersion} at commit {Code(model.BaseCommit)}, generated {Date(model.CreatedAt)}.")
             .Line("Every statement in this report is a graded claim with evidence, on a page of its own. A developer verdict never replaces the original claim — both are shown.")
+            .Line("Origin says how a claim was produced: Deterministic claims are read mechanically from the repository; Synthesized claims are a language model's reading of the same evidence.")
             .Line()
             .Line("## Structure")
             .Line();
@@ -135,10 +136,10 @@ public static partial class DeepReportRenderer
         if (tree.Claims.Count > 0)
         {
             md.Line("## Claims").Line()
-              .Line("| Claim | Tier | Confidence | Status | Statement |").Line("|---|---|---|---|---|");
+              .Line("| Claim | Tier | Confidence | Origin | Status | Statement |").Line("|---|---|---|---|---|---|");
             foreach (var c in tree.Claims)
             {
-                md.Line($"| {Cell(tree.ClaimLink(c.Key, "claims/"))} | {c.Tier} | {c.Confidence} | {c.Status} | {Cell(Inline(c.Statement))} |");
+                md.Line($"| {Cell(tree.ClaimLink(c.Key, "claims/"))} | {c.Tier} | {c.Confidence} | {c.Origin} | {c.Status} | {Cell(Inline(c.Statement))} |");
             }
 
             md.Line();
@@ -156,7 +157,9 @@ public static partial class DeepReportRenderer
             .Line();
         if (!string.IsNullOrWhiteSpace(component.Responsibility))
         {
-            md.Line(Block(component.Responsibility)).Line();
+            // Element text is never shown on its own: the claims that back it sit right beside it.
+            md.Line(Block(component.Responsibility)).Line()
+              .Line($"_Backed by {tree.ClaimLinks(component.Claims, "../claims/")}._").Line();
         }
 
         var outgoing = model.Relations.Where(r => r.From == component.Id && tree.HasComponent(r.To)).ToList();
@@ -188,8 +191,8 @@ public static partial class DeepReportRenderer
             .Line()
             .Line($"Claim {Code(claim.Key)}. Back to the [summary](../index.md).")
             .Line()
-            .Line("| Tier | Confidence | Status |").Line("|---|---|---|")
-            .Line($"| {claim.Tier} | {claim.Confidence} | {claim.Status} |")
+            .Line("| Tier | Confidence | Origin | Status |").Line("|---|---|---|---|")
+            .Line($"| {claim.Tier} | {claim.Confidence} | {claim.Origin} | {claim.Status} |")
             .Line()
             .Line("## Statement").Line().Line(Block(claim.Statement)).Line()
             .Line("## Evidence").Line();

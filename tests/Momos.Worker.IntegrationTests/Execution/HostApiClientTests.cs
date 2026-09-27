@@ -227,7 +227,8 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
             [new ComponentPayload("cmp.app", "App", "executable", null, ["clm.app"])],
             [], [], [], [],
             [new ClaimPayload("clm.app", Momos.Worker.Execution.ClaimTier.Fact, "App is a .NET project",
-                [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/App/App.csproj")], Momos.Worker.Execution.ClaimConfidence.High)]),
+                [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/App/App.csproj")], Momos.Worker.Execution.ClaimConfidence.High,
+                Momos.Worker.Execution.ClaimOrigin.Deterministic)]),
             CancellationToken.None);
 
         var model = await httpClient.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
@@ -264,26 +265,26 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
             [
                 new ClaimPayload("clm.app", Momos.Worker.Execution.ClaimTier.Fact, "App is an executable .NET project",
                     [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/App/App.csproj", Symbol: "OutputType", Lines: "3-5")],
-                    Momos.Worker.Execution.ClaimConfidence.High),
+                    Momos.Worker.Execution.ClaimConfidence.High, Momos.Worker.Execution.ClaimOrigin.Deterministic),
                 new ClaimPayload("clm.app.refs", Momos.Worker.Execution.ClaimTier.Fact, "App references Lib",
                     [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/App/App.csproj")],
-                    Momos.Worker.Execution.ClaimConfidence.Medium),
+                    Momos.Worker.Execution.ClaimConfidence.Medium, Momos.Worker.Execution.ClaimOrigin.Deterministic),
                 new ClaimPayload("clm.lib", Momos.Worker.Execution.ClaimTier.Fact, "Lib is a class library",
                     [new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Code, Path: "src/Lib/Lib.csproj")],
-                    Momos.Worker.Execution.ClaimConfidence.High),
+                    Momos.Worker.Execution.ClaimConfidence.High, Momos.Worker.Execution.ClaimOrigin.Deterministic),
                 new ClaimPayload("clm.split", Momos.Worker.Execution.ClaimTier.History, "Lib was split out of App",
                     [
                         new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Commit, Sha: "fedcba9876543210fedcba9876543210fedcba98"),
                         new EvidencePayload(Momos.Worker.Execution.EvidenceKind.PullRequest, Url: "https://example.invalid/acme/pull/7"),
                         new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Issue, Url: "https://example.invalid/acme/issues/3"),
                     ],
-                    Momos.Worker.Execution.ClaimConfidence.Medium),
+                    Momos.Worker.Execution.ClaimConfidence.Medium, Momos.Worker.Execution.ClaimOrigin.Deterministic),
                 new ClaimPayload("clm.layers", Momos.Worker.Execution.ClaimTier.Assessment, "App and Lib form two layers",
                     [
                         new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Claim, ClaimKey: "clm.app.refs"),
                         new EvidencePayload(Momos.Worker.Execution.EvidenceKind.Finding, InspectionRequestId: Guid.NewGuid()),
                     ],
-                    Momos.Worker.Execution.ClaimConfidence.Low),
+                    Momos.Worker.Execution.ClaimConfidence.Low, Momos.Worker.Execution.ClaimOrigin.Deterministic),
             ]);
 
         await _client.SubmitModelAsync(claimed.Id, payload, CancellationToken.None);
