@@ -75,7 +75,7 @@ JSON 필드 이름은 camelCase이고, enum 값은 PascalCase 문자열로 오�
   판정 상태 `status`(`Proposed`·`Confirmed`·`Disputed`·`Corrected`)와 `correction`·`correctedAt`을 갖는다. 근거 없는
   진술은 받아들여지지 않는다. 근거는 종류마다 그것을 찾아갈 식별자를 가져야 한다 — `Code`는 `path`, `Commit`은 `sha`,
   `PullRequest`·`Issue`는 `url`, `Finding`은 `inspectionRequestId`, `Claim`은 같은 모델 안의 `claimKey`. 구성 요소·패턴·결정·
-  의도의 id는 모델 안에서 유일해야 하고, 관계와 패턴이 가리키는 구성 요소는 모델 안에 있어야 한다. 다른 진술을 `Claim` 근거로 인용하는 진술의 `confidence`는 인용한 진술 중 가장 낮은 것을 넘을 수 없고, 진술끼리 순환 인용할 수 없다. 이유(`rationale`)를 적은 결정은 `History` 등급 진술을 하나 이상 가져야 하며, 이유가 비어 있을 수 없다. 어긋나면 `400`이다. 결정(decision)의 이유가 기록되지 않았으면 `rationale`은 지어낸 값이 아니라
+  의도의 id는 모델 안에서 유일해야 하고, 관계와 패턴이 가리키는 구성 요소는 모델 안에 있어야 한다. 다른 진술을 `Claim` 근거로 인용하는 진술의 `confidence`는 인용한 진술 중 가장 낮은 것을 넘을 수 없다. 재현 결함(`Finding`) 근거가 있어도 이 상한은 그대로 적용된다. 진술끼리 순환 인용할 수 없다. 이유(`rationale`)를 적은 결정은 `History` 등급 진술을 하나 이상 가져야 하며, 이유가 비어 있을 수 없다. 어긋나면 `400`이다. 결정(decision)의 이유가 기록되지 않았으면 `rationale`은 지어낸 값이 아니라
   `unrecorded`다.
 - **딥 리포트** — `GET /projects/{id}/model/report`는 `{modelVersion, baseCommit, documents: [{path, content}]}`를
   돌려준다. `documents`는 마크다운 문서 트리다 — `index.md`가 요약(구조 도식·구성 요소 목록 등)이고,

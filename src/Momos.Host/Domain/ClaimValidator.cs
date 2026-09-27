@@ -32,6 +32,24 @@ public static class ClaimValidator
 
         foreach (var claim in claims)
         {
+            // An out-of-range value (e.g. an origin JSON never named) still binds to the enum
+            // field, so it must be caught here rather than assumed to be one of the named cases
+            // below — silently falling into a default would misreport how the claim was produced.
+            if (!Enum.IsDefined(claim.Origin))
+            {
+                errors.Add($"Claim '{claim.Key}' has an unknown origin '{(int)claim.Origin}'.");
+            }
+
+            if (!Enum.IsDefined(claim.Tier))
+            {
+                errors.Add($"Claim '{claim.Key}' has an unknown tier '{(int)claim.Tier}'.");
+            }
+
+            if (!Enum.IsDefined(claim.Confidence))
+            {
+                errors.Add($"Claim '{claim.Key}' has an unknown confidence '{(int)claim.Confidence}'.");
+            }
+
             if (claim.Evidence.Count == 0)
             {
                 errors.Add($"Claim '{claim.Key}' has no evidence.");
@@ -211,7 +229,9 @@ public static class ClaimValidator
         _ => 1,
     };
 
-    /// <summary>Every citation cycle, each reported once as the path that closes it. Iterative, so
+    /// <summary>Reports at least one cycle for every group of claims that cite one another in a
+    /// circle — each report is the path that closes it. A cycle reached again through a second
+    /// path that converges on a node already finished is not reported a second time. Iterative, so
     /// a long citation chain cannot overflow the stack. A claim citing itself is reported by the
     /// reference checks above and skipped here.</summary>
     private static List<List<string>> CitationCycles(Dictionary<string, ModelClaim> byKey)

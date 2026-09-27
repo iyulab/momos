@@ -41,11 +41,13 @@ public sealed record SubmitProjectModelRequest(
     public IReadOnlyList<string> MissingFields()
     {
         var missing = new List<string>();
-        void Require(string name, object? value)
+        void Require(string name, object? value, bool isList = true)
         {
             if (value is null)
             {
-                missing.Add($"'{name}' is required (send an empty list when there is nothing to report).");
+                missing.Add(isList
+                    ? $"'{name}' is required (send an empty list when there is nothing to report)."
+                    : $"'{name}' is required.");
             }
         }
 
@@ -95,7 +97,7 @@ public sealed record SubmitProjectModelRequest(
         foreach (var c in Claims)
         {
             Require($"Claims['{c.Key}'].Evidence", c.Evidence);
-            Require($"Claims['{c.Key}'].Origin", c.Origin);
+            Require($"Claims['{c.Key}'].Origin", c.Origin, isList: false);
         }
 
         return missing;

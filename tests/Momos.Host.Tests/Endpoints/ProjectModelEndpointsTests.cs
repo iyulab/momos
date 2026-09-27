@@ -127,6 +127,45 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("clm.a", body);
         Assert.Contains(".Origin", body);
+        // Origin is a scalar field, not a list — the "send an empty list" hint only makes sense
+        // for the list fields this same helper also names.
+        Assert.DoesNotContain("empty list", body);
+    }
+
+    [Fact]
+    public async Task Submit_AClaimWithAnUnknownOrigin_Returns400NamingIt()
+    {
+        var (_, requestId) = await StartAnalysisAsync(_client);
+
+        // A body whose claim's origin is a value the enum never named — must not silently bind
+        // and be stored as though it were one of the known origins.
+        var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model",
+            new
+            {
+                baseCommit = "abc123",
+                components = Array.Empty<object>(),
+                relations = Array.Empty<object>(),
+                patterns = Array.Empty<object>(),
+                decisions = Array.Empty<object>(),
+                intents = Array.Empty<object>(),
+                claims = new[]
+                {
+                    new
+                    {
+                        key = "clm.a",
+                        tier = "Fact",
+                        statement = "A is a project",
+                        evidence = new[] { new { kind = "Code", path = "src/A/A.csproj" } },
+                        confidence = "High",
+                        origin = 7,
+                    },
+                },
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("clm.a", body);
+        Assert.Contains("unknown origin", body);
     }
 
     [Fact]
