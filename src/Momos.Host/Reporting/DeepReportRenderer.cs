@@ -146,21 +146,8 @@ public static partial class DeepReportRenderer
         }
         else
         {
-            var nodes = tree.Components
-                .Select((c, i) => (c.Id, Node: $"c{i}"))
-                .ToDictionary(x => x.Id, x => x.Node, StringComparer.Ordinal);
-            md.Line("```mermaid").Line("graph LR");
-            foreach (var c in tree.Components)
-            {
-                md.Line($"    {nodes[c.Id]}[\"{MermaidLabel(c.Name)}\"]");
-            }
-
-            foreach (var r in model.Relations.Where(r => nodes.ContainsKey(r.From) && nodes.ContainsKey(r.To)))
-            {
-                md.Line($"    {nodes[r.From]} -->|{MermaidLabel(r.Kind)}| {nodes[r.To]}");
-            }
-
-            md.Line("```").Line()
+            Mermaid(md, tree.Components, model.Relations);
+            md.Line()
               .Line("| Component | Kind |").Line("|---|---|");
             foreach (var c in tree.Components)
             {
@@ -169,6 +156,26 @@ public static partial class DeepReportRenderer
 
             md.Line();
         }
+    }
+
+    /// <summary>A graph of <paramref name="components"/> and the relations between them.</summary>
+    private static void Mermaid(StringBuilder md, IReadOnlyList<ModelComponent> components, IEnumerable<ModelRelation> relations)
+    {
+        var nodes = components
+            .Select((c, i) => (c.Id, Node: $"c{i}"))
+            .ToDictionary(x => x.Id, x => x.Node, StringComparer.Ordinal);
+        md.Line("```mermaid").Line("graph LR");
+        foreach (var c in components)
+        {
+            md.Line($"    {nodes[c.Id]}[\"{MermaidLabel(c.Name)}\"]");
+        }
+
+        foreach (var r in relations.Where(r => nodes.ContainsKey(r.From) && nodes.ContainsKey(r.To)))
+        {
+            md.Line($"    {nodes[r.From]} -->|{MermaidLabel(r.Kind)}| {nodes[r.To]}");
+        }
+
+        md.Line("```");
     }
 
     /// <summary>Every claim with its grade and status — the way into every claim page.</summary>
@@ -321,6 +328,13 @@ public static partial class DeepReportRenderer
 
     /// <summary>A table cell from markdown that is already rendered; only pipes are escaped.</summary>
     private static string Cell(string text) => OneLine(text).Replace("|", @"\|", StringComparison.Ordinal);
+
+    /// <summary>Text for an emphasized subtitle: markdown emphasis markers in it are escaped so the
+    /// text cannot close the emphasis and continue as ordinary (bold, asserting) prose.</summary>
+    private static string Subtitle(string text) => Inline(text)
+        .Replace(@"\", @"\\", StringComparison.Ordinal)
+        .Replace("_", @"\_", StringComparison.Ordinal)
+        .Replace("*", @"\*", StringComparison.Ordinal);
 
     private static string LinkText(string text) => Inline(text)
         .Replace(@"\", @"\\", StringComparison.Ordinal)

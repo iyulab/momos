@@ -26,7 +26,7 @@ public static partial class DeepReportRenderer
             md.Line($"### [{LinkText(s.Title)}]({s.Path})").Line();
             if (!string.IsNullOrWhiteSpace(s.Purpose))
             {
-                md.Line($"_{Inline(s.Purpose)}_").Line();
+                md.Line($"_{Subtitle(s.Purpose)}_").Line();
             }
 
             OwnerSummary(md, s, tree, emptyText: s.Blocks.Count == 0 ? NoEvidence : null);
@@ -40,11 +40,12 @@ public static partial class DeepReportRenderer
 
     private static string SectionPage(OutlineSection section, ProjectModel model, Tree tree)
     {
-        var md = new StringBuilder().Line($"# {Inline(section.Title)}").Line();
+        // LinkText: a heading must not turn into a link, whatever the title says.
+        var md = new StringBuilder().Line($"# {LinkText(section.Title)}").Line();
         if (!string.IsNullOrWhiteSpace(section.Purpose))
         {
             // A heading, not a statement: shown as a subtitle so it cannot read as a claim.
-            md.Line($"_{Inline(section.Purpose)}_").Line();
+            md.Line($"_{Subtitle(section.Purpose)}_").Line();
         }
 
         md.Line($"Back to the [summary](index.md).").Line();
@@ -149,6 +150,18 @@ public static partial class DeepReportRenderer
                       ? $" Applies to {string.Join(", ", inv.AppliesTo.Select(id => tree.ComponentLink(id, "components/")))}."
                       : "")).Line()
                   .Line(Backed(inv.Claims)).Line();
+                break;
+            case OutlineBlockKind.Map when block.Ref == ClaimValidator.MapEverything:
+                md.Line("### Map: whole structure").Line();
+                Mermaid(md, tree.Components, model.Relations);
+                md.Line();
+                break;
+            case OutlineBlockKind.Map when tree.Component(block.Ref) is { } centre:
+                var around = model.Relations.Where(r => r.From == centre.Id || r.To == centre.Id).ToList();
+                var ids = around.SelectMany(r => new[] { r.From, r.To }).Append(centre.Id).ToHashSet(StringComparer.Ordinal);
+                md.Line($"### Map: {LinkText(centre.Name)}").Line();
+                Mermaid(md, tree.Components.Where(c => ids.Contains(c.Id)).ToList(), around);
+                md.Line().Line($"_Backed by {tree.ClaimLinks(around.SelectMany(r => r.Claims).Distinct(StringComparer.Ordinal), "claims/")}._").Line();
                 break;
             default:
                 // Validation rejects a block that does not resolve; a stored model that predates a

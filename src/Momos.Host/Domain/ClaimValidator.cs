@@ -29,6 +29,9 @@ public static class ClaimValidator
     public const int MaxTitleLength = 80;
     public const int MaxPurposeLength = 200;
 
+    /// <summary>The ref of a map block that draws every component rather than one neighbourhood.</summary>
+    public const string MapEverything = "*";
+
     /// <summary>A chapter is one markdown file at the root of the report: lowercase, no spaces, no
     /// directories — so it can never land on a claim or component page, and every link from it has
     /// the same shape. The spine's own pages are reserved.</summary>
@@ -282,6 +285,7 @@ public static class ClaimValidator
             [OutlineBlockKind.Intent] = elements.Intents.Select(i => i.Id).ToHashSet(StringComparer.Ordinal),
             [OutlineBlockKind.Flow] = elements.Flows.Select(f => f.Id).ToHashSet(StringComparer.Ordinal),
             [OutlineBlockKind.Invariant] = elements.Invariants.Select(i => i.Id).ToHashSet(StringComparer.Ordinal),
+            [OutlineBlockKind.Map] = [.. componentIds, MapEverything],
         };
         foreach (var s in elements.Outline)
         {
@@ -351,6 +355,15 @@ public static class ClaimValidator
             if (coverage.Rejected.Any(r => string.IsNullOrWhiteSpace(r.Reason)))
             {
                 errors.Add("Coverage has a rejection with a blank reason.");
+            }
+
+            // Shown without a claim behind it, so kept to the length of a chapter's purpose.
+            var texts = coverage.Analyzed.SelectMany(a => new[] { a.Area, a.Detail })
+                .Concat(coverage.NotAnalyzed.SelectMany(g => new[] { g.Area, g.Reason }))
+                .Concat(coverage.Rejected.Select(r => r.Reason));
+            if (texts.Any(t => t?.Length > MaxPurposeLength))
+            {
+                errors.Add($"Coverage text is limited to {MaxPurposeLength} characters.");
             }
         }
 

@@ -45,8 +45,9 @@ public sealed record ModelDecision(string Id, string Summary, IReadOnlyList<stri
 public sealed record ModelIntent(string Id, string Statement, IntentSource Source, IReadOnlyList<string> Claims);
 
 /// <summary>What an outline block points at. Relations have no id of their own, so they are shown
-/// through the component block of either end rather than as a block.</summary>
-public enum OutlineBlockKind { Claim, Component, Pattern, Decision, Intent, Flow, Invariant }
+/// through a <see cref="Map"/> — whose ref is <c>*</c> for the whole structure, or a component id
+/// for that component and its direct neighbours — or on the component pages.</summary>
+public enum OutlineBlockKind { Claim, Component, Pattern, Decision, Intent, Flow, Invariant, Map }
 
 /// <summary>One step of a flow: the claim that says what happens, and the component it happens in
 /// when the step belongs to one.</summary>

@@ -87,8 +87,8 @@ sha다. 인용한 제목은 커밋 자신의 문장일 뿐 변경 이유에 대�
   가리켜야 한다. 목차의 장(`outline: [{id, path, title, purpose, ownerSummaryClaims, blocks}]`)은 리포트 한 페이지다 —
   `path`는 리포트 루트의 소문자 파일 이름(`[a-z0-9][a-z0-9-]*.md`, 64자 이내, `index.md`·`unknowns.md` 제외)이고 장마다
   달라야 하며, `title`은 80자·`purpose`는 200자 이내다(제목과 목적은 주장이 아니다 — 주장은 진술로). 블록
-  (`{kind, ref}`, `kind`: `Claim`·`Component`·`Pattern`·`Decision`·`Intent`·`Flow`·`Invariant`)은 모델 안의 그 종류를
-  가리켜야 한다. 장은 진술이 없어도 된다(리포트가 근거를 찾지 못했다고 쓴다). 분석 범위(`coverage`)는 읽은 영역
+  (`{kind, ref}`, `kind`: `Claim`·`Component`·`Pattern`·`Decision`·`Intent`·`Flow`·`Invariant`·`Map`)은 모델 안의
+  그 종류를 가리켜야 한다 — `Map`은 구조 도식이고 `ref`가 `*`면 전체, 구성 요소 id면 그 구성 요소와 직접 이웃이다. 장은 진술이 없어도 된다(리포트가 근거를 찾지 못했다고 쓴다). 분석 범위(`coverage`)는 읽은 영역
   (`analyzed: [{area, detail}]`)·읽지 않은 영역(`notAnalyzed: [{area, reason}]`)·분석 중 폐기한 제안의 사유별 수
   (`rejected: [{reason, count}]`, 수는 1 이상)·생성기(`generator: {model, promptVersion}`, 결정적 분석이면 `null`)다.
   분석 범위를 기록하기 전에 만들어진 모델 버전은 `coverage`가 `null`이다. 어긋나면 `400`이다.

@@ -41,13 +41,13 @@ public sealed class ClaimNextCompatibilityTests : IClassFixture<MomosHostFactory
     }
 
     [Fact]
-    public async Task ClaimNext_FromAProtocol3Worker_AsksForAnUpdate()
+    public async Task ClaimNext_FromTheWorkerOneProtocolBehind_AsksForAnUpdate()
     {
-        // Protocol 4 added required model fields; a protocol 3 Worker would fail late, at
-        // submission, so it must not be handed work at all.
+        // Each protocol bump changes what a Worker must send; the Worker one version behind would
+        // fail late, at submission, so it must not be handed work at all.
         var client = _factory.CreateAuthorizedClient();
         var response = await client.PostAsJsonAsync(
-            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: 3, WorkerVersion: "0.1.0"));
+            "/inspection-requests/claim-next", new ClaimNextRequest(ProtocolVersion: TestProtocol.Current - 1, WorkerVersion: "0.1.0"));
 
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value);
