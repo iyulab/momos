@@ -301,4 +301,15 @@ public sealed class ClaimValidatorTests
             Claim("clm.c", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.d")),
             Claim("clm.d", ClaimTier.Fact, ClaimConfidence.Low, CodeAt),
         ], NoElements));
+
+    [Fact]
+    public void AClaimWithAnUndefinedConfidence_IsReportedOnce()
+    {
+        var claim = Claim("clm.a", ClaimTier.Assessment, (ClaimConfidence)7, new ClaimEvidence(EvidenceKind.Claim, ClaimKey: "clm.b"));
+        var errors = ClaimValidator.Validate([claim, Claim("clm.b", ClaimTier.Fact, ClaimConfidence.High, CodeAt)], NoElements);
+
+        // The undefined value is the error; checking the other rules against it only repeats it
+        // in another form ("cannot exceed low confidence").
+        Assert.Equal(["Claim 'clm.a' has an unknown confidence '7'."], errors);
+    }
 }

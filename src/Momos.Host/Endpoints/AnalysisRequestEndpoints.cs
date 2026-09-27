@@ -102,11 +102,11 @@ public static class AnalysisRequestEndpoints
                 {
                     ProjectModelId = model.Id,
                     Key = submitted.Key,
-                    Tier = submitted.Tier,
+                    // MissingFields() has already rejected a claim without a tier, confidence or origin.
+                    Tier = submitted.Tier!.Value,
                     Statement = submitted.Statement,
                     Evidence = submitted.Evidence.Select(e => e.ToDomain()).ToList(),
-                    Confidence = submitted.Confidence,
-                    // MissingFields() has already rejected a claim without an origin.
+                    Confidence = submitted.Confidence!.Value,
                     Origin = submitted.Origin!.Value,
                 };
 

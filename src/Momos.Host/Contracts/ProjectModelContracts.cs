@@ -11,9 +11,10 @@ public sealed record ClaimEvidenceDto(
     public static ClaimEvidenceDto FromDomain(ClaimEvidence e) => new(e.Kind, e.Path, e.Symbol, e.Lines, e.Sha, e.Url, e.InspectionRequestId, e.ClaimKey);
 }
 
-/// <param name="Origin">Required. Nullable only so an omitted value is caught and named (see
-/// <see cref="SubmitProjectModelRequest.MissingFields"/>) instead of binding to the enum's first value.</param>
-public sealed record SubmittedClaim(string Key, ClaimTier Tier, string Statement, IReadOnlyList<ClaimEvidenceDto> Evidence, ClaimConfidence Confidence, ClaimOrigin? Origin);
+/// <param name="Tier">Required. Nullable, like <paramref name="Confidence"/> and <paramref name="Origin"/>,
+/// only so an omitted value is caught and named (see <see cref="SubmitProjectModelRequest.MissingFields"/>)
+/// instead of binding to the enum's first value — for these two, the most authoritative one.</param>
+public sealed record SubmittedClaim(string Key, ClaimTier? Tier, string Statement, IReadOnlyList<ClaimEvidenceDto> Evidence, ClaimConfidence? Confidence, ClaimOrigin? Origin);
 
 public sealed record ModelComponentDto(string Id, string Name, string Kind, string? Responsibility, IReadOnlyList<string> Claims);
 
@@ -96,6 +97,8 @@ public sealed record SubmitProjectModelRequest(
 
         foreach (var c in Claims)
         {
+            Require($"Claims['{c.Key}'].Tier", c.Tier, isList: false);
+            Require($"Claims['{c.Key}'].Confidence", c.Confidence, isList: false);
             Require($"Claims['{c.Key}'].Evidence", c.Evidence);
             Require($"Claims['{c.Key}'].Origin", c.Origin, isList: false);
         }

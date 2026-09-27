@@ -35,19 +35,30 @@ public static class ClaimValidator
             // An out-of-range value (e.g. an origin JSON never named) still binds to the enum
             // field, so it must be caught here rather than assumed to be one of the named cases
             // below — silently falling into a default would misreport how the claim was produced.
+            var undefined = false;
             if (!Enum.IsDefined(claim.Origin))
             {
                 errors.Add($"Claim '{claim.Key}' has an unknown origin '{(int)claim.Origin}'.");
+                undefined = true;
             }
 
             if (!Enum.IsDefined(claim.Tier))
             {
                 errors.Add($"Claim '{claim.Key}' has an unknown tier '{(int)claim.Tier}'.");
+                undefined = true;
             }
 
             if (!Enum.IsDefined(claim.Confidence))
             {
                 errors.Add($"Claim '{claim.Key}' has an unknown confidence '{(int)claim.Confidence}'.");
+                undefined = true;
+            }
+
+            // The other rules read these values; against an undefined one they only restate the
+            // same error in another form.
+            if (undefined)
+            {
+                continue;
             }
 
             if (claim.Evidence.Count == 0)
