@@ -70,6 +70,10 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
         projectModel.Property(m => m.Patterns).HasJsonColumn();
         projectModel.Property(m => m.Decisions).HasJsonColumn();
         projectModel.Property(m => m.Intents).HasJsonColumn();
+        projectModel.Property(m => m.Flows).HasJsonColumn();
+        projectModel.Property(m => m.Invariants).HasJsonColumn();
+        projectModel.Property(m => m.Outline).HasJsonColumn();
+        projectModel.Property(m => m.Coverage).HasJsonObjectColumn();
         projectModel.HasIndex(m => new { m.ProjectId, m.ModelVersion }).IsUnique();
         projectModel.HasOne<Project>().WithMany().HasForeignKey(m => m.ProjectId).OnDelete(DeleteBehavior.Restrict);
         projectModel.HasOne<InspectionRequest>().WithMany().HasForeignKey(m => m.AnalysisRequestId).OnDelete(DeleteBehavior.Restrict);
