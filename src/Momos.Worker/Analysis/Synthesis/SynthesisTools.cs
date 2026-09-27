@@ -42,7 +42,7 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
 {
     public static JsonSerializerOptions ToolJson { get; } = CreateToolJson();
 
-    [Description("Plan one chapter of the manual. Give a short title and a one-sentence purpose. " +
+    [Description("Plan one chapter of the manual. Give a short title (at most 80 characters) and a one-sentence purpose (at most 200 characters). " +
         "guide names the guide chapter it follows (see the list in your instructions), or is empty for a chapter the project needs that the guide lacks.")]
     public string ProposeChapter(string title, string purpose, string? guide = null)
     {
@@ -106,7 +106,8 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
             : $"Recorded as {key}. Confidence lowered to {capped.Confidence}: it cites a less certain claim.";
     }
 
-    [Description("Record a goal or constraint the project states for itself. source is Document when the repository says it, Inferred when you conclude it.")]
+    [Description("Record a goal or constraint the project states for itself. source is Document when the repository says it, Inferred when you conclude it. " +
+        "claimKeys must name at least one claim already recorded — propose the claim that shows the goal first, then cite its key here.")]
     public string ProposeIntent(string topic, string statement, IntentSource source, string[] claimKeys)
     {
         if (source == IntentSource.Developer || !Enum.IsDefined(source))

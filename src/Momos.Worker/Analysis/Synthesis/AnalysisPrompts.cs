@@ -13,7 +13,7 @@ public sealed record GuideChapter(string Id, string Title, IReadOnlyList<string>
 /// </summary>
 public static class AnalysisPrompts
 {
-    public const string Version = "p3.1";
+    public const string Version = "p3.2";
 
     private const int MaxListedClaims = 300;
 
@@ -105,7 +105,8 @@ public static class AnalysisPrompts
             .AppendLine(CultureInfo.InvariantCulture, $"Then call ProposeChapter for each chapter (at most {maxChapters}), in reading order.")
             .AppendLine("The guide below is a starting point, not a fixed table of contents: rename, merge or drop chapters, and add")
             .AppendLine("chapters this project needs (a command reference for a CLI, a public API surface for a library, and so on).")
-            .AppendLine("Also propose the project's stated goals as intents (ProposeIntent with source Document) and the claims behind them.")
+            .AppendLine("Also propose the project's stated goals as intents (ProposeIntent with source Document): first the claim that shows")
+            .AppendLine("each goal (ProposeClaim), then the intent citing that claim's key. A chapter purpose is one sentence of at most 200 characters.")
             .AppendLine()
             .AppendLine("Guide chapters:");
         foreach (var g in Guide)
