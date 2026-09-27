@@ -29,11 +29,19 @@ public static partial class DeepReportRenderer
     public static IReadOnlyList<ReportDocument> Render(string projectName, ProjectModel model)
     {
         var tree = new Tree(model);
+
+        // A model that brings an outline decides its chapters; one that doesn't (every
+        // deterministic analysis, every version before outlines) gets the fixed layout.
         var documents = new List<ReportDocument>
         {
-            new("index.md", Index(projectName, model, tree)),
+            new("index.md", model.Outline.Count > 0 ? OutlineIndex(projectName, model, tree) : Index(projectName, model, tree)),
             new(UnknownsPage, Unknowns(model, tree)),
         };
+        foreach (var section in model.Outline)
+        {
+            documents.Add(new(section.Path, SectionPage(section, model, tree)));
+        }
+
         foreach (var component in tree.Components)
         {
             documents.Add(new($"components/{tree.ComponentFile(component.Id)}", ComponentPage(component, model, tree)));
@@ -377,7 +385,23 @@ public static partial class DeepReportRenderer
                     Claims.Add(c);
                 }
             }
+
+            foreach (var p in model.Patterns) { Patterns.TryAdd(p.Id, p); }
+            foreach (var d in model.Decisions) { Decisions.TryAdd(d.Id, d); }
+            foreach (var i in model.Intents) { Intents.TryAdd(i.Id, i); }
+            foreach (var f in model.Flows) { Flows.TryAdd(f.Id, f); }
+            foreach (var i in model.Invariants) { Invariants.TryAdd(i.Id, i); }
         }
+
+        public Dictionary<string, ModelPattern> Patterns { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, ModelDecision> Decisions { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, ModelIntent> Intents { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, ModelFlow> Flows { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, ModelInvariant> Invariants { get; } = new(StringComparer.Ordinal);
+
+        public ModelClaim? Claim(string key) => _claims.GetValueOrDefault(key);
+
+        public ModelComponent? Component(string id) => _components.GetValueOrDefault(id);
 
         public List<ModelComponent> Components { get; } = [];
 

@@ -500,4 +500,101 @@ public sealed partial class DeepReportRendererTests
         Assert.Contains("| Not yet reviewed | 3 |", index);
         Assert.Contains("| Decisions without a recorded rationale | 1 |", index);
     }
+
+    private static ProjectModel Outlined(Action<ProjectModel>? configure = null) => RichModel(m =>
+    {
+        m.Flows.Add(new ModelFlow("flw.build", "Build", [new FlowStep("cmp.app", "clm.app"), new FlowStep(null, "clm.ref")], ["clm.ref"]));
+        m.Invariants.Add(new ModelInvariant("inv.layering", "Lib never references App", "contract", ["cmp.lib"], ["clm.ref"]));
+        m.Outline.Add(new OutlineSection("sec.map", "system-map.md", "System map", "What the parts are and how they connect", ["clm.app"],
+            [new OutlineBlock(OutlineBlockKind.Component, "cmp.app"), new OutlineBlock(OutlineBlockKind.Pattern, "pat.layers")]));
+        m.Outline.Add(new OutlineSection("sec.flows", "core-flows.md", "Core flows", "How a build moves", [],
+            [new OutlineBlock(OutlineBlockKind.Flow, "flw.build"), new OutlineBlock(OutlineBlockKind.Invariant, "inv.layering"),
+             new OutlineBlock(OutlineBlockKind.Decision, "dec.layering"), new OutlineBlock(OutlineBlockKind.Intent, "int.split"),
+             new OutlineBlock(OutlineBlockKind.Claim, "clm.lib")]));
+        m.Outline.Add(new OutlineSection("sec.risks", "risks.md", "Risks", "What could break", [], []));
+        configure?.Invoke(m);
+    });
+
+    [Fact]
+    public void AnOutlinedModel_GetsOnePagePerChapter_PlusTheSpine()
+    {
+        var tree = DeepReportRenderer.Render("acme", Outlined());
+
+        var pages = tree.Select(d => d.Path).Where(p => !p.Contains('/')).Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(["core-flows.md", "index.md", "risks.md", "system-map.md", "unknowns.md"], pages);
+        Assert.All(tree, d => Assert.Matches(SafePath(), d.Path));
+        AssertEveryRelativeLinkResolves(tree);
+    }
+
+    [Fact]
+    public void TheOutlinedIndex_ListsChaptersInOrder_WithTheirOwnerSummaryClaims()
+    {
+        var index = Doc(DeepReportRenderer.Render("acme", Outlined()), "index.md");
+
+        var map = index.IndexOf("[System map](system-map.md)", StringComparison.Ordinal);
+        var flows = index.IndexOf("[Core flows](core-flows.md)", StringComparison.Ordinal);
+        Assert.True(map >= 0 && flows > map, "chapters must appear in outline order");
+        Assert.Contains("_What the parts are and how they connect_", index);
+        Assert.Contains("App is a .NET project", index); // sec.map's owner summary claim, quoted
+        Assert.DoesNotContain("## Structure", index); // the fixed layout is not used alongside an outline
+    }
+
+    [Fact]
+    public void ASectionPage_ShowsPurposeAsASubtitleNotAClaim()
+    {
+        var page = Doc(DeepReportRenderer.Render("acme", Outlined()), "system-map.md");
+
+        Assert.StartsWith("# System map\n\n_What the parts are and how they connect_\n", page);
+        Assert.Contains("## Owner summary", page);
+        Assert.Contains("- App is a .NET project (", page);
+    }
+
+    [Fact]
+    public void EveryBlockKind_RendersItsElementBesideTheClaimsThatBackIt()
+    {
+        var page = Doc(DeepReportRenderer.Render("acme", Outlined()), "core-flows.md");
+
+        Assert.Contains("### Flow: Build", page);
+        Assert.Contains("1. [App](components/cmp.app.md) — App is a .NET project ([`clm.app`](claims/clm.app.md))", page);
+        Assert.Contains("2. App references Lib ([`clm.ref`](claims/clm.ref.md))", page);
+        Assert.Contains("### Invariant: Lib never references App", page);
+        Assert.Contains("### Decision: App depends on Lib, never the reverse", page);
+        Assert.Contains("Rationale: _unrecorded_", page);
+        Assert.Contains("### Intent: Keep the library free of UI concerns", page);
+        Assert.Contains("- Lib is a .NET project — Fact · High", page);
+        // Element text never stands alone: each element block carries its backing claims.
+        Assert.Equal(4, CountOf(page, "_Backed by "));
+    }
+
+    [Fact]
+    public void AChapterWithNothingInIt_SaysNoEvidenceWasFound_AndIsCountedAsUnknown()
+    {
+        var tree = DeepReportRenderer.Render("acme", Outlined());
+
+        Assert.Contains("No evidence for this chapter was found in this repository.", Doc(tree, "risks.md"));
+        // The summary says so too: a reader of the index alone must not take the chapter for covered.
+        var index = Doc(tree, "index.md");
+        var risks = index[index.IndexOf("[Risks](risks.md)", StringComparison.Ordinal)..];
+        Assert.Contains("No evidence for this chapter was found in this repository.", risks);
+        Assert.Contains("[Risks](risks.md)", Doc(tree, "unknowns.md"));
+    }
+
+    [Fact]
+    public void AComponentBlock_LinksItsPage_WhereRelationsAreShown()
+    {
+        var page = Doc(DeepReportRenderer.Render("acme", Outlined()), "system-map.md");
+
+        Assert.Contains("### Component: [App](components/cmp.app.md)", page);
+    }
+
+    private static int CountOf(string text, string value)
+    {
+        var count = 0;
+        for (var i = text.IndexOf(value, StringComparison.Ordinal); i >= 0; i = text.IndexOf(value, i + value.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
 }

@@ -355,7 +355,8 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
     public async Task GetReport_ReturnsTheDocumentTree()
     {
         var (projectId, requestId) = await StartAnalysisAsync(_client);
-        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+        // Without an outline: the fixed layout, whose summary draws the structure.
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission() with { Outline = [] });
 
         var report = await _client.GetFromJsonAsync<ProjectModelReportResponse>($"/projects/{projectId}/model/report", TestJsonOptions.Value);
 
@@ -365,6 +366,20 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         Assert.Contains("# acme-model", index);
         Assert.Contains("```mermaid", index);
         Assert.Contains(report.Documents, d => d.Path == "claims/clm.ref.md");
+        Assert.Contains(report.Documents, d => d.Path == "unknowns.md");
+    }
+
+    [Fact]
+    public async Task GetReport_ForAModelWithAnOutline_HasAPagePerChapter()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission());
+
+        var report = await _client.GetFromJsonAsync<ProjectModelReportResponse>($"/projects/{projectId}/model/report", TestJsonOptions.Value);
+
+        var chapter = Assert.Single(report!.Documents, d => d.Path == "system-map.md").Content;
+        Assert.Contains("### Flow: Build", chapter);
+        Assert.Contains("[System map](system-map.md)", Assert.Single(report.Documents, d => d.Path == "index.md").Content);
     }
 
     [Fact]
