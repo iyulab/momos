@@ -7,7 +7,6 @@ using CodeBeaker.Runtimes.Native;
 using IronHive.Agent.Context;
 using IronHive.Agent.Extensions;
 using IronHive.Agent.Loop;
-using IronHive.Agent.Mcp;
 using IronHive.Agent.Providers;
 using IronHive.Agent.Tracking;
 using Microsoft.Extensions.AI;
@@ -59,15 +58,6 @@ public static class ServiceCollectionExtensions
         var agentLoopLimits = configuration.GetSection(AgentLoopLimitsOptions.SectionName).Get<AgentLoopLimitsOptions>()
             ?? new AgentLoopLimitsOptions();
         services.AddIronHiveAgentEngine(agentLoopLimits);
-
-        // Empty by default — connects only what an operator explicitly lists.
-        // Enabling a Computer Use tool and its permission posture is a
-        // separate, human decision this wiring does not make (see
-        // McpPluginStartupService).
-        services
-            .AddOptions<McpPluginsConfig>()
-            .Bind(configuration.GetSection(McpPluginStartupService.SectionName));
-        services.AddHostedService<McpPluginStartupService>();
 
         services
             .AddOptions<HostClientOptions>()
