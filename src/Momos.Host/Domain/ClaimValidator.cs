@@ -12,7 +12,9 @@ public sealed record ModelElements(
 /// no evidence without the identifier that locates it, no reference that does not resolve inside
 /// the model, and no model element without a claim behind it. An assessment is an interpretation, so it must
 /// point at the claim it interprets, and it cannot rise above low confidence unless a reproduced
-/// finding backs it.
+/// finding backs it. A claim built on other claims can be no more certain than the least certain of them, claims
+/// may not cite one another in a circle, and a decision that states its rationale needs a history
+/// claim — a reason nobody recorded is <see cref="ModelDecision.Unrecorded"/>.
 /// </summary>
 public static class ClaimValidator
 {
@@ -78,6 +80,29 @@ public static class ClaimValidator
             }
         }
 
+        // Duplicate keys are already reported above; the checks below read the first occurrence.
+        var byKey = new Dictionary<string, ModelClaim>(StringComparer.Ordinal);
+        foreach (var claim in claims)
+        {
+            byKey.TryAdd(claim.Key, claim);
+        }
+
+        foreach (var claim in claims)
+        {
+            foreach (var cited in CitedKeys(claim).Select(k => byKey.GetValueOrDefault(k)).OfType<ModelClaim>())
+            {
+                if (Certainty(claim.Confidence) > Certainty(cited.Confidence))
+                {
+                    errors.Add($"Claim '{claim.Key}' is {claim.Confidence} confidence but cites '{cited.Key}' at {cited.Confidence}; a claim built on another cannot be more certain than it.");
+                }
+            }
+        }
+
+        foreach (var cycle in CitationCycles(byKey))
+        {
+            errors.Add($"Claims cite one another in a cycle: {string.Join(" -> ", cycle)}.");
+        }
+
         RequireUniqueIds("Component", elements.Components.Select(c => c.Id));
         RequireUniqueIds("Pattern", elements.Patterns.Select(p => p.Id));
         RequireUniqueIds("Decision", elements.Decisions.Select(d => d.Id));
@@ -129,6 +154,15 @@ public static class ClaimValidator
         foreach (var d in elements.Decisions)
         {
             RequireClaims($"Decision '{d.Id}'", d.Claims);
+            if (string.IsNullOrWhiteSpace(d.Rationale))
+            {
+                errors.Add($"Decision '{d.Id}' has a blank rationale; a reason nobody recorded is '{ModelDecision.Unrecorded}'.");
+            }
+            else if (d.Rationale != ModelDecision.Unrecorded
+                && !d.Claims.Any(k => byKey.TryGetValue(k, out var c) && c.Tier == ClaimTier.History))
+            {
+                errors.Add($"Decision '{d.Id}' states a rationale without a history claim behind it; a reason nobody recorded is '{ModelDecision.Unrecorded}'.");
+            }
         }
 
         foreach (var i in elements.Intents)
@@ -164,4 +198,69 @@ public static class ClaimValidator
         EvidenceKind.Claim => "a claim key",
         _ => "a known kind",
     };
+
+    private static IEnumerable<string> CitedKeys(ModelClaim claim) => claim.Evidence
+        .Where(e => e.Kind == EvidenceKind.Claim && !string.IsNullOrWhiteSpace(e.ClaimKey))
+        .Select(e => e.ClaimKey!)
+        .Distinct(StringComparer.Ordinal);
+
+    private static int Certainty(ClaimConfidence confidence) => confidence switch
+    {
+        ClaimConfidence.High => 3,
+        ClaimConfidence.Medium => 2,
+        _ => 1,
+    };
+
+    /// <summary>Every citation cycle, each reported once as the path that closes it. Iterative, so
+    /// a long citation chain cannot overflow the stack. A claim citing itself is reported by the
+    /// reference checks above and skipped here.</summary>
+    private static List<List<string>> CitationCycles(Dictionary<string, ModelClaim> byKey)
+    {
+        const int OnPath = 1, Done = 2;
+        var state = new Dictionary<string, int>(StringComparer.Ordinal);
+        var path = new List<string>();
+        var frames = new Stack<(string Key, IEnumerator<string> Next)>();
+        var cycles = new List<List<string>>();
+
+        void Enter(string key)
+        {
+            state[key] = OnPath;
+            path.Add(key);
+            IEnumerable<string> next = CitedKeys(byKey[key]).Where(k => k != key && byKey.ContainsKey(k)).ToList();
+            frames.Push((key, next.GetEnumerator()));
+        }
+
+        foreach (var root in byKey.Keys)
+        {
+            if (state.ContainsKey(root))
+            {
+                continue;
+            }
+
+            Enter(root);
+            while (frames.Count > 0)
+            {
+                var (key, next) = frames.Peek();
+                if (!next.MoveNext())
+                {
+                    frames.Pop();
+                    path.RemoveAt(path.Count - 1);
+                    state[key] = Done;
+                    continue;
+                }
+
+                var target = next.Current;
+                if (!state.TryGetValue(target, out var seen))
+                {
+                    Enter(target);
+                }
+                else if (seen == OnPath)
+                {
+                    cycles.Add([.. path.Skip(path.IndexOf(target)), target]);
+                }
+            }
+        }
+
+        return cycles;
+    }
 }

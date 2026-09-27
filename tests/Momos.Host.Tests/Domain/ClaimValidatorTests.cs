@@ -153,4 +153,88 @@ public sealed class ClaimValidatorTests
         Assert.NotEmpty(ClaimValidator.Validate(
             [Claim("clm.a", ClaimTier.Fact, ClaimConfidence.High, CodeAt)],
             new ModelElements([], [], [], [], [new ModelIntent("int.a", "x", IntentSource.Developer, ["clm.a"])])));
+
+    private static ClaimEvidence Cites(string key) => new(EvidenceKind.Claim, ClaimKey: key);
+
+    [Fact]
+    public void AClaimMoreCertainThanTheClaimItCites_IsRejected() =>
+        Assert.Contains(ClaimValidator.Validate(
+        [
+            Claim("clm.f", ClaimTier.Fact, ClaimConfidence.Medium, CodeAt),
+            Claim("clm.sum", ClaimTier.Fact, ClaimConfidence.High, CodeAt, Cites("clm.f")),
+        ], NoElements), e => e.Contains("clm.sum", StringComparison.Ordinal) && e.Contains("cannot be more certain", StringComparison.Ordinal));
+
+    [Fact]
+    public void AClaimAsCertainAsTheLeastCertainClaimItCites_IsValid() =>
+        Assert.Empty(ClaimValidator.Validate(
+        [
+            Claim("clm.f", ClaimTier.Fact, ClaimConfidence.High, CodeAt),
+            Claim("clm.g", ClaimTier.Fact, ClaimConfidence.Medium, CodeAt),
+            Claim("clm.sum", ClaimTier.Fact, ClaimConfidence.Medium, CodeAt, Cites("clm.f"), Cites("clm.g")),
+        ], NoElements));
+
+    [Fact]
+    public void ClaimsCitingEachOtherInACircle_AreRejected() =>
+        Assert.Contains(ClaimValidator.Validate(
+        [
+            Claim("clm.a", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.b")),
+            Claim("clm.b", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.c")),
+            Claim("clm.c", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.a")),
+        ], NoElements), e => e.Contains("cycle", StringComparison.Ordinal) && e.Contains("clm.a", StringComparison.Ordinal));
+
+    [Fact]
+    public void AVeryLongCitationChain_IsCheckedWithoutOverflowingTheStack()
+    {
+        const int length = 5000;
+        var claims = Enumerable.Range(0, length)
+            .Select(i => i == length - 1
+                ? Claim($"clm.{i}", ClaimTier.Fact, ClaimConfidence.Low, CodeAt)
+                : Claim($"clm.{i}", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites($"clm.{i + 1}")))
+            .ToList();
+
+        Assert.Empty(ClaimValidator.Validate(claims, NoElements));
+    }
+
+    [Fact]
+    public void DuplicateKeysWithCitations_AreReportedWithoutThrowing()
+    {
+        var errors = ClaimValidator.Validate(
+        [
+            Claim("clm.a", ClaimTier.Fact, ClaimConfidence.Low, CodeAt),
+            Claim("clm.a", ClaimTier.Fact, ClaimConfidence.High, CodeAt, Cites("clm.b")),
+            Claim("clm.b", ClaimTier.Fact, ClaimConfidence.Low, CodeAt, Cites("clm.a")),
+        ], NoElements);
+
+        Assert.Contains(errors, e => e.Contains("more than once", StringComparison.Ordinal));
+    }
+
+    private static ModelElements WithDecision(ModelDecision decision) => new([], [], [], [decision], []);
+
+    [Fact]
+    public void ADecisionWithARationaleButNoHistoryClaim_IsRejected() =>
+        Assert.Contains(ClaimValidator.Validate(
+            [Claim("clm.f", ClaimTier.Fact, ClaimConfidence.High, CodeAt)],
+            WithDecision(new ModelDecision("dec.a", "Split host and worker", [], "Workers sit behind firewalls", ["clm.f"]))),
+            e => e.Contains("dec.a", StringComparison.Ordinal) && e.Contains("history", StringComparison.Ordinal));
+
+    [Fact]
+    public void ADecisionWithARationaleBackedByAHistoryClaim_IsValid() =>
+        Assert.Empty(ClaimValidator.Validate(
+            [Claim("clm.h", ClaimTier.History, ClaimConfidence.Medium, new ClaimEvidence(EvidenceKind.Commit, Sha: "abc"))],
+            WithDecision(new ModelDecision("dec.a", "Split host and worker", [], "Workers sit behind firewalls", ["clm.h"]))));
+
+    [Fact]
+    public void AnUnrecordedDecision_NeedsNoHistoryClaim() =>
+        Assert.Empty(ClaimValidator.Validate(
+            [Claim("clm.f", ClaimTier.Fact, ClaimConfidence.High, CodeAt)],
+            WithDecision(new ModelDecision("dec.a", "Split host and worker", [], ModelDecision.Unrecorded, ["clm.f"]))));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ADecisionWithABlankRationale_IsRejected(string rationale) =>
+        Assert.Contains(ClaimValidator.Validate(
+            [Claim("clm.h", ClaimTier.History, ClaimConfidence.Medium, new ClaimEvidence(EvidenceKind.Commit, Sha: "abc"))],
+            WithDecision(new ModelDecision("dec.a", "Split host and worker", [], rationale, ["clm.h"]))),
+            e => e.Contains("dec.a", StringComparison.Ordinal) && e.Contains("blank", StringComparison.Ordinal));
 }
