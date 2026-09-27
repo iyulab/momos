@@ -277,6 +277,7 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
                     new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Intent, "int.api"),
                     new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Flow, "flw.build"),
                     new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Invariant, "inv.layers"),
+                    new OutlineBlockPayload(Momos.Worker.Execution.OutlineBlockKind.Map, "*"),
                 ]),
                 new OutlineSectionPayload("sec.risks", "risks.md", "Risks", "", [], []),
             ],

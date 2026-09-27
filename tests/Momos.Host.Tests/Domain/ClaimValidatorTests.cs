@@ -479,4 +479,28 @@ public sealed class ClaimValidatorTests
         Assert.Contains("Coverage has an unanalyzed area with a blank area or reason.", errors);
         Assert.Contains("Coverage has a rejection with a blank reason.", errors);
     }
+
+    [Fact]
+    public void AMapBlock_NamesTheWholeStructureOrAComponent()
+    {
+        Assert.Empty(ClaimValidator.Validate(Facts("clm.a"), With(outline:
+            [Section("map.md", blocks: [new OutlineBlock(OutlineBlockKind.Map, "*"), new OutlineBlock(OutlineBlockKind.Map, "cmp.app")])])));
+
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(outline:
+            [Section("map.md", blocks: [new OutlineBlock(OutlineBlockKind.Map, "cmp.ghost")])]));
+        Assert.Contains("Outline section 'sec.map.md' block 1 (Map 'cmp.ghost') does not resolve in this model.", errors);
+    }
+
+    [Fact]
+    public void CoverageText_LongerThanAHeading_IsRejected()
+    {
+        // Coverage text is shown on the unknowns page without a claim behind it; like a chapter's
+        // purpose it is kept short enough that it cannot carry an argument.
+        var errors = ClaimValidator.Validate(Facts("clm.a"), With(coverage: new ModelCoverage(
+            [new CoverageArea("project-manifests", new string('d', 201))],
+            [new CoverageGap("source-files", new string('r', 201))],
+            [new CoverageRejection(new string('x', 201), 1)], null)));
+
+        Assert.Contains("Coverage text is limited to 200 characters.", errors);
+    }
 }

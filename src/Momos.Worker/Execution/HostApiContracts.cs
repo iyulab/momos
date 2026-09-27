@@ -178,6 +178,7 @@ public enum OutlineBlockKind
     Intent,
     Flow,
     Invariant,
+    Map,
 }
 
 /// <summary>Mirrors Host's FlowStepDto wire shape.</summary>

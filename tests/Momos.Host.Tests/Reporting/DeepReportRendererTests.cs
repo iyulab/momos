@@ -628,4 +628,42 @@ public sealed partial class DeepReportRendererTests
         Assert.All(tree.Where(d => d.Path != "index.md"), d => Assert.Contains(d.Path, targets));
         Assert.Contains("```mermaid", Doc(tree, "index.md"));
     }
+
+    [Fact]
+    public void AMapBlock_DrawsTheWholeStructure_OrAComponentWithItsNeighbours()
+    {
+        var tree = DeepReportRenderer.Render("acme", Outlined(m =>
+        {
+            m.Components.Add(new ModelComponent("cmp.tool", "Tool", "executable", null, ["clm.app"]));
+            m.Outline.Add(new OutlineSection("sec.maps", "maps.md", "Maps", "", [],
+                [new OutlineBlock(OutlineBlockKind.Map, "*"), new OutlineBlock(OutlineBlockKind.Map, "cmp.lib")]));
+        }));
+        var page = Doc(tree, "maps.md");
+
+        var whole = page[..page.IndexOf("### Map: Lib", StringComparison.Ordinal)];
+        var around = page[page.IndexOf("### Map: Lib", StringComparison.Ordinal)..];
+        Assert.Contains("### Map: whole structure", whole);
+        Assert.Contains("[\"Tool\"]", whole);
+        Assert.Contains("[\"App\"]", around);   // App references Lib: a neighbour
+        Assert.DoesNotContain("Tool", around);   // unrelated to Lib
+        Assert.Contains("-->|references|", around);
+    }
+
+    [Fact]
+    public void APurpose_CannotEscapeItsItalicSubtitle()
+    {
+        var page = Doc(DeepReportRenderer.Render("acme", Outlined(m =>
+            m.Outline[0] = m.Outline[0] with { Purpose = "x_ **All inputs are validated** _y" })), "system-map.md");
+
+        Assert.Contains(@"_x\_ \*\*All inputs are validated\*\* \_y_", page);
+    }
+
+    [Fact]
+    public void AChapterTitle_CannotBecomeALink()
+    {
+        var tree = DeepReportRenderer.Render("acme", Outlined(m =>
+            m.Outline[0] = m.Outline[0] with { Title = "[Audit passed](https://example.invalid)" }));
+
+        Assert.StartsWith(@"# \[Audit passed\](https://example.invalid)", Doc(tree, "system-map.md"));
+    }
 }
