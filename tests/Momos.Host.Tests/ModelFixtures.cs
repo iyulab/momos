@@ -16,6 +16,11 @@ internal static class ModelFixtures
         Patterns: [],
         Decisions: [new ModelDecisionDto("dec.layering", "App depends on Lib, never the reverse", [], ModelDecision.Unrecorded, ["clm.ref"])],
         Intents: [],
+        Flows: [new ModelFlowDto("flw.build", "Build", [new FlowStepDto("cmp.app", "clm.app"), new FlowStepDto("cmp.lib", "clm.ref")], ["clm.ref"])],
+        Invariants: [new ModelInvariantDto("inv.layering", "Lib never references App", "contract", ["cmp.lib"], ["clm.ref"])],
+        Outline: [new OutlineSectionDto("sec.map", "system-map.md", "System map", "What the parts are", ["clm.app"],
+            [new OutlineBlockDto(OutlineBlockKind.Component, "cmp.app"), new OutlineBlockDto(OutlineBlockKind.Flow, "flw.build")])],
+        Coverage: new ModelCoverageDto([new CoverageAreaDto("project-manifests", "2 of 2 project files")], [new CoverageGapDto("source-files", "not read")], [], null),
         Claims:
         [
             new SubmittedClaim("clm.app", ClaimTier.Fact, componentStatement, [new ClaimEvidenceDto(EvidenceKind.Code, Path: "src/App/App.csproj")], ClaimConfidence.High, ClaimOrigin.Deterministic),
@@ -33,6 +38,10 @@ internal static class ModelFixtures
         ["patterns"] = Array.Empty<object>(),
         ["decisions"] = Array.Empty<object>(),
         ["intents"] = Array.Empty<object>(),
+        ["flows"] = Array.Empty<object>(),
+        ["invariants"] = Array.Empty<object>(),
+        ["outline"] = Array.Empty<object>(),
+        ["coverage"] = new { analyzed = Array.Empty<object>(), notAnalyzed = Array.Empty<object>(), rejected = Array.Empty<object>() },
         ["claims"] = claims,
     };
 }

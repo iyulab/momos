@@ -26,6 +26,42 @@ public sealed record ModelDecisionDto(string Id, string Summary, IReadOnlyList<s
 
 public sealed record ModelIntentDto(string Id, string Statement, IntentSource Source, IReadOnlyList<string> Claims);
 
+public sealed record FlowStepDto(string? ComponentId, string ClaimKey);
+
+public sealed record ModelFlowDto(string Id, string Name, IReadOnlyList<FlowStepDto> Steps, IReadOnlyList<string> Claims);
+
+public sealed record ModelInvariantDto(string Id, string Statement, string Kind, IReadOnlyList<string> AppliesTo, IReadOnlyList<string> Claims);
+
+/// <param name="Kind">Required; nullable only so an omission is named instead of binding to the first kind.</param>
+public sealed record OutlineBlockDto(OutlineBlockKind? Kind, string Ref);
+
+public sealed record OutlineSectionDto(string Id, string Path, string Title, string Purpose, IReadOnlyList<string> OwnerSummaryClaims, IReadOnlyList<OutlineBlockDto> Blocks);
+
+public sealed record CoverageAreaDto(string Area, string Detail);
+
+public sealed record CoverageGapDto(string Area, string Reason);
+
+public sealed record CoverageRejectionDto(string Reason, int Count);
+
+public sealed record CoverageGeneratorDto(string Model, string PromptVersion);
+
+public sealed record ModelCoverageDto(
+    IReadOnlyList<CoverageAreaDto> Analyzed, IReadOnlyList<CoverageGapDto> NotAnalyzed,
+    IReadOnlyList<CoverageRejectionDto> Rejected, CoverageGeneratorDto? Generator)
+{
+    public ModelCoverage ToDomain() => new(
+        Analyzed.Select(a => new CoverageArea(a.Area, a.Detail)).ToList(),
+        NotAnalyzed.Select(g => new CoverageGap(g.Area, g.Reason)).ToList(),
+        Rejected.Select(r => new CoverageRejection(r.Reason, r.Count)).ToList(),
+        Generator is null ? null : new CoverageGenerator(Generator.Model, Generator.PromptVersion));
+
+    public static ModelCoverageDto FromDomain(ModelCoverage c) => new(
+        c.Analyzed.Select(a => new CoverageAreaDto(a.Area, a.Detail)).ToList(),
+        c.NotAnalyzed.Select(g => new CoverageGapDto(g.Area, g.Reason)).ToList(),
+        c.Rejected.Select(r => new CoverageRejectionDto(r.Reason, r.Count)).ToList(),
+        c.Generator is null ? null : new CoverageGeneratorDto(c.Generator.Model, c.Generator.PromptVersion));
+}
+
 /// <summary>A Worker's completed-analysis submission for one analysis request.</summary>
 public sealed record SubmitProjectModelRequest(
     string BaseCommit,
@@ -34,6 +70,10 @@ public sealed record SubmitProjectModelRequest(
     IReadOnlyList<ModelPatternDto> Patterns,
     IReadOnlyList<ModelDecisionDto> Decisions,
     IReadOnlyList<ModelIntentDto> Intents,
+    IReadOnlyList<ModelFlowDto> Flows,
+    IReadOnlyList<ModelInvariantDto> Invariants,
+    IReadOnlyList<OutlineSectionDto> Outline,
+    ModelCoverageDto Coverage,
     IReadOnlyList<SubmittedClaim> Claims)
 {
     /// <summary>JSON binding leaves an omitted list as null despite its non-nullable type; name
@@ -62,6 +102,10 @@ public sealed record SubmitProjectModelRequest(
         Require(nameof(Patterns), Patterns);
         Require(nameof(Decisions), Decisions);
         Require(nameof(Intents), Intents);
+        Require(nameof(Flows), Flows);
+        Require(nameof(Invariants), Invariants);
+        Require(nameof(Outline), Outline);
+        Require(nameof(Coverage), Coverage, isList: false);
         Require(nameof(Claims), Claims);
         if (missing.Count > 0)
         {
@@ -95,6 +139,32 @@ public sealed record SubmitProjectModelRequest(
             Require($"Intents['{i.Id}'].Claims", i.Claims);
         }
 
+        foreach (var f in Flows)
+        {
+            Require($"Flows['{f.Id}'].Steps", f.Steps);
+            Require($"Flows['{f.Id}'].Claims", f.Claims);
+        }
+
+        foreach (var i in Invariants)
+        {
+            Require($"Invariants['{i.Id}'].AppliesTo", i.AppliesTo);
+            Require($"Invariants['{i.Id}'].Claims", i.Claims);
+        }
+
+        foreach (var s in Outline)
+        {
+            Require($"Outline['{s.Id}'].OwnerSummaryClaims", s.OwnerSummaryClaims);
+            Require($"Outline['{s.Id}'].Blocks", s.Blocks);
+            for (var n = 0; n < (s.Blocks?.Count ?? 0); n++)
+            {
+                Require($"Outline['{s.Id}'].Blocks[{n + 1}].Kind", s.Blocks![n].Kind, isList: false);
+            }
+        }
+
+        Require("Coverage.Analyzed", Coverage.Analyzed);
+        Require("Coverage.NotAnalyzed", Coverage.NotAnalyzed);
+        Require("Coverage.Rejected", Coverage.Rejected);
+
         foreach (var c in Claims)
         {
             Require($"Claims['{c.Key}'].Tier", c.Tier, isList: false);
@@ -112,7 +182,12 @@ public sealed record SubmitProjectModelRequest(
         Patterns.Select(p => new ModelPattern(p.Id, p.Name, p.AppliesTo, p.Claims)).ToList(),
         Decisions.Select(d => new ModelDecision(d.Id, d.Summary, d.Alternatives, d.Rationale, d.Claims)).ToList(),
         Intents.Select(i => new ModelIntent(i.Id, i.Statement, i.Source, i.Claims)).ToList(),
-        [], [], [], null);
+        Flows.Select(f => new ModelFlow(f.Id, f.Name, f.Steps.Select(s => new FlowStep(s.ComponentId, s.ClaimKey)).ToList(), f.Claims)).ToList(),
+        Invariants.Select(i => new ModelInvariant(i.Id, i.Statement, i.Kind, i.AppliesTo, i.Claims)).ToList(),
+        // MissingFields() has already rejected a block without a kind.
+        Outline.Select(s => new OutlineSection(s.Id, s.Path, s.Title, s.Purpose, s.OwnerSummaryClaims,
+            s.Blocks.Select(b => new OutlineBlock(b.Kind!.Value, b.Ref)).ToList())).ToList(),
+        Coverage.ToDomain());
 }
 
 /// <summary>A developer's verdict on one claim: Confirmed, Disputed, or Corrected (which
@@ -132,7 +207,9 @@ public sealed record ProjectModelResponse(
     Guid ProjectId, int ModelVersion, string BaseCommit, Guid AnalysisRequestId, DateTimeOffset CreatedAt,
     IReadOnlyList<ModelComponentDto> Components, IReadOnlyList<ModelRelationDto> Relations,
     IReadOnlyList<ModelPatternDto> Patterns, IReadOnlyList<ModelDecisionDto> Decisions,
-    IReadOnlyList<ModelIntentDto> Intents, IReadOnlyList<ClaimResponse> Claims)
+    IReadOnlyList<ModelIntentDto> Intents, IReadOnlyList<ModelFlowDto> Flows,
+    IReadOnlyList<ModelInvariantDto> Invariants, IReadOnlyList<OutlineSectionDto> Outline,
+    ModelCoverageDto? Coverage, IReadOnlyList<ClaimResponse> Claims)
 {
     public static ProjectModelResponse FromEntity(ProjectModel m) => new(
         m.ProjectId, m.ModelVersion, m.BaseCommit, m.AnalysisRequestId, m.CreatedAt,
@@ -141,6 +218,11 @@ public sealed record ProjectModelResponse(
         m.Patterns.Select(p => new ModelPatternDto(p.Id, p.Name, p.AppliesTo, p.Claims)).ToList(),
         m.Decisions.Select(d => new ModelDecisionDto(d.Id, d.Summary, d.Alternatives, d.Rationale, d.Claims)).ToList(),
         m.Intents.Select(i => new ModelIntentDto(i.Id, i.Statement, i.Source, i.Claims)).ToList(),
+        m.Flows.Select(f => new ModelFlowDto(f.Id, f.Name, f.Steps.Select(s => new FlowStepDto(s.ComponentId, s.ClaimKey)).ToList(), f.Claims)).ToList(),
+        m.Invariants.Select(i => new ModelInvariantDto(i.Id, i.Statement, i.Kind, i.AppliesTo, i.Claims)).ToList(),
+        m.Outline.Select(s => new OutlineSectionDto(s.Id, s.Path, s.Title, s.Purpose, s.OwnerSummaryClaims,
+            s.Blocks.Select(b => new OutlineBlockDto(b.Kind, b.Ref)).ToList())).ToList(),
+        m.Coverage is null ? null : ModelCoverageDto.FromDomain(m.Coverage),
         m.Claims.OrderBy(c => c.Key, StringComparer.Ordinal).Select(ClaimResponse.FromEntity).ToList());
 }
 

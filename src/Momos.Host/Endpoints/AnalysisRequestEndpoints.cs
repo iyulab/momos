@@ -80,19 +80,23 @@ public static class AnalysisRequestEndpoints
             }
 
             var previous = await ProjectModelQueries.LatestAsync(db, analysisRequest.ProjectId, cancellationToken);
+            var elements = request.ToElements();
             var model = new ProjectModel
             {
                 ProjectId = analysisRequest.ProjectId,
                 ModelVersion = (previous?.ModelVersion ?? 0) + 1,
                 BaseCommit = request.BaseCommit,
                 AnalysisRequestId = id,
+                Coverage = elements.Coverage,
             };
-            var elements = request.ToElements();
             model.Components.AddRange(elements.Components);
             model.Relations.AddRange(elements.Relations);
             model.Patterns.AddRange(elements.Patterns);
             model.Decisions.AddRange(elements.Decisions);
             model.Intents.AddRange(elements.Intents);
+            model.Flows.AddRange(elements.Flows);
+            model.Invariants.AddRange(elements.Invariants);
+            model.Outline.AddRange(elements.Outline);
 
             var priorByKey = previous?.Claims.ToDictionary(c => c.Key, StringComparer.Ordinal)
                 ?? new Dictionary<string, ModelClaim>(StringComparer.Ordinal);

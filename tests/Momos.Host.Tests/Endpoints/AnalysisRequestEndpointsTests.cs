@@ -7,7 +7,7 @@ namespace Momos.Host.Tests.Endpoints;
 
 public sealed class AnalysisRequestEndpointsTests(MomosHostFactory factory) : IClassFixture<MomosHostFactory>
 {
-    private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: 3, WorkerVersion: "0.1.0");
+    private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: TestProtocol.Current, WorkerVersion: "0.1.0");
     private readonly HttpClient _client = factory.CreateAuthorizedClient();
 
     private async Task<Guid> CreateProjectAsync(string? repositoryUrl = "https://example.invalid/acme.git")

@@ -7,7 +7,7 @@ namespace Momos.Host.Tests.Endpoints;
 
 public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClassFixture<MomosHostFactory>
 {
-    private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: 3, WorkerVersion: "0.1.0");
+    private static readonly ClaimNextRequest ClaimNextAsCurrentWorker = new(ProtocolVersion: TestProtocol.Current, WorkerVersion: "0.1.0");
     private readonly HttpClient _client = factory.CreateAuthorizedClient();
 
     /// <summary>Creates a project + analysis request and claims it, leaving it Running. Drains
@@ -413,5 +413,49 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         var response = await _client.GetAsync($"/projects/{projectId}/model");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Submit_TheManualElements_AreReturnedByTheModelEndpoint()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        (await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission())).EnsureSuccessStatusCode();
+
+        var model = await _client.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+
+        Assert.Equal(["cmp.app", "cmp.lib"], model!.Flows.Single().Steps.Select(s => s.ComponentId));
+        Assert.Equal("contract", model.Invariants.Single().Kind);
+        Assert.Equal(OutlineBlockKind.Flow, model.Outline.Single().Blocks[1].Kind);
+        Assert.Equal("source-files", model.Coverage!.NotAnalyzed.Single().Area);
+    }
+
+    [Theory]
+    [InlineData("flows")]
+    [InlineData("invariants")]
+    [InlineData("outline")]
+    [InlineData("coverage")]
+    public async Task Submit_WithoutAManualElementField_Returns400NamingIt(string omitted)
+    {
+        var (_, requestId) = await StartAnalysisAsync(_client);
+        var body = ModelFixtures.AnonymousBody(claims: []);
+        body.Remove(omitted);
+
+        var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains($"'{char.ToUpperInvariant(omitted[0])}{omitted[1..]}' is required", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Submit_AnOutlineBlockWithoutAKind_Returns400NamingIt()
+    {
+        var (_, requestId) = await StartAnalysisAsync(_client);
+        var body = ModelFixtures.AnonymousBody(claims: []);
+        body["outline"] = new[] { new { id = "sec.a", path = "a.md", title = "A", purpose = "", ownerSummaryClaims = Array.Empty<string>(), blocks = new[] { new { @ref = "clm.a" } } } };
+
+        var response = await _client.PostAsJsonAsync($"/analysis-requests/{requestId}/model", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Outline['sec.a'].Blocks[1].Kind", await response.Content.ReadAsStringAsync());
     }
 }
