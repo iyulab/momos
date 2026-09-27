@@ -30,6 +30,7 @@ public sealed partial class DeepReportRendererTests
         Statement = statement,
         Evidence = [new ClaimEvidence(EvidenceKind.Code, Path: "src/App/App.csproj", Lines: "6")],
         Confidence = ClaimConfidence.High,
+        Origin = ClaimOrigin.Deterministic,
     };
 
     /// <summary>Every element kind and every link-producing branch: patterns, intents, and an
@@ -46,6 +47,7 @@ public sealed partial class DeepReportRendererTests
             Statement = "The library looks deliberately UI-free",
             Evidence = [new ClaimEvidence(EvidenceKind.Claim, ClaimKey: "clm.ref")],
             Confidence = ClaimConfidence.Low,
+            Origin = ClaimOrigin.Deterministic,
         });
         configure?.Invoke(m);
     });
@@ -337,6 +339,7 @@ public sealed partial class DeepReportRendererTests
                 Statement = "App is a .NET project",
                 Evidence = [new ClaimEvidence(EvidenceKind.Code, Path: "src/App/Program.cs", Lines: "3-9", Symbol: "List<Item>.Add")],
                 Confidence = ClaimConfidence.High,
+                Origin = ClaimOrigin.Deterministic,
             }))),
             "claims/clm.app.md");
 

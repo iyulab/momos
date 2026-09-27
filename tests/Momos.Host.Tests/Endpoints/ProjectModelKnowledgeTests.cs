@@ -41,7 +41,7 @@ public sealed class ProjectModelKnowledgeTests(MomosHostFactory factory) : IClas
         {
             Components = [.. ModelFixtures.ValidSubmission().Components, new ModelComponentDto("cmp.legacy", "Zanzibarlegacy", "library", null, ["clm.legacy"])],
             Claims = [.. ModelFixtures.ValidSubmission().Claims, new SubmittedClaim("clm.legacy", ClaimTier.Fact, "Zanzibarlegacy is a .NET project",
-                [new ClaimEvidenceDto(EvidenceKind.Code, Path: "src/Legacy/Legacy.csproj")], ClaimConfidence.High)],
+                [new ClaimEvidenceDto(EvidenceKind.Code, Path: "src/Legacy/Legacy.csproj")], ClaimConfidence.High, ClaimOrigin.Deterministic)],
         };
         await SubmitCreatedAsync(first, withExtra);
         Assert.Contains(await QueryAsync(projectId, "Zanzibarlegacy"), s => s.Content.Contains("Zanzibarlegacy"));

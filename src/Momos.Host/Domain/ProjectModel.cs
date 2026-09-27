@@ -10,6 +10,11 @@ public enum EvidenceKind { Code, Commit, PullRequest, Issue, Finding, Claim }
 
 public enum IntentSource { Developer, Document, Inferred }
 
+/// <summary>How a claim was produced: read mechanically from the repository by an extractor, or
+/// synthesized by a language model from what it read. Both pass the same evidence checks; the
+/// origin tells a reader how much interpretation stands between the evidence and the sentence.</summary>
+public enum ClaimOrigin { Deterministic, Synthesized }
+
 /// <summary>One piece of evidence behind a claim. Which fields are meaningful depends on
 /// <see cref="Kind"/>: Code → Path (+Symbol, Lines), Commit → Sha, PullRequest/Issue → Url,
 /// Finding → InspectionRequestId (a reproduced defect), Claim → ClaimKey (another claim in the
@@ -76,6 +81,7 @@ public sealed class ModelClaim
     public required string Statement { get; init; }
     public List<ClaimEvidence> Evidence { get; init; } = [];
     public required ClaimConfidence Confidence { get; init; }
+    public required ClaimOrigin Origin { get; init; }
     public ClaimStatus Status { get; set; } = ClaimStatus.Proposed;
     public string? Correction { get; set; }
     public DateTimeOffset? CorrectedAt { get; set; }

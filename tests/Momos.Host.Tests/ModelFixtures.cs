@@ -18,8 +18,8 @@ internal static class ModelFixtures
         Intents: [],
         Claims:
         [
-            new SubmittedClaim("clm.app", ClaimTier.Fact, componentStatement, [new ClaimEvidenceDto(EvidenceKind.Code, Path: "src/App/App.csproj")], ClaimConfidence.High),
-            new SubmittedClaim("clm.lib", ClaimTier.Fact, "Lib is a .NET project", [new ClaimEvidenceDto(EvidenceKind.Code, Path: "src/Lib/Lib.csproj")], ClaimConfidence.High),
-            new SubmittedClaim("clm.ref", ClaimTier.Fact, "App references Lib", [new ClaimEvidenceDto(EvidenceKind.Code, Path: "src/App/App.csproj", Symbol: "ProjectReference", Lines: "9")], ClaimConfidence.High),
+            new SubmittedClaim("clm.app", ClaimTier.Fact, componentStatement, [new ClaimEvidenceDto(EvidenceKind.Code, Path: "src/App/App.csproj")], ClaimConfidence.High, ClaimOrigin.Deterministic),
+            new SubmittedClaim("clm.lib", ClaimTier.Fact, "Lib is a .NET project", [new ClaimEvidenceDto(EvidenceKind.Code, Path: "src/Lib/Lib.csproj")], ClaimConfidence.High, ClaimOrigin.Deterministic),
+            new SubmittedClaim("clm.ref", ClaimTier.Fact, "App references Lib", [new ClaimEvidenceDto(EvidenceKind.Code, Path: "src/App/App.csproj", Symbol: "ProjectReference", Lines: "9")], ClaimConfidence.High, ClaimOrigin.Deterministic),
         ]);
 }

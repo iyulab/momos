@@ -80,6 +80,7 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
         claim.Property(c => c.Tier).HasConversion<string>();
         claim.Property(c => c.Confidence).HasConversion<string>();
         claim.Property(c => c.Status).HasConversion<string>();
+        claim.Property(c => c.Origin).HasConversion<string>();
         claim.HasIndex(c => new { c.ProjectModelId, c.Key }).IsUnique();
     }
 }

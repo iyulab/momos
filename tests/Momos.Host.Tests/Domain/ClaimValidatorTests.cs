@@ -14,6 +14,7 @@ public sealed class ClaimValidatorTests
         Statement = $"statement {key}",
         Evidence = [.. evidence],
         Confidence = confidence,
+        Origin = ClaimOrigin.Deterministic,
     };
 
     private static readonly ClaimEvidence CodeAt = new(EvidenceKind.Code, Path: "src/App/App.csproj");

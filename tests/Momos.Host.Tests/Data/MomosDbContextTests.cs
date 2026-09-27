@@ -186,6 +186,7 @@ public sealed class MomosDbContextTests : IAsyncLifetime
                 Statement = "statement clm.a",
                 Evidence = [new ClaimEvidence(EvidenceKind.Code, Path: "src/App/App.csproj")],
                 Confidence = ClaimConfidence.High,
+                Origin = ClaimOrigin.Synthesized,
             });
             seedDb.ProjectModels.Add(projectModel);
             await seedDb.SaveChangesAsync();
@@ -206,6 +207,7 @@ public sealed class MomosDbContextTests : IAsyncLifetime
         var evidence = Assert.Single(claim.Evidence);
         Assert.Equal(EvidenceKind.Code, evidence.Kind);
         Assert.Equal("src/App/App.csproj", evidence.Path);
+        Assert.Equal(ClaimOrigin.Synthesized, claim.Origin);
     }
 
     [Fact]
