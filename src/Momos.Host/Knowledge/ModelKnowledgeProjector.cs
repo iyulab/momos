@@ -20,7 +20,8 @@ public sealed class ModelKnowledgeProjector(IKnowledgeIndex index, ILogger<Model
     {
         var text = new StringBuilder()
             .Append("Project model claim ").Append(claim.Key)
-            .Append(" [").Append(claim.Tier).Append(", ").Append(claim.Confidence).Append(" confidence, ").Append(claim.Status).Append("]: ")
+            .Append(" [").Append(claim.Tier).Append(", ").Append(claim.Confidence).Append(" confidence, ").Append(claim.Status)
+            .Append(", ").Append(claim.Origin == ClaimOrigin.Synthesized ? "synthesized by a language model" : "extracted deterministically").Append("]: ")
             .AppendLine(claim.Statement)
             .Append("Evidence: ")
             .AppendLine(string.Join("; ", claim.Evidence.Select(DescribeEvidence)));

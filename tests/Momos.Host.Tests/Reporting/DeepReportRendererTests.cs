@@ -47,7 +47,7 @@ public sealed partial class DeepReportRendererTests
             Statement = "The library looks deliberately UI-free",
             Evidence = [new ClaimEvidence(EvidenceKind.Claim, ClaimKey: "clm.ref")],
             Confidence = ClaimConfidence.Low,
-            Origin = ClaimOrigin.Deterministic,
+            Origin = ClaimOrigin.Synthesized,
         });
         configure?.Invoke(m);
     });
@@ -146,8 +146,8 @@ public sealed partial class DeepReportRendererTests
             m.Claims.Single(c => c.Key == "clm.lib").Status = ClaimStatus.Disputed)), "index.md");
 
         Assert.Contains("## Claims", index);
-        Assert.Contains("| [`clm.lib`](claims/clm.lib.md) | Fact | High | Disputed | Lib is a .NET project |", index);
-        Assert.Contains("| [`clm.app`](claims/clm.app.md) | Fact | High | Proposed | App is a .NET project |", index);
+        Assert.Contains("| [`clm.lib`](claims/clm.lib.md) | Fact | High | Deterministic | Disputed | Lib is a .NET project |", index);
+        Assert.Contains("| [`clm.app`](claims/clm.app.md) | Fact | High | Deterministic | Proposed | App is a .NET project |", index);
     }
 
     [Fact]
@@ -367,5 +367,32 @@ public sealed partial class DeepReportRendererTests
         Assert.InRange(title.Length, 10, 2 + 80 + 1);
         Assert.DoesNotContain("wor…", title);
         Assert.Contains(statement, claim);
+    }
+
+    [Fact]
+    public void EveryClaim_ShowsWhetherItWasExtractedOrSynthesized()
+    {
+        var tree = DeepReportRenderer.Render("Acme", RichModel());
+
+        Assert.Contains("| Origin |", Doc(tree, "index.md"));
+        Assert.Contains("Synthesized", Doc(tree, "claims/clm.split.md"));
+        Assert.Contains("Deterministic", Doc(tree, "claims/clm.app.md"));
+    }
+
+    [Fact]
+    public void AComponentsResponsibility_IsShownWithTheClaimsBehindIt()
+    {
+        var model = Model(m =>
+        {
+            m.Components.Clear();
+            m.Components.Add(new ModelComponent("cmp.app", "App", "executable", "Serves the public API", ["clm.app"]));
+        });
+
+        var page = Doc(DeepReportRenderer.Render("Acme", model), "components/cmp.app.md");
+
+        var responsibility = page.IndexOf("Serves the public API", StringComparison.Ordinal);
+        var backing = page.IndexOf("Backed by", StringComparison.Ordinal);
+        Assert.True(responsibility >= 0 && backing > responsibility, page);
+        Assert.Contains("(../claims/clm.app.md)", page[backing..]);
     }
 }

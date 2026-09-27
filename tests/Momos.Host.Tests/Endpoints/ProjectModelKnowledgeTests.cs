@@ -78,9 +78,9 @@ public sealed class ProjectModelKnowledgeTests(MomosHostFactory factory) : IClas
         var snippets = await QueryAsync(projectId, "Quetzalplugin");
         var snippet = Assert.Single(snippets, s => s.Content.Contains("claim clm.ref "));
         Assert.Contains("Developer correction (authoritative): Quetzalplugin", snippet.Content);
-        Assert.Contains("Corrected]", snippet.Content);
+        Assert.Contains("Corrected, extracted deterministically]", snippet.Content);
         Assert.DoesNotContain(await QueryAsync(projectId, "App references Lib"),
-            s => s.Content.Contains("claim clm.ref ") && s.Content.Contains("Proposed]"));
+            s => s.Content.Contains("claim clm.ref ") && s.Content.Contains("Proposed, extracted deterministically]"));
     }
 
     [Fact]
