@@ -103,4 +103,19 @@ public sealed class ProjectEndpointsTests : IClassFixture<MomosHostFactory>
         Assert.Null(created.AppInstallPlatform);
         Assert.Null(created.AppInstallLaunchCommand);
     }
+
+    [Fact]
+    public async Task AProjectCanNameItsReportLanguage_AndAnUnsupportedOneIsRefused()
+    {
+        var created = await _client.PostAsJsonAsync("/projects", new { name = "acme", repositoryUrl = "https://example.invalid/acme.git", purpose = "p", vision = "v", scope = "s", reportLanguage = " KO " });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var body = await created.Content.ReadFromJsonAsync<ProjectResponse>(TestJsonOptions.Value);
+        Assert.Equal("ko", body!.ReportLanguage);
+
+        var fetched = await _client.GetFromJsonAsync<ProjectResponse>($"/projects/{body.Id}", TestJsonOptions.Value);
+        Assert.Equal("ko", fetched!.ReportLanguage);
+
+        var refused = await _client.PostAsJsonAsync("/projects", new { name = "acme", purpose = "p", vision = "v", scope = "s", reportLanguage = "ja" });
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+    }
 }

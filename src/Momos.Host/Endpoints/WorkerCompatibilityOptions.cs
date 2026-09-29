@@ -15,9 +15,10 @@ public sealed class WorkerCompatibilityOptions
     /// means bumping both. Protocol 3 added the request <c>Kind</c> to claim-next: a protocol-2
     /// Worker would run an analysis request as an inspection. Protocol 4 made the model
     /// submission carry flows, invariants, an outline and the analysis coverage: a protocol-3
-    /// Worker would be refused only at submission, after the whole analysis.
+    /// Worker would be refused only at submission, after the whole analysis. Protocol 5 added the
+    /// request <c>Language</c> to claim-next: a protocol-4 Worker would write every manual in English.
     /// </summary>
-    public int MinSupportedProtocolVersion { get; set; } = 4;
+    public int MinSupportedProtocolVersion { get; set; } = 5;
 
     /// <summary>Soft update hint returned only when it differs from the Worker's reported
     /// WorkerVersion. Null (the default) means "unset" — an operator sets this when cutting a

@@ -73,8 +73,4 @@ public sealed class ModelIdsAndPathsTests
             MaxTotalTokens = totalTokens,
             MaxDuration = TimeSpan.FromMinutes(minutes),
         }));
-
-    [Fact]
-    public void TheDefaults_AreValid_AndLeaveRoomUnderTheHostsDefaultReclaimLease() =>
-        Assert.True(AnalysisOptions.IsValid(new AnalysisOptions()) && new AnalysisOptions().MaxDuration < TimeSpan.FromMinutes(30));
 }

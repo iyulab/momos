@@ -7,6 +7,33 @@ public static partial class DeepReportRenderer
 {
     private const string NoEvidence = "No evidence for this chapter was found in this repository.";
 
+    private const string PartialPrefix = "partial — ";
+
+    /// <summary>Why the analysis did not (fully) write <paramref name="section"/>, as recorded in the
+    /// model's coverage — the text after "&lt;chapter path&gt;:", including a leading "partial — " —
+    /// or null when coverage says nothing about the chapter.</summary>
+    internal static string? NotAnalyzedReason(ProjectModel model, OutlineSection section)
+    {
+        var start = $"{section.Path}:";
+        var gap = model.Coverage?.NotAnalyzed.FirstOrDefault(g =>
+            g.Area == "manual-chapter" && g.Reason.StartsWith(start, StringComparison.Ordinal));
+        return gap?.Reason[start.Length..].Trim();
+    }
+
+    /// <summary>The reason after the "partial — " marker, or null when <paramref name="reason"/> does not carry it.</summary>
+    internal static string? PartialReason(string? reason) =>
+        reason is not null && reason.StartsWith(PartialPrefix, StringComparison.Ordinal) ? reason[PartialPrefix.Length..].Trim() : null;
+
+    /// <summary>True when the chapter has neither an owner summary nor any block — nothing was written in it.</summary>
+    internal static bool IsEmpty(OutlineSection s) => s.OwnerSummaryClaims.Count == 0 && s.Blocks.Count == 0;
+
+    /// <summary>What an empty chapter says: that the analysis did not get to it (and why) when coverage
+    /// records that, and that the repository holds no evidence only when the analysis ran to the end.</summary>
+    private static string EmptyChapterText(ProjectModel model, OutlineSection section) =>
+        NotAnalyzedReason(model, section) is { } reason
+            ? $"This chapter was not analyzed: {Inline((PartialReason(reason) ?? reason).TrimEnd('.'))}."
+            : NoEvidence;
+
     private static string OutlineIndex(string projectName, ProjectModel model, Tree tree)
     {
         var md = new StringBuilder()
@@ -29,7 +56,18 @@ public static partial class DeepReportRenderer
                 md.Line($"_{Subtitle(s.Purpose)}_").Line();
             }
 
-            OwnerSummary(md, s, tree, emptyText: s.Blocks.Count == 0 ? NoEvidence : null);
+            if (s.OwnerSummaryClaims.Select(tree.Claim).OfType<ModelClaim>().Any())
+            {
+                OwnerSummary(md, s, tree, "claims/", emptyText: null);
+            }
+            else if (s.Blocks.Count == 0)
+            {
+                md.Line(EmptyChapterText(model, s)).Line();
+            }
+            else
+            {
+                ChapterPreview(md, s, tree);
+            }
         }
 
         // Chapters cite only some components and claims; these keep every page reachable.
@@ -38,7 +76,36 @@ public static partial class DeepReportRenderer
         return md.ToString();
     }
 
-    private static string SectionPage(OutlineSection section, ProjectModel model, Tree tree)
+    private const int PreviewClaims = 3;
+
+    /// <summary>For a chapter without an owner summary: its first statements, so the index shows
+    /// what the chapter holds instead of a bare title.</summary>
+    private static void ChapterPreview(StringBuilder md, OutlineSection section, Tree tree)
+    {
+        var claims = section.Blocks
+            .Where(b => b.Kind == OutlineBlockKind.Claim)
+            .Select(b => tree.Claim(b.Ref))
+            .OfType<ModelClaim>()
+            .ToList();
+        if (claims.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var c in claims.Take(PreviewClaims))
+        {
+            md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, "claims/")})");
+        }
+
+        if (claims.Count > PreviewClaims)
+        {
+            md.Line().Line($"… and {claims.Count - PreviewClaims} more in [the chapter]({section.Path})");
+        }
+
+        md.Line();
+    }
+
+    private static string SectionPage(OutlineSection section, ProjectModel model, Tree tree, Links l)
     {
         // LinkText: a heading must not turn into a link, whatever the title says.
         var md = new StringBuilder().Line($"# {LinkText(section.Title)}").Line();
@@ -48,28 +115,33 @@ public static partial class DeepReportRenderer
             md.Line($"_{Subtitle(section.Purpose)}_").Line();
         }
 
-        md.Line($"Back to the [summary](index.md).").Line();
-        if (section.OwnerSummaryClaims.Count == 0 && section.Blocks.Count == 0)
+        if (!IsEmpty(section) && PartialReason(NotAnalyzedReason(model, section)) is { } partial)
         {
-            md.Line(NoEvidence).Line();
+            md.Line($"This chapter is partial: {Inline(partial.TrimEnd('.'))}.").Line();
+        }
+
+        md.Line($"Back to the [summary]({l.Summary}).").Line();
+        if (IsEmpty(section))
+        {
+            md.Line(EmptyChapterText(model, section)).Line();
             return md.ToString();
         }
 
         md.Line("## Owner summary").Line();
-        OwnerSummary(md, section, tree, emptyText: "No owner summary was produced for this chapter.");
+        OwnerSummary(md, section, tree, l.Claims, emptyText: "No owner summary was produced for this chapter.");
         if (section.Blocks.Count > 0)
         {
             md.Line("## Details").Line();
             foreach (var block in section.Blocks)
             {
-                RenderBlock(md, block, model, tree);
+                RenderBlock(md, block, model, tree, l);
             }
         }
 
         return md.ToString();
     }
 
-    private static void OwnerSummary(StringBuilder md, OutlineSection section, Tree tree, string? emptyText)
+    private static void OwnerSummary(StringBuilder md, OutlineSection section, Tree tree, string claimsPrefix, string? emptyText)
     {
         var claims = section.OwnerSummaryClaims.Select(tree.Claim).OfType<ModelClaim>().ToList();
         if (claims.Count == 0)
@@ -84,41 +156,41 @@ public static partial class DeepReportRenderer
 
         foreach (var c in claims)
         {
-            md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, "claims/")})");
+            md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, claimsPrefix)})");
         }
 
         md.Line();
     }
 
-    private static void RenderBlock(StringBuilder md, OutlineBlock block, ProjectModel model, Tree tree)
+    private static void RenderBlock(StringBuilder md, OutlineBlock block, ProjectModel model, Tree tree, Links l)
     {
-        string Backed(IReadOnlyList<string> keys) => $"_Backed by {tree.ClaimLinks(keys, "claims/")}._";
+        string Backed(IReadOnlyList<string> keys) => $"_Backed by {tree.ClaimLinks(keys, l.Claims)}._";
         switch (block.Kind)
         {
             case OutlineBlockKind.Claim when tree.Claim(block.Ref) is { } c:
-                md.Line($"- {Inline(c.Statement)} — {c.Tier} · {c.Confidence} ({tree.ClaimLink(c.Key, "claims/")})").Line();
+                md.Line($"- {Inline(c.Statement)} — {c.Tier} · {c.Confidence} ({tree.ClaimLink(c.Key, l.Claims)})").Line();
                 break;
             case OutlineBlockKind.Component when tree.Component(block.Ref) is { } c:
-                md.Line($"### Component: {tree.ComponentLink(c.Id, "components/")}").Line();
+                md.Line($"### Component: {tree.ComponentLink(c.Id, l.Components)}").Line();
                 if (!string.IsNullOrWhiteSpace(c.Responsibility))
                 {
                     md.Line(Block(c.Responsibility)).Line().Line(Backed(c.Claims)).Line();
                 }
                 else
                 {
-                    md.Line($"{Inline(c.Kind)} ({tree.ClaimLinks(c.Claims, "claims/")})").Line();
+                    md.Line($"{Inline(c.Kind)} ({tree.ClaimLinks(c.Claims, l.Claims)})").Line();
                 }
 
                 break;
             case OutlineBlockKind.Pattern when tree.Patterns.TryGetValue(block.Ref, out var p):
                 md.Line($"### Pattern: {Inline(p.Name)}").Line()
-                  .Line($"Applies to {string.Join(", ", p.AppliesTo.Select(id => tree.ComponentLink(id, "components/")))}.").Line()
+                  .Line($"Applies to {string.Join(", ", p.AppliesTo.Select(id => tree.ComponentLink(id, l.Components)))}.").Line()
                   .Line(Backed(p.Claims)).Line();
                 break;
             case OutlineBlockKind.Decision when tree.Decisions.TryGetValue(block.Ref, out var d):
                 md.Line($"### Decision: {Inline(d.Summary)}").Line()
                   .Line(d.Rationale == ModelDecision.Unrecorded
-                      ? $"Rationale: _unrecorded_ — asked in [what this report does not know]({UnknownsPage})."
+                      ? $"Rationale: _unrecorded_ — asked in [what this report does not know]({l.Unknowns})."
                       : $"Rationale: {Inline(d.Rationale)}").Line();
                 if (d.Alternatives.Count > 0)
                 {
@@ -137,9 +209,9 @@ public static partial class DeepReportRenderer
                 for (var n = 0; n < f.Steps.Count; n++)
                 {
                     var step = f.Steps[n];
-                    var where = step.ComponentId is null ? "" : $"{tree.ComponentLink(step.ComponentId, "components/")} — ";
+                    var where = step.ComponentId is null ? "" : $"{tree.ComponentLink(step.ComponentId, l.Components)} — ";
                     var what = tree.Claim(step.ClaimKey) is { } c ? Inline(c.Statement) : "";
-                    md.Line($"{n + 1}. {where}{what} ({tree.ClaimLink(step.ClaimKey, "claims/")})");
+                    md.Line($"{n + 1}. {where}{what} ({tree.ClaimLink(step.ClaimKey, l.Claims)})");
                 }
 
                 md.Line().Line(Backed(f.Claims)).Line();
@@ -147,7 +219,7 @@ public static partial class DeepReportRenderer
             case OutlineBlockKind.Invariant when tree.Invariants.TryGetValue(block.Ref, out var inv):
                 md.Line($"### Invariant: {Inline(inv.Statement)}").Line()
                   .Line($"Kind: {Inline(inv.Kind)}." + (inv.AppliesTo.Count > 0
-                      ? $" Applies to {string.Join(", ", inv.AppliesTo.Select(id => tree.ComponentLink(id, "components/")))}."
+                      ? $" Applies to {string.Join(", ", inv.AppliesTo.Select(id => tree.ComponentLink(id, l.Components)))}."
                       : "")).Line()
                   .Line(Backed(inv.Claims)).Line();
                 break;
@@ -161,7 +233,7 @@ public static partial class DeepReportRenderer
                 var ids = around.SelectMany(r => new[] { r.From, r.To }).Append(centre.Id).ToHashSet(StringComparer.Ordinal);
                 md.Line($"### Map: {LinkText(centre.Name)}").Line();
                 Mermaid(md, tree.Components.Where(c => ids.Contains(c.Id)).ToList(), around);
-                md.Line().Line($"_Backed by {tree.ClaimLinks(around.SelectMany(r => r.Claims).Distinct(StringComparer.Ordinal), "claims/")}._").Line();
+                md.Line().Line($"_Backed by {tree.ClaimLinks(around.SelectMany(r => r.Claims).Distinct(StringComparer.Ordinal), l.Claims)}._").Line();
                 break;
             default:
                 // Validation rejects a block that does not resolve; a stored model that predates a

@@ -35,24 +35,98 @@ public static partial class DeepReportRenderer
         var documents = new List<ReportDocument>
         {
             new("index.md", model.Outline.Count > 0 ? OutlineIndex(projectName, model, tree) : Index(projectName, model, tree)),
-            new(UnknownsPage, Unknowns(model, tree)),
+            UnknownsDocument(model, UnknownsPage, "", ""),
         };
+        documents.AddRange(AppendixPages(model, "", ""));
+        return documents;
+    }
+
+    /// <summary>
+    /// The chapter pages (at <c>{chapterPrefix}{section.Path}</c>) and the component and claim pages
+    /// they link to (under <c>{evidencePrefix}components/</c> and <c>{evidencePrefix}claims/</c>) — the
+    /// part of the report that does not depend on where its summary lives. Prefixes are empty or end
+    /// in "/"; every link between these pages is relative to the folder of the page it is on. The
+    /// pages' links back to a summary and to an unknowns page point at <paramref name="summaryPage"/>
+    /// and <paramref name="unknownsPage"/>, paths in the same tree as the pages themselves.
+    /// </summary>
+    internal static IReadOnlyList<ReportDocument> AppendixPages(
+        ProjectModel model, string chapterPrefix, string evidencePrefix, string summaryPage = "index.md", string unknownsPage = UnknownsPage)
+    {
+        var tree = new Tree(model);
+        var claimsDir = ClaimsDir(evidencePrefix);
+        var componentsDir = ComponentsDir(evidencePrefix);
+        Links LinksFrom(string dir) => Links.From(dir, evidencePrefix, summaryPage, unknownsPage);
+
+        var documents = new List<ReportDocument>();
+        var chapterLinks = LinksFrom(chapterPrefix);
         foreach (var section in model.Outline)
         {
-            documents.Add(new(section.Path, SectionPage(section, model, tree)));
+            documents.Add(new($"{chapterPrefix}{section.Path}", SectionPage(section, model, tree, chapterLinks)));
         }
 
+        var componentLinks = LinksFrom(componentsDir);
         foreach (var component in tree.Components)
         {
-            documents.Add(new($"components/{tree.ComponentFile(component.Id)}", ComponentPage(component, model, tree)));
+            documents.Add(new($"{componentsDir}{tree.ComponentFile(component.Id)}", ComponentPage(component, model, tree, componentLinks)));
         }
 
+        var claimLinks = LinksFrom(claimsDir);
         foreach (var claim in tree.Claims)
         {
-            documents.Add(new($"claims/{tree.ClaimFile(claim.Key)}", ClaimPage(claim, tree)));
+            documents.Add(new($"{claimsDir}{tree.ClaimFile(claim.Key)}", ClaimPage(claim, tree, claimLinks)));
         }
 
         return documents;
+    }
+
+    private static string ClaimsDir(string evidencePrefix) => $"{evidencePrefix}claims/";
+
+    private static string ComponentsDir(string evidencePrefix) => $"{evidencePrefix}components/";
+
+    /// <summary>The folder part of a page path: empty for a page at the root, else ending in "/".</summary>
+    private static string DirOf(string page) => page[..(page.LastIndexOf('/') + 1)];
+
+    /// <summary>The way into every component and claim page when the summary is elsewhere: the
+    /// structure diagram, the component list and the claims table, at <c>{evidencePrefix}index.md</c>,
+    /// beside the <c>components/</c> and <c>claims/</c> folders it links to. Chapters cite only some
+    /// components and claims; this page keeps the rest reachable, with or without an outline.</summary>
+    internal static ReportDocument EvidenceIndex(ProjectModel model, string evidencePrefix, string summaryPage = "index.md")
+    {
+        var tree = new Tree(model);
+        var md = new StringBuilder()
+            .Line("# Evidence")
+            .Line()
+            .Line($"Every component and every claim of project model version {model.ModelVersion}, each on a page of its own. Back to the [summary]({Relative(evidencePrefix, summaryPage)}).")
+            .Line();
+        Structure(md, model, tree);
+        ClaimsTable(md, tree);
+        return new($"{evidencePrefix}index.md", md.ToString());
+    }
+
+    /// <summary>Where the pages a page links to live, relative to that page's folder.</summary>
+    private readonly record struct Links(string Claims, string Components, string Summary, string Unknowns)
+    {
+        public static Links From(string dir, string evidencePrefix, string summaryPage, string unknownsPage) => new(
+            Relative(dir, ClaimsDir(evidencePrefix)), Relative(dir, ComponentsDir(evidencePrefix)), Relative(dir, summaryPage), Relative(dir, unknownsPage));
+    }
+
+    /// <summary>The relative link from a page in <paramref name="fromDir"/> (empty or ending in "/")
+    /// to <paramref name="to"/>, a file path or a folder ending in "/".</summary>
+    internal static string Relative(string fromDir, string to)
+    {
+        var from = fromDir.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var target = to.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var folder = to.EndsWith('/');
+        var limit = Math.Min(from.Length, folder ? target.Length : target.Length - 1);
+        var common = 0;
+        while (common < limit && from[common] == target[common])
+        {
+            common++;
+        }
+
+        var up = string.Concat(Enumerable.Repeat("../", from.Length - common));
+        var down = string.Join('/', target[common..]);
+        return up + down + (folder && down.Length > 0 ? "/" : "");
     }
 
     private static string Index(string projectName, ProjectModel model, Tree tree)
@@ -194,18 +268,18 @@ public static partial class DeepReportRenderer
         }
     }
 
-    private static string ComponentPage(ModelComponent component, ProjectModel model, Tree tree)
+    private static string ComponentPage(ModelComponent component, ProjectModel model, Tree tree, Links l)
     {
         var md = new StringBuilder()
             .Line($"# {Inline(component.Name)}")
             .Line()
-            .Line($"Kind: {Inline(component.Kind)}. Back to the [summary](../index.md).")
+            .Line($"Kind: {Inline(component.Kind)}. Back to the [summary]({l.Summary}).")
             .Line();
         if (!string.IsNullOrWhiteSpace(component.Responsibility))
         {
             // Element text is never shown on its own: the claims that back it sit right beside it.
             md.Line(Block(component.Responsibility)).Line()
-              .Line($"_Backed by {tree.ClaimLinks(component.Claims, "../claims/")}._").Line();
+              .Line($"_Backed by {tree.ClaimLinks(component.Claims, l.Claims)}._").Line();
         }
 
         var outgoing = model.Relations.Where(r => r.From == component.Id && tree.HasComponent(r.To)).ToList();
@@ -215,27 +289,27 @@ public static partial class DeepReportRenderer
             md.Line("## Relations").Line();
             foreach (var r in outgoing)
             {
-                md.Line($"- {Inline(r.Kind)} {tree.ComponentLink(r.To, "")} ({tree.ClaimLinks(r.Claims, "../claims/")})");
+                md.Line($"- {Inline(r.Kind)} {tree.ComponentLink(r.To, "")} ({tree.ClaimLinks(r.Claims, l.Claims)})");
             }
 
             foreach (var r in incoming)
             {
-                md.Line($"- {tree.ComponentLink(r.From, "")} {Inline(r.Kind)} this ({tree.ClaimLinks(r.Claims, "../claims/")})");
+                md.Line($"- {tree.ComponentLink(r.From, "")} {Inline(r.Kind)} this ({tree.ClaimLinks(r.Claims, l.Claims)})");
             }
 
             md.Line();
         }
 
-        md.Line("## Claims behind this component").Line().Line(tree.ClaimLinks(component.Claims, "../claims/"));
+        md.Line("## Claims behind this component").Line().Line(tree.ClaimLinks(component.Claims, l.Claims));
         return md.ToString();
     }
 
-    private static string ClaimPage(ModelClaim claim, Tree tree)
+    private static string ClaimPage(ModelClaim claim, Tree tree, Links l)
     {
         var md = new StringBuilder()
             .Line($"# {Title(claim.Statement)}")
             .Line()
-            .Line($"Claim {Code(claim.Key)}. Back to the [summary](../index.md).")
+            .Line($"Claim {Code(claim.Key)}. Back to the [summary]({l.Summary}).")
             .Line()
             .Line("| Tier | Confidence | Origin | Status |").Line("|---|---|---|---|")
             .Line($"| {claim.Tier} | {claim.Confidence} | {claim.Origin} | {claim.Status} |")
@@ -276,21 +350,21 @@ public static partial class DeepReportRenderer
         _ => e.Kind.ToString(),
     };
 
-    private static string Date(DateTimeOffset at) => at.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    internal static string Date(DateTimeOffset at) => at.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private const int TitleLength = 80;
 
     /// <summary>Free text that must stay on one line (headings, list items).</summary>
-    private static string Inline(string text) => EscapeHtml(OneLine(text));
+    internal static string Inline(string text) => EscapeHtml(OneLine(text));
 
     /// <summary>A paragraph of free text, with its line endings normalized to <c>\n</c>.</summary>
-    private static string Block(string text) => EscapeHtml(text.ReplaceLineEndings("\n").Trim('\n'));
+    internal static string Block(string text) => EscapeHtml(text.ReplaceLineEndings("\n").Trim('\n'));
 
     private static string OneLine(string text) => text.ReplaceLineEndings(" ");
 
     /// <summary>A page title from free text: the text itself, or — past <see cref="TitleLength"/>
     /// characters — its words up to that length followed by an ellipsis.</summary>
-    private static string Title(string text)
+    internal static string Title(string text)
     {
         var line = OneLine(text).Trim();
         if (line.Length > TitleLength)
@@ -332,7 +406,7 @@ public static partial class DeepReportRenderer
     private static partial Regex CodeSpan();
 
     /// <summary>A table cell from markdown that is already rendered; only pipes are escaped.</summary>
-    private static string Cell(string text) => OneLine(text).Replace("|", @"\|", StringComparison.Ordinal);
+    internal static string Cell(string text) => OneLine(text).Replace("|", @"\|", StringComparison.Ordinal);
 
     /// <summary>Text for an emphasized subtitle: markdown emphasis markers in it are escaped so the
     /// text cannot close the emphasis and continue as ordinary (bold, asserting) prose.</summary>
@@ -341,13 +415,13 @@ public static partial class DeepReportRenderer
         .Replace("_", @"\_", StringComparison.Ordinal)
         .Replace("*", @"\*", StringComparison.Ordinal);
 
-    private static string LinkText(string text) => Inline(text)
+    internal static string LinkText(string text) => Inline(text)
         .Replace(@"\", @"\\", StringComparison.Ordinal)
         .Replace("[", @"\[", StringComparison.Ordinal)
         .Replace("]", @"\]", StringComparison.Ordinal);
 
     /// <summary>An inline code span that survives backticks in its content.</summary>
-    private static string Code(string text)
+    internal static string Code(string text)
     {
         var inline = OneLine(text);
         return inline.Contains('`', StringComparison.Ordinal) ? $"`` {inline} ``" : $"`{inline}`";

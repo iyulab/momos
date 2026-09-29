@@ -2,8 +2,10 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Momos.Host.Data;
+using Momos.Host.Domain;
 using Momos.Host.Endpoints;
 using Momos.Host.Knowledge;
+using Momos.Host.Reporting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,6 +38,11 @@ builder.Services
     .Bind(builder.Configuration.GetSection(KnowledgeOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services
+    .AddOptions<ReportingOptions>()
+    .Bind(builder.Configuration.GetSection(ReportingOptions.SectionName))
+    .Validate(ReportingOptions.IsValid, $"{ReportingOptions.SectionName}:DefaultLanguage must be one of: {string.Join(", ", ReportLanguage.Supported)}.")
+    .ValidateOnStart();
 builder.Services.AddKnowledgeIndex();
 builder.Services.AddSingleton<ModelKnowledgeProjector>();
 builder.Services.AddSingleton<ModelProjectionSignal>();
@@ -66,6 +73,7 @@ app.MapInspectionRequestEndpoints();
 app.MapInspectionReportEndpoints();
 app.MapKnowledgeEndpoints();
 app.MapAnalysisRequestEndpoints();
+app.MapCheckupEndpoints();
 app.MapProjectModelEndpoints();
 
 app.Run();

@@ -15,6 +15,12 @@ public static class ProjectModelQueries
             .Where(m => m.ProjectId == projectId)
             .OrderByDescending(m => m.ModelVersion)
             .FirstOrDefaultAsync(cancellationToken);
+
+    public static Task<ProjectModel?> ByIdAsync(MomosDbContext db, Guid modelId, CancellationToken cancellationToken) =>
+        db.ProjectModels
+            .AsNoTracking()
+            .Include(m => m.Claims)
+            .SingleOrDefaultAsync(m => m.Id == modelId, cancellationToken);
 }
 
 public static class ProjectModelEndpoints

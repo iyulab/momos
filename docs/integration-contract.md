@@ -22,6 +22,10 @@
 | `GET` | `/inspection-requests/{id}/report` | 검사 신청서에 대한 검사 결과서를 조회한다. |
 | `POST` | `/projects/{id}/analysis-requests` | 프로젝트 모델을 만들 분석을 요청한다(`commitRef` 선택). |
 | `GET` | `/analysis-requests/{id}` | 분석 요청과 그 현재 상태를 조회한다. |
+| `POST` | `/projects/{projectId}/checkups` | 프로젝트의 검진을 시작한다 — 설계 분석 요청 하나를 큐에 올린다. |
+| `GET` | `/checkups/{id}` | 검진과 검진 항목별 진행 상태를 조회한다. |
+| `GET` | `/checkups/{id}/report` | 끝난 검진의 결과지를 마크다운 문서 트리로 조회한다. |
+| `GET` | `/projects/{projectId}/checkups` | 프로젝트의 검진 목록을 최신순으로 조회한다. |
 | `GET` | `/projects/{id}/model` | 프로젝트의 최신 모델(구성 요소·관계·패턴·결정·의도·흐름·불변식·목차·분석 범위·진술)을 조회한다. |
 | `GET` | `/projects/{id}/model/report` | 최신 모델의 딥 리포트를 마크다운 문서 트리로 조회한다. |
 | `POST` | `/projects/{id}/model/claims/{claimKey}/corrections` | 최신 모델의 한 진술에 개발자 판정을 기록한다. |
@@ -46,12 +50,23 @@ JSON 필드 이름은 camelCase이고, enum 값은 PascalCase 문자열로 오�
   - 선택: `repositoryUrl`(검사가 체크아웃할 리포 — 분석 요청과 `commitRef`에 필요), `deploymentUrl`(배포된 앱 주소 — 현재
     Worker는 아직 사용하지 않는다). 비공개 리포는 그 요청을 처리하는 Worker의 운영자가 허용한 경우에만 체크아웃된다(README
     「비공개 리포」) — 허용되지 않았으면 요청은 체크아웃 단계에서 실패하고 `failureReason`에 git의 오류가 담긴다.
+  - 선택: `reportLanguage`(`en`·`ko` — 이 프로젝트 검진 리포트의 기본 언어, 지원하지 않는 값은 `400`).
   - 선택, 셋이 함께: `appInstallerUri`, `appInstallPlatform`, `appInstallLaunchCommand`(하나라도 있으면 셋 다 있어야 하며
     아니면 `400`), 그리고 `appInstallArgs`. 설치형 앱 자료이며 현재 Worker는 아직 사용하지 않는다.
   - 성공하면 `201 Created`와 프로젝트(`id` 포함), `Location: /projects/{id}`.
 - **검사 신청** — `POST /projects/{id}/inspection-requests`: `focus`(선택, 에이전트에게 줄 중점 — 예: "로그인 흐름"),
   `commitRef`(선택, 체크아웃할 커밋·브랜치·태그 — 프로젝트에 `repositoryUrl`이 없으면 `400`). 프로젝트가 없으면 `404`.
 - **분석 요청** — `POST /projects/{id}/analysis-requests`: `commitRef`(선택). 응답은 아래 「프로젝트 모델」 참고.
+- **검진 시작** — `POST /projects/{projectId}/checkups`: `commitRef`(선택), `language`(선택, `en`·`ko` — 생략하면 프로젝트의
+  `reportLanguage`, 그것도 없으면 Host 기본값). 지원하지 않는 언어는 `400`, 프로젝트에 `repositoryUrl`이 없어도 `400`, 프로젝트가
+  없으면 `404`. 성공하면 `201 Created`와 검진(`id`·`language`·`status`·`exams` 포함), `Location: /checkups/{id}`.
+  검진의 `status`는 `Running`(아직 진행 중)·`Completed`(모든 검진 항목이 끝남), 검진 항목(`exams[]`)의 `status`는 `Pending`(아직 실행 전)·
+  `Completed`(끝까지 실행됨)·`Partial`(결과는 냈지만 예산 등으로 일부가 잘림, 이유는 `reason`)·`NotRun`(결과 없음, 이유는 `reason`)이다.
+  `GET /checkups/{id}`는 검진 하나(없으면 `404`), `GET /projects/{projectId}/checkups`는 최신순 목록(프로젝트가 없으면 `404`)이다.
+  `GET /checkups/{id}/report`는 결과지 `{checkupId, language, documents: [{path, content}]}`(첫 문서가 `index.md`, 경로는 서로
+  상대 링크로 이어진다)이고, 검진이 아직 진행 중이면 `409`, 없으면 `404`다. 설계 분석이 실행되지 않은 검진도 결과지가 있다 —
+  실행되지 않은 이유를 적는다. 페이지 구성은 [아키텍처](architecture.md)의 「검진 결과지」 참고.
+  분석·검사 요청 응답에는 그 요청이 쓸 리포트 언어 `language`(없으면 `null`)가 함께 담긴다.
 - **지식 문서 등록** — `POST /projects/{id}/knowledge/documents`: `{title, content}`. 성공하면 `201 Created`와
   `{documentId}` — 문서 하나를 다시 읽는 경로는 없으므로 `Location`은 없다. 프로젝트가 없으면 `404`.
 - **지식 검색** — `POST /projects/{id}/knowledge/query`: `{query, maxResults}`(`maxResults` 기본 5). `200`과
@@ -125,7 +140,7 @@ Worker 전용 엔드포인트는 `Authorization: Bearer` 공유 키로 보호된
 - Worker는 `POST /inspection-requests/claim-next`로 대기 중인 요청 하나를 가져간다(본문 `{protocolVersion, workerVersion}`).
   응답은 항상 `200`이고 `{request, updateRequired, recommendedWorkerVersion}`이다 — 가져갈 것이 없거나 Worker의 프로토콜이
   지원되지 않으면 `request`는 `null`이며 둘은 `updateRequired`로 구별된다. 가져간 요청은 `Running`이 되고,
-  `Momos:Host:InspectionClaim:ReclaimTimeout`(기본 30분) 안에 결과가 오지 않으면 다음 `claim-next`가 다시 가져갈 수 있다.
+  `Momos:Host:InspectionClaim:ReclaimTimeout`(기본 60분) 안에 결과가 오지 않으면 다음 `claim-next`가 다시 가져갈 수 있다.
 - 검사를 마친 Worker는 결과서를 `POST /inspection-requests/{id}/report`로 제출한다(`{findings, toolCalls}`).
 
 - 분석을 마친 Worker는 모델을 `POST /analysis-requests/{id}/model`로 제출한다. 목록 필드(`components`·`relations`·
@@ -134,10 +149,12 @@ Worker 전용 엔드포인트는 `Authorization: Bearer` 공유 키로 보호된
   `origin`이나 블록의 `kind`를 빠뜨려도 `400`이다. 근거 규칙을 어긴 진술도 `400`이다. 요청이 `Running`이 아니거나 검사 신청서의 id면 `409`,
   성공하면 `201 Created`로 요청이 `Completed`가 된다. 반대로 분석 요청의 id로 검사 결과서를 제출하면 `409`다.
 - 분석이 실패하면 검사와 같은 `POST /inspection-requests/{id}/fail`로 보고한다.
-- 와이어 프로토콜 버전은 **4**다. 프로토콜 4는 모델 제출에 `flows`·`invariants`·`outline`·`coverage`를 필수로
+- 와이어 프로토콜 버전은 **5**다. 프로토콜 4는 모델 제출에 `flows`·`invariants`·`outline`·`coverage`를 필수로
   더했다 — 그것을 보내지 않는 프로토콜 3 Worker는 분석을 다 마친 뒤 제출에서야 거부되므로, 이 Host는 프로토콜 4
   미만 Worker에게 일을 넘기지 않고 업데이트가 필요하다는 신호(`updateRequired: true`)만 돌려준다. (프로토콜 3은
-  `claim-next` 응답에 요청 종류 `kind`를 더했었다.)
+  `claim-next` 응답에 요청 종류 `kind`를 더했었다.) 프로토콜 5는 `claim-next` 응답의 요청에 `language`(`en`·`ko`,
+  분석 요청에서 생략되면 `null`)를 더했다 — Worker는 매뉴얼을 그 언어로 쓴다. 프로토콜 4 Worker는 언제나 영어로 쓰므로
+  이 Host는 프로토콜 5 미만 Worker에게 일을 넘기지 않는다.
 
 ## 안정성 약속
 

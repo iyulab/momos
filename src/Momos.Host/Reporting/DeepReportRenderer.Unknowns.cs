@@ -16,16 +16,61 @@ public static partial class DeepReportRenderer
     private static IEnumerable<ModelDecision> Unrecorded(ProjectModel model) =>
         model.Decisions.Where(d => d.Rationale == ModelDecision.Unrecorded);
 
-    /// <summary>Chapters the analysis planned but found nothing for: no owner summary and no blocks.</summary>
+    /// <summary>Chapters with no owner summary and no blocks, and no recorded reason: the analysis ran
+    /// to the end and found nothing.</summary>
     private static IEnumerable<OutlineSection> EmptySections(ProjectModel model) =>
-        model.Outline.Where(s => s.OwnerSummaryClaims.Count == 0 && s.Blocks.Count == 0);
+        model.Outline.Where(s => IsEmpty(s) && NotAnalyzedReason(model, s) is null);
+
+    /// <summary>Chapters with nothing in them because the analysis did not get to them.</summary>
+    internal static IEnumerable<(OutlineSection Section, string Reason)> NotAnalyzedSections(ProjectModel model) =>
+        model.Outline.Where(IsEmpty).Select(s => (Section: s, Reason: NotAnalyzedReason(model, s))).Where(x => x.Reason is not null)
+            .Select(x => (x.Section, x.Reason!));
+
+    /// <summary>Synthesized claims that no chapter shows — neither as its owner summary, nor as a
+    /// block, nor as backing for a block's element. Deterministic claims are left out: the claims
+    /// table already lists them all.</summary>
+    private static IEnumerable<ModelClaim> UnplacedClaims(ProjectModel model, Tree tree)
+    {
+        if (model.Outline.Count == 0)
+        {
+            return [];
+        }
+
+        var placed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var section in model.Outline)
+        {
+            placed.UnionWith(section.OwnerSummaryClaims);
+            foreach (var block in section.Blocks)
+            {
+                placed.UnionWith(BlockClaims(block, model, tree));
+            }
+        }
+
+        return tree.Claims.Where(c => c.Origin == ClaimOrigin.Synthesized && !placed.Contains(c.Key));
+    }
+
+    /// <summary>The claims a block puts on its chapter's page: itself, or the claims backing its element.</summary>
+    private static IEnumerable<string> BlockClaims(OutlineBlock block, ProjectModel model, Tree tree) => block.Kind switch
+    {
+        OutlineBlockKind.Claim => [block.Ref],
+        OutlineBlockKind.Component when tree.Component(block.Ref) is { } c => c.Claims,
+        OutlineBlockKind.Pattern when tree.Patterns.TryGetValue(block.Ref, out var p) => p.Claims,
+        OutlineBlockKind.Decision when tree.Decisions.TryGetValue(block.Ref, out var d) => d.Claims,
+        OutlineBlockKind.Intent when tree.Intents.TryGetValue(block.Ref, out var i) => i.Claims,
+        OutlineBlockKind.Flow when tree.Flows.TryGetValue(block.Ref, out var f) => f.Claims.Concat(f.Steps.Select(st => st.ClaimKey)),
+        OutlineBlockKind.Invariant when tree.Invariants.TryGetValue(block.Ref, out var inv) => inv.Claims,
+        OutlineBlockKind.Map when block.Ref != ClaimValidator.MapEverything && tree.Component(block.Ref) is { } centre =>
+            model.Relations.Where(r => r.From == centre.Id || r.To == centre.Id).SelectMany(r => r.Claims),
+        _ => [],
+    };
 
     private static int UnknownCount(ProjectModel model, Tree tree) =>
         (model.Coverage?.NotAnalyzed.Count ?? 1)
         + Unrecorded(model).Count()
         + ReadingsToCheck(tree).Count()
         + Disputed(tree).Count()
-        + EmptySections(model).Count();
+        + EmptySections(model).Count()
+        + UnplacedClaims(model, tree).Count();
 
     /// <summary>The summary's link to the unknowns page, e.g. "[3 open questions](unknowns.md)".</summary>
     private static string UnknownsLink(ProjectModel model, Tree tree)
@@ -34,12 +79,22 @@ public static partial class DeepReportRenderer
         return $"[{count} open question{(count == 1 ? "" : "s")}]({UnknownsPage})";
     }
 
-    private static string Unknowns(ProjectModel model, Tree tree)
+    /// <summary>The unknowns page at <paramref name="page"/>, for chapter pages under
+    /// <paramref name="chapterPrefix"/> and component and claim pages under <paramref name="evidencePrefix"/>
+    /// (the same prefixes as <see cref="AppendixPages"/>), linking back to <paramref name="summaryPage"/>.</summary>
+    internal static ReportDocument UnknownsDocument(
+        ProjectModel model, string page, string chapterPrefix, string evidencePrefix, string summaryPage = "index.md")
+    {
+        var dir = DirOf(page);
+        return new(page, Unknowns(model, new Tree(model), Links.From(dir, evidencePrefix, summaryPage, page), s => Relative(dir, $"{chapterPrefix}{s.Path}")));
+    }
+
+    private static string Unknowns(ProjectModel model, Tree tree, Links l, Func<OutlineSection, string> chapter)
     {
         var md = new StringBuilder()
             .Line("# What this report does not know")
             .Line()
-            .Line("Back to the [summary](index.md). Everything below is either unread, unexplained, or waiting for a developer's verdict — this page is kept even when it is short, because an empty one would be a claim too.")
+            .Line($"Back to the [summary]({l.Summary}). Everything below is either unread, unexplained, or waiting for a developer's verdict — this page is kept even when it is short, because an empty one would be a claim too.")
             .Line();
 
         md.Line("## Areas not analyzed").Line();
@@ -70,7 +125,7 @@ public static partial class DeepReportRenderer
             foreach (var d in unrecorded)
             {
                 // "<summary> — why?" reads the same whether the summary is a sentence or a phrase.
-                md.Line($"- {Inline(d.Summary.TrimEnd('.'))} — why? ({tree.ClaimLinks(d.Claims, "claims/")})");
+                md.Line($"- {Inline(d.Summary.TrimEnd('.'))} — why? ({tree.ClaimLinks(d.Claims, l.Claims)})");
             }
 
             md.Line();
@@ -84,7 +139,7 @@ public static partial class DeepReportRenderer
               .Line();
             foreach (var c in readings)
             {
-                md.Line($"- {Inline(c.Statement)} — {c.Tier} ({tree.ClaimLink(c.Key, "claims/")})");
+                md.Line($"- {Inline(c.Statement)} — {c.Tier} ({tree.ClaimLink(c.Key, l.Claims)})");
             }
 
             md.Line();
@@ -98,7 +153,21 @@ public static partial class DeepReportRenderer
               .Line();
             foreach (var c in disputed)
             {
-                md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, "claims/")})");
+                md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, l.Claims)})");
+            }
+
+            md.Line();
+        }
+
+        var notAnalyzed = NotAnalyzedSections(model).ToList();
+        if (notAnalyzed.Count > 0)
+        {
+            md.Line("## Chapters not analyzed").Line()
+              .Line("The analysis ran out of budget or stopped before it wrote these chapters; the repository may well hold evidence for them.")
+              .Line();
+            foreach (var (s, reason) in notAnalyzed)
+            {
+                md.Line($"- [{LinkText(s.Title)}]({chapter(s)}) — {Inline(reason)}");
             }
 
             md.Line();
@@ -110,7 +179,21 @@ public static partial class DeepReportRenderer
             md.Line("## Chapters without evidence").Line();
             foreach (var s in empty)
             {
-                md.Line($"- [{LinkText(s.Title)}]({s.Path}) — no evidence for this chapter was found in this repository.");
+                md.Line($"- [{LinkText(s.Title)}]({chapter(s)}) — no evidence for this chapter was found in this repository.");
+            }
+
+            md.Line();
+        }
+
+        var unplaced = UnplacedClaims(model, tree).ToList();
+        if (unplaced.Count > 0)
+        {
+            md.Line("## Not placed in any chapter").Line()
+              .Line("The analysis proposed these statements but no chapter shows them. They are still claims with evidence, on pages of their own.")
+              .Line();
+            foreach (var c in unplaced)
+            {
+                md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, l.Claims)})");
             }
 
             md.Line();

@@ -56,7 +56,7 @@ public static class AnalysisRequestEndpoints
 
         app.MapPost("/analysis-requests/{id:guid}/model", async (
             Guid id, SubmitProjectModelRequest request, MomosDbContext db, ModelProjectionSignal projection,
-            CancellationToken cancellationToken) =>
+            TimeProvider timeProvider, CancellationToken cancellationToken) =>
         {
             var analysisRequest = await db.InspectionRequests.FindAsync([id], cancellationToken);
             if (analysisRequest is null || analysisRequest.Kind != InspectionRequestKind.Analysis)
@@ -134,6 +134,7 @@ public static class AnalysisRequestEndpoints
 
             db.ProjectModels.Add(model);
             analysisRequest.Status = InspectionRequestStatus.Completed;
+            await CheckupProgress.OnModelSubmittedAsync(db, analysisRequest, model, timeProvider, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
 
             // The knowledge index is derived from the stored model and filled in the background
