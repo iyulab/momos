@@ -179,6 +179,40 @@ public sealed class ManualSynthesizerTests
     }
 
     [Fact]
+    public async Task EveryPass_LogsItsStartAndHowItEnded_WithToolCallsByTool()
+    {
+        var logger = new RecordingLogger();
+        var synthesizer = Build(new AnalysisOptions { MaxChapterTokens = 1_000 }, logger,
+            Pass(Call("ProposeChapter", Chapter("System map", "system-map"), tokens: 20), Done(5)),
+            Pass(Call("ProposeClaim", Assessment("retries"), tokens: 30), Call("AddBlock", new() { ["kind"] = OutlineBlockKind.Map, ["reference"] = "cmp.nope" }), Done(5)));
+
+        await Run(synthesizer);
+
+        Assert.Contains(logger.Messages, m => m.StartsWith("Analysis pass overview started", StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, m => m.StartsWith("Analysis pass overview finished after", StringComparison.Ordinal)
+            && m.EndsWith("25 token(s); tool calls: ProposeChapter 1; 0 proposal(s) rejected", StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, m => m.StartsWith("Analysis pass system-map.md started", StringComparison.Ordinal) && m.EndsWith("1000 token(s) at most", StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, m => m.StartsWith("Analysis pass system-map.md finished after", StringComparison.Ordinal)
+            && m.EndsWith("tool calls: AddBlock 1, ProposeClaim 1; 1 proposal(s) rejected", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AChapterPass_IsToldItsShareOfTimeAndTokens_AndToProposeAsItReads()
+    {
+        var chapter = Pass(Done());
+        var synthesizer = Build(new AnalysisOptions { MaxDuration = TimeSpan.FromMinutes(10), MaxChapterTokens = 250_000 },
+            Pass(Call("ProposeChapter", Chapter("System map", "system-map")), Call("ProposeChapter", Chapter("Risks", "risks-and-debt")), Done()),
+            chapter,
+            Pass(Done()));
+
+        await Run(synthesizer);
+
+        var prompt = Assert.Single(chapter.LastMessages!, m => m.Role == ChatRole.User).Text;
+        Assert.Contains("This chapter has about 5 minute(s) and 250,000 tokens.", prompt, StringComparison.Ordinal);
+        Assert.Contains("propose the claims they support before you read further", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AFailedChapter_IsDroppedWhole_AndTheOthersStay()
     {
         var synthesizer = Build(null,

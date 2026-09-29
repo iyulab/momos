@@ -66,9 +66,12 @@ public static class DraftRules
             return Verdict.Reject(RejectionReason.Unsupported, "Findings come from inspections; cite code, commits, pull requests, issues or claims.");
         }
 
-        if (claim.Evidence.FirstOrDefault(e => !Locates(e)) is { } unlocated)
+        // Names the piece and the empty field: told only what a kind needs, an agent resends the
+        // same proposal without finding which of its pieces is short.
+        if (claim.Evidence.Select((e, i) => (Evidence: e, Missing: MissingFields(e), Number: i + 1)).FirstOrDefault(x => x.Missing.Count > 0) is { Evidence: { } unlocated } found)
         {
-            return Verdict.Reject(RejectionReason.MissingLocator, $"{unlocated.Kind} evidence needs {RequiredField(unlocated.Kind)}.");
+            return Verdict.Reject(RejectionReason.MissingLocator,
+                $"Evidence {found.Number} ({unlocated.Kind}) has no {string.Join(" and no ", found.Missing)}. {unlocated.Kind} evidence needs {RequiredField(unlocated.Kind)}.");
         }
 
         var cited = claim.Evidence.Where(e => e.Kind == EvidenceKind.Claim).Select(e => e.ClaimKey!).ToList();
@@ -146,18 +149,18 @@ public static class DraftRules
         return ok ? Verdict.Accept : Verdict.Reject(RejectionReason.UnresolvedReference, $"{block.Kind} '{block.Ref}' is not in the model.");
     }
 
-    private static bool Locates(EvidencePayload e) => e.Kind switch
+    // Field names only, never their values: this message is logged as it is.
+    private static List<string> MissingFields(EvidencePayload e) => e.Kind switch
     {
-        EvidenceKind.Code => !string.IsNullOrWhiteSpace(e.Path) && !string.IsNullOrWhiteSpace(e.Symbol),
-        EvidenceKind.Commit => !string.IsNullOrWhiteSpace(e.Sha),
-        EvidenceKind.PullRequest or EvidenceKind.Issue => !string.IsNullOrWhiteSpace(e.Url),
-        EvidenceKind.Claim => !string.IsNullOrWhiteSpace(e.ClaimKey),
-        _ => false,
+        EvidenceKind.Code => [.. new[] { ("path", e.Path), ("symbol", e.Symbol) }.Where(f => string.IsNullOrWhiteSpace(f.Item2)).Select(f => f.Item1)],
+        EvidenceKind.Commit => string.IsNullOrWhiteSpace(e.Sha) ? ["sha"] : [],
+        EvidenceKind.PullRequest or EvidenceKind.Issue => string.IsNullOrWhiteSpace(e.Url) ? ["url"] : [],
+        _ => string.IsNullOrWhiteSpace(e.ClaimKey) ? ["claimKey"] : [],
     };
 
     private static string RequiredField(EvidenceKind kind) => kind switch
     {
-        EvidenceKind.Code => "a path and a symbol",
+        EvidenceKind.Code => "a path and a symbol (text that appears verbatim in that file)",
         EvidenceKind.Commit => "a sha",
         EvidenceKind.PullRequest or EvidenceKind.Issue => "a url",
         _ => "a claim key",

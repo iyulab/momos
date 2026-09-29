@@ -291,7 +291,7 @@ public class MomosAgentLoopFactoryTests
         var proposal = AIFunctionFactory.Create((string topic) => "Recorded.", "ProposeClaim");
 
         var loop = await AnalysisFactory(chatClientProvider).CreateAnalysisLoopAsync(
-            new ExecutionSessionHandle("s"), Guid.NewGuid(), [proposal], model: null, "rules", DefaultContext, CancellationToken.None);
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [proposal], model: null, "rules", DefaultContext, new AnalysisToolMonitor(6), CancellationToken.None);
         await loop.RunAsync("zzz unrelated words");
 
         var names = chatClientProvider.LastClient!.LastOptions!.Tools!.Select(t => t.Name).ToList();
@@ -307,10 +307,34 @@ public class MomosAgentLoopFactoryTests
         var chatClientProvider = new FakeChatClientProvider("hi");
 
         var loop = await AnalysisFactory(chatClientProvider).CreateAnalysisLoopAsync(
-            new ExecutionSessionHandle("s"), Guid.NewGuid(), [], model: null, "You write a manual.", DefaultContext, CancellationToken.None);
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [], model: null, "You write a manual.", DefaultContext, new AnalysisToolMonitor(6), CancellationToken.None);
         await loop.RunAsync("go");
 
         Assert.Contains(chatClientProvider.LastClient!.LastMessages!, m => m.Role == ChatRole.System && m.Text.Contains("You write a manual.", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Function invocation answers a call that throws with a generic failure the agent cannot act on;
+    /// the monitor answers with what went wrong and counts it, so a pass whose proposals never reached
+    /// a rule shows up in its telemetry.
+    /// </summary>
+    [Fact]
+    public async Task AnAnalysisLoop_AnswersACallWithUnusableArguments_AndTheMonitorCountsIt()
+    {
+        var chat = new FakeChatClient(
+            [new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                [new FunctionCallContent("c1", "ProposeClaim", new Dictionary<string, object?> { ["count"] = "many" })]))],
+            new ChatResponse(new ChatMessage(ChatRole.Assistant, "done")));
+        var proposal = AIFunctionFactory.Create((int count) => "Recorded.", "ProposeClaim");
+        var monitor = new AnalysisToolMonitor(6);
+
+        var loop = await AnalysisFactory(new FakeChatClientProvider([chat])).CreateAnalysisLoopAsync(
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [proposal], model: null, "system", DefaultContext, monitor, CancellationToken.None);
+        await loop.RunAsync("go");
+
+        var answer = Assert.Single(chat.LastMessages!.SelectMany(m => m.Contents.OfType<FunctionResultContent>()));
+        Assert.Contains("Rejected: this call could not be carried out", answer.Result?.ToString(), StringComparison.Ordinal);
+        Assert.Equal(1, monitor.FailedCallsTo("ProposeClaim"));
     }
 
     /// <summary>
@@ -331,7 +355,7 @@ public class MomosAgentLoopFactoryTests
 
         var loop = await AnalysisFactory(new FakeChatClientProvider([chat])).CreateAnalysisLoopAsync(
             new ExecutionSessionHandle("s"), Guid.NewGuid(), [echo], model: null, "system",
-            new AnalysisContextOptions(MaxCommandOutputChars: 8_000, MaxContextTokens: 32_000, ProtectedToolRounds: 2), CancellationToken.None);
+            new AnalysisContextOptions(MaxCommandOutputChars: 8_000, MaxContextTokens: 32_000, ProtectedToolRounds: 2), new AnalysisToolMonitor(100), CancellationToken.None);
         await loop.RunAsync("go");
 
         var toolTexts = chat.LastMessages!.SelectMany(m => m.Contents.OfType<FunctionResultContent>())

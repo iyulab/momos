@@ -18,7 +18,9 @@ public interface IManualSynthesizer
 /// an overview keeps the chapters it planned, a chapter becomes a partial chapter. A pass whose
 /// model call fails loses its additions — for the overview, the whole plan. Either way the analysis
 /// still completes with what the passes wrote, and the coverage says what was partial or lost and
-/// why. Only a shutdown of the Worker itself ends the analysis early.
+/// why. Only a shutdown of the Worker itself ends the analysis early. Every pass logs when it starts
+/// and how it ended — time, tokens, tool calls by tool, rejections — so a pass that proposed
+/// nothing can be told apart from one whose proposals failed.
 /// </summary>
 public sealed class ManualSynthesizer(
     IAnalysisAgentLoopFactory loops,
@@ -46,7 +48,7 @@ public sealed class ManualSynthesizer(
         deadline.CancelAfter(o.MaxDuration);
 
         var overview = draft.Stage(section: null);
-        var failure = await RunPassAsync(new SynthesisTools(overview, verifier, o.MaxChapters, logger).ForOverview(),
+        var failure = await RunPassAsync("overview", new SynthesisTools(overview, verifier, o.MaxChapters, logger).ForOverview(),
             AnalysisPrompts.Overview(project, skeleton, o.MaxChapters), o.MaxOverviewTokens);
         // Only planned chapters make a plan worth keeping; a claim the overview verified on its
         // own has no chapter to live in.
@@ -82,8 +84,8 @@ public sealed class ManualSynthesizer(
                 // settles cannot starve the ones after it.
                 var remaining = o.MaxDuration - (time.GetUtcNow() - started);
                 var share = remaining / (sections.Count - i);
-                var chapterFailure = await RunPassAsync(new SynthesisTools(stage, verifier, o.MaxChapters, logger).ForChapter(),
-                    AnalysisPrompts.Chapter(section, draft), o.MaxChapterTokens, share);
+                var chapterFailure = await RunPassAsync(section.Path, new SynthesisTools(stage, verifier, o.MaxChapters, logger).ForChapter(),
+                    AnalysisPrompts.Chapter(section, draft, share, o.MaxChapterTokens), o.MaxChapterTokens, share);
                 if (chapterFailure is null)
                 {
                     stage.Commit();
@@ -102,55 +104,71 @@ public sealed class ManualSynthesizer(
 
         // Null when the pass finished; otherwise why it did not. Lets only a shutdown through.
         // A slice bounds the pass further, inside the analysis's own deadline.
-        async Task<string?> RunPassAsync(IReadOnlyList<AIFunction> passTools, string prompt, long tokens, TimeSpan? slice = null)
+        async Task<string?> RunPassAsync(string pass, IReadOnlyList<AIFunction> passTools, string prompt, long tokens, TimeSpan? slice = null)
         {
-            if (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-            {
-                return TimeBudgetReached;
-            }
+            var passStarted = time.GetUtcNow();
+            var budget = new TokenBudget(tokens, total);
+            var monitor = new AnalysisToolMonitor(o.ReadsBeforeNudge, logger);
+            var rejectedBefore = draft.Rejections.Values.Sum();
+            logger.LogInformation("Analysis pass {Pass} started — {Slice} and {Tokens} token(s) at most",
+                pass, slice is { } sl ? $"{sl.TotalSeconds:0}s" : "the remaining time", tokens);
+            var outcome = await RunAsync();
+            logger.LogInformation(
+                "Analysis pass {Pass} {Outcome} after {Seconds:0}s — {Tokens} token(s); tool calls: {Calls}; {Rejected} proposal(s) rejected",
+                pass, outcome ?? "finished", (time.GetUtcNow() - passStarted).TotalSeconds, budget.Used, monitor.Summary(),
+                draft.Rejections.Values.Sum() - rejectedBefore);
+            return outcome;
 
-            // The deadline's timer may not have fired yet although no time is left.
-            if (slice <= TimeSpan.Zero)
+            async Task<string?> RunAsync()
             {
-                return TimeBudgetReached;
-            }
-
-            if (total.IsExhausted)
-            {
-                return TokenBudgetReached;
-            }
-
-            using var passDeadline = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
-            if (slice is { } s)
-            {
-                passDeadline.CancelAfter(s);
-            }
-
-            try
-            {
-                using (TokenBudget.Enter(new TokenBudget(tokens, total)))
+                if (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
                 {
-                    var loop = await loops.CreateAnalysisLoopAsync(session, project.Id, passTools, model, AnalysisPrompts.System,
-                        new AnalysisContextOptions(o.MaxCommandOutputChars, o.MaxContextTokens, o.ProtectedToolRounds), passDeadline.Token);
-                    await loop.RunAsync(prompt, passDeadline.Token);
+                    return TimeBudgetReached;
                 }
 
-                return null;
-            }
-            catch (OperationCanceledException) when (passDeadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-            {
-                return TimeBudgetReached;
-            }
-            catch (UsageLimitExceededException)
-            {
-                return TokenBudgetReached;
-            }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                // A provider failure or an unexpected answer costs this pass, not the analysis. An
-                // HTTP client's own timeout lands here too — it is not this analysis's deadline.
-                logger.LogWarning(ex, "An analysis pass failed");
-                return $"the model call failed ({ex.GetType().Name})";
+                // The deadline's timer may not have fired yet although no time is left.
+                if (slice <= TimeSpan.Zero)
+                {
+                    return TimeBudgetReached;
+                }
+
+                if (total.IsExhausted)
+                {
+                    return TokenBudgetReached;
+                }
+
+                using var passDeadline = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+                if (slice is { } s)
+                {
+                    passDeadline.CancelAfter(s);
+                }
+
+                try
+                {
+                    using (TokenBudget.Enter(budget))
+                    {
+                        var loop = await loops.CreateAnalysisLoopAsync(session, project.Id, passTools, model, AnalysisPrompts.System,
+                            new AnalysisContextOptions(o.MaxCommandOutputChars, o.MaxContextTokens, o.ProtectedToolRounds), monitor, passDeadline.Token);
+                        await loop.RunAsync(prompt, passDeadline.Token);
+                    }
+
+                    return null;
+                }
+                catch (OperationCanceledException) when (passDeadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    return TimeBudgetReached;
+                }
+                catch (UsageLimitExceededException)
+                {
+                    return TokenBudgetReached;
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // A provider failure or an unexpected answer costs this pass, not the analysis. An
+                    // HTTP client's own timeout lands here too — it is not this analysis's deadline.
+                    logger.LogWarning(ex, "An analysis pass failed");
+                    return $"the model call failed ({ex.GetType().Name})";
+                }
             }
         }
     }

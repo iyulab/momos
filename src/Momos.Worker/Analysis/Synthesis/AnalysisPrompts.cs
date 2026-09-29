@@ -13,7 +13,7 @@ public sealed record GuideChapter(string Id, string Title, IReadOnlyList<string>
 /// </summary>
 public static class AnalysisPrompts
 {
-    public const string Version = "p3.2";
+    public const string Version = "p3.3";
 
     private const int MaxListedClaims = 300;
 
@@ -125,7 +125,9 @@ public static class AnalysisPrompts
         return text.ToString();
     }
 
-    public static string Chapter(DraftSection section, SynthesisDraft draft)
+    /// <param name="time">How long this chapter's pass may run.</param>
+    /// <param name="tokens">Tokens this chapter's pass may spend.</param>
+    public static string Chapter(DraftSection section, SynthesisDraft draft, TimeSpan time, long tokens)
     {
         var text = new StringBuilder()
             .AppendLine(CultureInfo.InvariantCulture, $"Write the chapter \"{section.Title}\" ({section.Path}).")
@@ -142,7 +144,11 @@ public static class AnalysisPrompts
         text.AppendLine()
             .AppendLine("Propose the claims and elements the chapter needs, place them with AddBlock in reading order,")
             .AppendLine("and finish with SetOwnerSummary: three to five claims a non-programmer can read. If the repository")
-            .AppendLine("holds no evidence for this chapter, say so and finish without proposing anything.");
+            .AppendLine("holds no evidence for this chapter, say so and finish without proposing anything.")
+            .AppendLine()
+            .AppendLine(CultureInfo.InvariantCulture, $"This chapter has about {Math.Max(1, (int)Math.Round(time.TotalMinutes))} minute(s) and {tokens:N0} tokens.")
+            .AppendLine("Work in small steps: read one or two files, then propose the claims they support before you read further.")
+            .AppendLine("When the time or tokens run out the chapter keeps only what you already proposed — reading without proposing leaves it empty.");
         AppendModel(text, draft.Skeleton.Components, draft.Skeleton.Claims.Concat(draft.Claims));
         var elements = draft.Flows.Select(f => $"{f.Id} flow: {f.Name}")
             .Concat(draft.Invariants.Select(i => $"{i.Id} invariant: {i.Statement}"))

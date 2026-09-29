@@ -46,6 +46,11 @@ public sealed class AnalysisOptions
     /// on every later call, which is what exhausted chapter budgets.</summary>
     public int ProtectedToolRounds { get; set; } = 4;
 
+    /// <summary>Reading calls (commands, knowledge queries) in a row after which the agent is
+    /// reminded to propose what it found. Left alone, an agent reads a chapter's whole subject
+    /// before writing anything, and a pass cut by its budget keeps only what was proposed.</summary>
+    public int ReadsBeforeNudge { get; set; } = 6;
+
     /// <summary>
     /// Wall-clock time the passes may take. Keep it below the Host's
     /// <c>Momos:Host:InspectionClaim:ReclaimTimeout</c> (30 minutes by default): the Host treats a
@@ -56,5 +61,5 @@ public sealed class AnalysisOptions
 
     public static bool IsValid(AnalysisOptions o) =>
         o.MaxChapters > 0 && o.MaxCommandOutputChars > 0 && o.MaxChapterTokens > 0 && o.MaxOverviewTokens > 0 && o.MaxTotalTokens > 0 && o.MaxDuration > TimeSpan.Zero
-        && o.MaxContextTokens > 0 && o.ProtectedToolRounds > 0;
+        && o.MaxContextTokens > 0 && o.ProtectedToolRounds > 0 && o.ReadsBeforeNudge > 0;
 }

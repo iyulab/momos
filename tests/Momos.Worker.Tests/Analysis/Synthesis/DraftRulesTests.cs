@@ -56,6 +56,26 @@ public sealed class DraftRulesTests
         Assert.True(expected == verdict.Reason, $"{because}: expected {expected ?? "accept"}, got {verdict.Reason ?? "accept"} ({verdict.Message})");
     }
 
+    [Theory]
+    [InlineData("a.cs", null, "Evidence 2 (Code) has no symbol")]
+    [InlineData(null, "A", "Evidence 2 (Code) has no path")]
+    [InlineData(" ", "", "Evidence 2 (Code) has no path and no symbol")]
+    public void AnUnlocatedPieceOfEvidence_IsNamedWithTheFieldItLacks(string? path, string? symbol, string expected)
+    {
+        var claim = Proposed(ClaimTier.Fact, ClaimConfidence.High, Code(), new EvidencePayload(EvidenceKind.Code, Path: path, Symbol: symbol));
+
+        var verdict = DraftRules.CheckClaim(claim, Resolve);
+
+        Assert.Equal(RejectionReason.MissingLocator, verdict.Reason);
+        Assert.StartsWith(expected, verdict.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnUnlocatedCommit_SaysItNeedsASha() =>
+        Assert.StartsWith("Evidence 1 (Commit) has no sha",
+            DraftRules.CheckClaim(Proposed(ClaimTier.History, ClaimConfidence.High, new EvidencePayload(EvidenceKind.Commit)), Resolve).Message,
+            StringComparison.Ordinal);
+
     [Fact]
     public void AClaimBuiltOnAWeakerOne_IsCappedAtItsConfidence()
     {

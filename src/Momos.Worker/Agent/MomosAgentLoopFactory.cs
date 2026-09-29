@@ -66,7 +66,7 @@ public sealed class MomosAgentLoopFactory(
 
     public async Task<IAgentLoop> CreateAnalysisLoopAsync(
         ExecutionSessionHandle session, Guid projectId, IReadOnlyList<AIFunction> proposalTools, string? model, string systemPrompt,
-        AnalysisContextOptions context, CancellationToken cancellationToken)
+        AnalysisContextOptions context, AnalysisToolMonitor monitor, CancellationToken cancellationToken)
     {
         var toolCalls = new ToolCallTraceSink();
         var tools = new List<AIFunction>
@@ -77,7 +77,7 @@ public sealed class MomosAgentLoopFactory(
                 new KnowledgeQueryTools(hostApiClient, projectId, toolCalls, loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge),
         };
         tools.AddRange(proposalTools);
-        return await BuildLoopAsync(new AgentLoopFactoryOptions { Model = model, SystemPrompt = systemPrompt }, tools, cancellationToken, context);
+        return await BuildLoopAsync(new AgentLoopFactoryOptions { Model = model, SystemPrompt = systemPrompt }, monitor.Watch(tools), cancellationToken, context);
     }
 
     private async Task<(IAgentLoop Loop, FindingSink Findings, ToolCallTraceSink ToolCalls)> BuildAgentLoopAsync(
