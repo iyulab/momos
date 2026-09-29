@@ -24,8 +24,8 @@ public sealed record ComponentUpdate(string Responsibility, IReadOnlyList<string
 
 /// <summary>
 /// What an analysis has accepted so far, on top of the deterministic skeleton. A pass writes to a
-/// <see cref="DraftStage"/>; only a pass that finishes commits it, so a chapter that runs out of
-/// budget leaves nothing half-written behind.
+/// <see cref="DraftStage"/>, and nothing reaches the draft until the stage is committed — the caller
+/// decides whether a pass that did not finish keeps what it staged.
 /// </summary>
 public sealed class SynthesisDraft
 {
@@ -96,7 +96,12 @@ public sealed class SynthesisDraft
     }
 }
 
-/// <summary>One pass's pending additions; reads see the committed draft plus what this pass added.</summary>
+/// <summary>
+/// One pass's pending additions; reads see the committed draft plus what this pass added. A chapter's
+/// commit places every claim and element the pass proposed but did not place itself, after the
+/// blocks it did place and in the order they were proposed: a pass cut by its budget rarely reaches
+/// its placing step, and an unplaced claim belongs to no chapter.
+/// </summary>
 public sealed class DraftStage(SynthesisDraft draft, DraftSection? section)
 {
     private readonly List<ClaimPayload> _claims = [];
@@ -108,6 +113,7 @@ public sealed class DraftStage(SynthesisDraft draft, DraftSection? section)
     private readonly List<IntentPayload> _intents = [];
     private readonly List<DraftSection> _sections = [];
     private readonly List<OutlineBlockPayload> _blocks = [];
+    private readonly List<OutlineBlockPayload> _proposed = [];
     private List<string>? _ownerSummary;
 
     public DraftSection? Section { get; } = section;
@@ -115,6 +121,11 @@ public sealed class DraftStage(SynthesisDraft draft, DraftSection? section)
     public SynthesisDraft Draft { get; } = draft;
 
     public int StagedClaimCount => _claims.Count;
+
+    /// <summary>Whether <see cref="Commit"/> would add anything to the draft.</summary>
+    public bool HasContent =>
+        _claims.Count > 0 || _components.Count > 0 || _flows.Count > 0 || _invariants.Count > 0 || _patterns.Count > 0
+        || _decisions.Count > 0 || _intents.Count > 0 || _sections.Count > 0 || _blocks.Count > 0 || _ownerSummary is not null;
 
     public int SectionCount => Draft.Sections.Count + _sections.Count;
 
@@ -133,19 +144,43 @@ public sealed class DraftStage(SynthesisDraft draft, DraftSection? section)
         _ => false,
     };
 
-    public void AddClaim(ClaimPayload claim) => _claims.Add(claim);
+    public void AddClaim(ClaimPayload claim)
+    {
+        _claims.Add(claim);
+        Proposed(OutlineBlockKind.Claim, claim.Key);
+    }
 
     public void DescribeComponent(string id, string responsibility, IReadOnlyList<string> claims) => _components[id] = new(responsibility, claims);
 
-    public void AddFlow(FlowPayload flow) => _flows.Add(flow);
+    public void AddFlow(FlowPayload flow)
+    {
+        _flows.Add(flow);
+        Proposed(OutlineBlockKind.Flow, flow.Id);
+    }
 
-    public void AddInvariant(InvariantPayload invariant) => _invariants.Add(invariant);
+    public void AddInvariant(InvariantPayload invariant)
+    {
+        _invariants.Add(invariant);
+        Proposed(OutlineBlockKind.Invariant, invariant.Id);
+    }
 
-    public void AddPattern(PatternPayload pattern) => _patterns.Add(pattern);
+    public void AddPattern(PatternPayload pattern)
+    {
+        _patterns.Add(pattern);
+        Proposed(OutlineBlockKind.Pattern, pattern.Id);
+    }
 
-    public void AddDecision(DecisionPayload decision) => _decisions.Add(decision);
+    public void AddDecision(DecisionPayload decision)
+    {
+        _decisions.Add(decision);
+        Proposed(OutlineBlockKind.Decision, decision.Id);
+    }
 
-    public void AddIntent(IntentPayload intent) => _intents.Add(intent);
+    public void AddIntent(IntentPayload intent)
+    {
+        _intents.Add(intent);
+        Proposed(OutlineBlockKind.Intent, intent.Id);
+    }
 
     public DraftSection AddSection(string title, string purpose, string? guide)
     {
@@ -158,6 +193,8 @@ public sealed class DraftStage(SynthesisDraft draft, DraftSection? section)
     public void AddBlock(OutlineBlockPayload block) => _blocks.Add(block);
 
     public void SetOwnerSummary(IReadOnlyList<string> claims) => _ownerSummary = [.. claims];
+
+    private void Proposed(OutlineBlockKind kind, string reference) => _proposed.Add(new OutlineBlockPayload(kind, reference));
 
     public void Commit()
     {
@@ -181,6 +218,7 @@ public sealed class DraftStage(SynthesisDraft draft, DraftSection? section)
         if (Section is not null)
         {
             Section.Blocks.AddRange(_blocks);
+            Section.Blocks.AddRange(_proposed.Where(p => !Section.Blocks.Contains(p)));
             if (_ownerSummary is not null)
             {
                 Section.OwnerSummaryClaims.Clear();

@@ -77,6 +77,8 @@ sha다. 인용한 제목은 커밋 자신의 문장일 뿐 변경 이유에 대�
   `GET /analysis-requests/{id}`는 검사 신청서의 id에는 `404`를 돌려준다.
 - **모델 버전** — 분석이 완료될 때마다 새 모델 버전(`modelVersion`, 1부터 증가)이 만들어진다. 같은 커밋을 다시
   분석해도 새 버전이다. `GET /projects/{id}/model`은 최신 버전을 돌려주고, 아직 모델이 없으면 `404`다.
+  응답의 `knowledgeIndexedAt`은 지식 검색 색인이 이 모델을 따라잡은 시각(ISO-8601)이고, 아직이면 `null`이다 — 모델은 제출 즉시 읽히지만
+  지식 검색에의 반영은 백그라운드에서 뒤따른다.
 - **진술** — 각 진술은 안정된 `key`, 등급 `tier`(`Fact`·`History`·`Assessment`), `statement`, 근거 목록
   `evidence`(`kind`: `Code`·`Commit`·`PullRequest`·`Issue`·`Finding`·`Claim`), `confidence`(`High`·`Medium`·`Low`), 생성 방식 `origin`(`Deterministic`·`Synthesized` — 제출에 필수),
   판정 상태 `status`(`Proposed`·`Confirmed`·`Disputed`·`Corrected`)와 `correction`·`correctedAt`을 갖는다. 근거 없는
@@ -110,7 +112,8 @@ sha다. 인용한 제목은 커밋 자신의 문장일 뿐 변경 이유에 대�
   `Confirmed`·`Disputed`·`Corrected` 중 하나이고, `Proposed`면 `400`, `Corrected`인데 `correction`이 비어 있으면
   `400`이다. `claimKey`가 최신 모델에 없으면 `404`이며, 성공하면 갱신된 진술을 돌려준다. 원래 진술은 고쳐지거나
   지워지지 않고 판정이 그 옆에 기록된다. 판정은 재분석된 진술의 문장이 이전과 똑같을 때만 다음 모델 버전으로
-  이어지고, 문장이 달라지면 `Proposed`로 다시 시작한다.
+  이어지고, 문장이 달라지면 `Proposed`로 다시 시작한다. 판정이 기록되면 모델의 `knowledgeIndexedAt`은 `null`로
+  돌아가고, 지식 검색에 판정이 반영되면 다시 채워진다.
 - **검사와의 관계** — 모델 진술(교정 포함)은 프로젝트 지식으로 색인되어, 검사 에이전트가 기존 지식 조회로 읽는다.
   교정이 있으면 에이전트는 그것을 의도된 설계로 보고 동작을 판단한다. 모델 진술은 검사의 맥락일 뿐 지적의 근거가
   아니다 — 지적은 여전히 재현한 명령 출력을 근거로 가진다.

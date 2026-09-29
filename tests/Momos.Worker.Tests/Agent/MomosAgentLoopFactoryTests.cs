@@ -270,6 +270,9 @@ public class MomosAgentLoopFactoryTests
             () => agentLoop.RunAsync("look for problems in this repository"));
     }
 
+    private static readonly AnalysisContextOptions DefaultContext =
+        new(MaxCommandOutputChars: 8_000, MaxContextTokens: 32_000, ProtectedToolRounds: 4);
+
     private static IAnalysisAgentLoopFactory AnalysisFactory(FakeChatClientProvider chatClientProvider)
     {
         var services = new ServiceCollection();
@@ -288,7 +291,7 @@ public class MomosAgentLoopFactoryTests
         var proposal = AIFunctionFactory.Create((string topic) => "Recorded.", "ProposeClaim");
 
         var loop = await AnalysisFactory(chatClientProvider).CreateAnalysisLoopAsync(
-            new ExecutionSessionHandle("s"), Guid.NewGuid(), [proposal], model: null, "rules", 8_000, CancellationToken.None);
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [proposal], model: null, "rules", DefaultContext, new AnalysisToolMonitor(6), CancellationToken.None);
         await loop.RunAsync("zzz unrelated words");
 
         var names = chatClientProvider.LastClient!.LastOptions!.Tools!.Select(t => t.Name).ToList();
@@ -304,9 +307,94 @@ public class MomosAgentLoopFactoryTests
         var chatClientProvider = new FakeChatClientProvider("hi");
 
         var loop = await AnalysisFactory(chatClientProvider).CreateAnalysisLoopAsync(
-            new ExecutionSessionHandle("s"), Guid.NewGuid(), [], model: null, "You write a manual.", 8_000, CancellationToken.None);
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [], model: null, "You write a manual.", DefaultContext, new AnalysisToolMonitor(6), CancellationToken.None);
         await loop.RunAsync("go");
 
         Assert.Contains(chatClientProvider.LastClient!.LastMessages!, m => m.Role == ChatRole.System && m.Text.Contains("You write a manual.", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Function invocation answers a call that throws with a generic failure the agent cannot act on;
+    /// the monitor answers with what went wrong and counts it, so a pass whose proposals never reached
+    /// a rule shows up in its telemetry.
+    /// </summary>
+    [Fact]
+    public async Task AnAnalysisLoop_AnswersACallWithUnusableArguments_AndTheMonitorCountsIt()
+    {
+        var chat = new FakeChatClient(
+            [new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                [new FunctionCallContent("c1", "ProposeClaim", new Dictionary<string, object?> { ["count"] = "many" })]))],
+            new ChatResponse(new ChatMessage(ChatRole.Assistant, "done")));
+        var proposal = AIFunctionFactory.Create((int count) => "Recorded.", "ProposeClaim");
+        var monitor = new AnalysisToolMonitor(6);
+
+        var loop = await AnalysisFactory(new FakeChatClientProvider([chat])).CreateAnalysisLoopAsync(
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [proposal], model: null, "system", DefaultContext, monitor, CancellationToken.None);
+        await loop.RunAsync("go");
+
+        var answer = Assert.Single(chat.LastMessages!.SelectMany(m => m.Contents.OfType<FunctionResultContent>()));
+        Assert.Contains("Rejected: this call could not be carried out", answer.Result?.ToString(), StringComparison.Ordinal);
+        Assert.Equal(1, monitor.FailedCallsTo("ProposeClaim"));
+    }
+
+    /// <summary>
+    /// A pass is one user message followed by many tool rounds, all inside function invocation. Every
+    /// round re-sends the whole conversation, so without per-round masking each earlier command output
+    /// rides along in full on every later model call.
+    /// </summary>
+    [Fact]
+    public async Task AnAnalysisLoop_MasksOldToolOutputs_BeforeLaterModelCalls()
+    {
+        var big = new string('x', 5_000);
+        var turns = Enumerable.Range(0, 6)
+            .Select(i => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                [new FunctionCallContent($"c{i}", "Echo", new Dictionary<string, object?> { ["text"] = big })])))
+            .ToList();
+        var chat = new FakeChatClient(turns, new ChatResponse(new ChatMessage(ChatRole.Assistant, "done")));
+        var echo = AIFunctionFactory.Create((string text) => text, "Echo");
+
+        var loop = await AnalysisFactory(new FakeChatClientProvider([chat])).CreateAnalysisLoopAsync(
+            new ExecutionSessionHandle("s"), Guid.NewGuid(), [echo], model: null, "system",
+            new AnalysisContextOptions(MaxCommandOutputChars: 8_000, MaxContextTokens: 32_000, ProtectedToolRounds: 2), new AnalysisToolMonitor(100), CancellationToken.None);
+        await loop.RunAsync("go");
+
+        var toolTexts = chat.LastMessages!.SelectMany(m => m.Contents.OfType<FunctionResultContent>())
+            .Select(r => r.Result?.ToString() ?? "").ToList();
+        Assert.Equal(6, toolTexts.Count);
+        Assert.True(toolTexts.Take(4).All(t => t.Length < big.Length), "tool outputs older than the protected rounds were sent in full");
+        Assert.True(toolTexts.Skip(4).All(t => t.Length == big.Length), "the protected recent rounds were masked");
+    }
+
+    /// <summary>An inspection loop keeps sending its tool outputs as they are: only analysis passes
+    /// get a per-round reducer.</summary>
+    [Fact]
+    public async Task AnInspectionLoop_SendsEveryToolOutputInFull()
+    {
+        var toolCall = new FunctionCallContent("c0", nameof(CodeExecutionTools.RunCommand),
+            new Dictionary<string, object?> { ["command"] = "dotnet", ["args"] = new[] { "build" } });
+        var output = new string('x', 5_000);
+        var turns = Enumerable.Range(0, 6)
+            .Select(i => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                [new FunctionCallContent($"c{i}", toolCall.Name, toolCall.Arguments)])))
+            .ToList();
+        var chat = new FakeChatClient(turns, new ChatResponse(new ChatMessage(ChatRole.Assistant, "done")));
+        var services = new ServiceCollection();
+        services.AddSingleton<IChatClientProvider>(new FakeChatClientProvider([chat]));
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
+        services.AddSingleton<IExecutionRuntimeProvider>(new FakeExecutionRuntimeProvider
+        {
+            NextResult = new ExecutionCommandResult(true, output, null, 100),
+        });
+        services.AddSingleton<IHostApiClient>(new FakeHostApiClient([]));
+        services.AddIronHiveAgentEngine();
+        var factory = services.BuildServiceProvider().GetRequiredService<IAgentLoopFactory>();
+
+        var loop = await factory.CreateAsync();
+        await loop.RunAsync("look for problems in this repository");
+
+        var toolTexts = chat.LastMessages!.SelectMany(m => m.Contents.OfType<FunctionResultContent>())
+            .Select(r => r.Result?.ToString() ?? "").ToList();
+        Assert.Equal(6, toolTexts.Count);
+        Assert.All(toolTexts, t => Assert.Contains(output, t, StringComparison.Ordinal));
     }
 }

@@ -272,4 +272,17 @@ public class CodeExecutionToolsTests
 
         Assert.Equal(50_000, (await tools.RunCommand("cat", ["big.txt"])).Length);
     }
+
+    /// <summary>The call runs a program with an argument list; told "shell command", an agent put
+    /// whole lines with pipes into <c>command</c> and most of them failed.</summary>
+    [Fact]
+    public void TheToolDescription_SaysTheProgramAndItsArgumentsGoSeparately_AndHowToGetAShell()
+    {
+        var tools = new CodeExecutionTools(new FakeExecutionRuntimeProvider(), new ExecutionSessionHandle("s"), new ToolCallTraceSink(), NullLogger<CodeExecutionTools>.Instance);
+
+        var description = AIFunctionFactory.Create(tools.RunCommand).Description;
+
+        Assert.Contains("No shell reads the call", description, StringComparison.Ordinal);
+        Assert.Contains("command \"sh\", args [\"-c\"", description, StringComparison.Ordinal);
+    }
 }

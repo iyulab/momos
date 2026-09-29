@@ -32,4 +32,10 @@ public sealed class KnowledgeOptions
     /// <c>POST /v1/embeddings</c> call returned a 1024-float vector.
     /// </summary>
     public int EmbeddingDimension { get; set; } = 1024;
+
+    /// <summary>
+    /// How long the model projection service waits before trying again after the index refused
+    /// part of a model. Long enough that an index outage is not logged on every submit.
+    /// </summary>
+    public TimeSpan ProjectionRetryDelay { get; set; } = TimeSpan.FromSeconds(30);
 }

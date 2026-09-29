@@ -303,8 +303,9 @@ public static partial class DeepReportRenderer
     }
 
     /// <summary>Escapes <c>&amp;</c>, <c>&lt;</c> and <c>&gt;</c> outside code spans, so markdown
-    /// formatting still works but raw HTML is shown as text. A code span is a run of backticks,
-    /// its content, and a run of the same length.</summary>
+    /// formatting still works but raw HTML is shown as text, and the first bracket of <c>[[</c>, so
+    /// repository text never reads as a wiki link to a page the report does not have. A code span is
+    /// a run of backticks, its content, and a run of the same length.</summary>
     private static string EscapeHtml(string text)
     {
         var escaped = new StringBuilder(text.Length);
@@ -318,10 +319,14 @@ public static partial class DeepReportRenderer
         return escaped.Append(EscapeHtmlChars(text[last..])).ToString();
     }
 
-    private static string EscapeHtmlChars(string text) => text
+    private static string EscapeHtmlChars(string text) => BracketBeforeBracket().Replace(text
         .Replace("&", "&amp;", StringComparison.Ordinal)
         .Replace("<", "&lt;", StringComparison.Ordinal)
-        .Replace(">", "&gt;", StringComparison.Ordinal);
+        .Replace(">", "&gt;", StringComparison.Ordinal), "&#91;");
+
+    // Every bracket that another follows, so a run of three still leaves no pair.
+    [GeneratedRegex(@"\[(?=\[)")]
+    private static partial Regex BracketBeforeBracket();
 
     [GeneratedRegex(@"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", RegexOptions.Singleline)]
     private static partial Regex CodeSpan();

@@ -113,6 +113,14 @@ public sealed class ProjectModel
 
     /// <summary>Null only on versions stored before coverage was recorded; a submission always carries one.</summary>
     public ModelCoverage? Coverage { get; init; }
+
+    /// <summary>
+    /// When the knowledge index last caught up with this model's claims — null while it has not.
+    /// The index is derived and filled in the background, so a model is readable before it is
+    /// searchable; this is what tells the two apart.
+    /// </summary>
+    public DateTimeOffset? KnowledgeIndexedAt { get; set; }
+
     public ICollection<ModelClaim> Claims { get; init; } = new List<ModelClaim>();
 }
 

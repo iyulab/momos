@@ -72,15 +72,22 @@ public interface IKnowledgeIndex
 
 public sealed record KnowledgeSearchHit(string Content, double Score);
 
-internal sealed class FluxIndexKnowledgeIndex(IFluxIndexContext context) : IKnowledgeIndex
+internal sealed class FluxIndexKnowledgeIndex(IFluxIndexContext context) : IKnowledgeIndex, IDisposable
 {
+    // TODO(upstream): FluxIndexContext resolves one scoped vector store (and so one EF Core
+    // DbContext) when it is built and hands it to every Indexer and Retriever call, so two calls
+    // that overlap fail with "A second operation was started on this context instance". Requests
+    // and the model projection service call in parallel, so every call is serialized here until
+    // the context is safe for concurrent use; remove the gate then.
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
     public Task IndexAsync(string content, string documentId, Dictionary<string, object> metadata, CancellationToken cancellationToken) =>
-        context.Indexer.IndexDocumentAsync(content, documentId, metadata, cancellationToken);
+        ExclusiveAsync(() => context.Indexer.IndexDocumentAsync(content, documentId, metadata, cancellationToken), cancellationToken);
 
     // DeleteByDocumentIdAsync removes the vector chunks and the keyword postings together; its
     // bool result only says whether anything existed, which callers don't need.
     public Task DeleteAsync(string documentId, CancellationToken cancellationToken) =>
-        context.Indexer.DeleteByDocumentIdAsync(documentId, cancellationToken);
+        ExclusiveAsync(() => context.Indexer.DeleteByDocumentIdAsync(documentId, cancellationToken), cancellationToken);
 
     public async Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken)
     {
@@ -90,10 +97,40 @@ internal sealed class FluxIndexKnowledgeIndex(IFluxIndexContext context) : IKnow
         // semantically meaningful and can miss an exact-term match entirely. HybridSearchAsync's
         // keyword leg is unaffected by embedding quality, so it catches what pure vector search
         // would drop while still counting toward relevance when a real embedding IS configured.
-        var results = await context.Retriever.HybridSearchAsync(query, query, maxResults, vectorWeight: 0.5, filter, cancellationToken);
+        var results = await ExclusiveAsync(
+            () => context.Retriever.HybridSearchAsync(query, query, maxResults, vectorWeight: 0.5, filter, cancellationToken),
+            cancellationToken);
         return results
             .OrderByDescending(r => r.Score)
             .Select(r => new KnowledgeSearchHit(r.DocumentChunk.Content, r.Score))
             .ToList();
+    }
+
+    public void Dispose() => _gate.Dispose();
+
+    private async Task ExclusiveAsync(Func<Task> action, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<T> ExclusiveAsync<T>(Func<Task<T>> action, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return await action();
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 }

@@ -12,6 +12,7 @@ using IronHive.Agent.Tracking;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
@@ -52,6 +53,7 @@ public static class ServiceCollectionExtensions
             .Bind(configuration.GetSection(AnalysisOptions.SectionName))
             .Validate(AnalysisOptions.IsValid, $"{AnalysisOptions.SectionName} limits must all be greater than zero")
             .ValidateOnStart();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IManualSynthesizer, ManualSynthesizer>();
         services.AddSingleton<IProjectAnalyzer, ProjectAnalyzer>();
         services
@@ -133,14 +135,9 @@ public static class ServiceCollectionExtensions
         });
 
         services.AddSingleton<IToolRetriever, KeywordToolRetriever>();
-        services.AddSingleton<IChatClientFactory>(sp =>
+        services.AddSingleton(sp =>
         {
             var providers = sp.GetServices<IChatClientProvider>().ToDictionary(p => p.ProviderName);
-            if (providers.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    $"No {nameof(IChatClientProvider)} is registered — register at least one before resolving {nameof(IChatClientFactory)}.");
-            }
 
             // Without UseFunctionInvocation, AgentLoop.RunAsync only extracts a requested
             // FunctionCallContent into an unexecuted ToolCallResult — nothing ever calls
@@ -154,10 +151,15 @@ public static class ServiceCollectionExtensions
             // multi-iteration FunctionInvokingChatClient call instead of each iteration of
             // it, so the pre-call check only ran once per RunAsync and never tripped).
             // UseFunctionInvocation must therefore come *first* so
-            // UsageLimitingChatClient — registered second — ends up wrapping the raw
+            // UsageLimitingChatClient — registered last — ends up wrapping the raw
             // provider client directly, called once per tool-call iteration rather than
             // once per top-level RunAsync; that's the only vantage point that can stop a
             // runaway loop mid-flight instead of after every iteration already ran.
+            //
+            // The tool-round reducer sits between the two for the same reason: inside function
+            // invocation it sees every round's request, which re-sends the whole conversation;
+            // outside it would run once per turn, before the rounds that grow the conversation.
+            // Only analysis loops pass a manager — an inspection's pipeline is unchanged.
             //
             // ConfigureOptions, outermost, pins reasoning off unless a caller asks for it.
             // Leaving ChatOptions.Reasoning unset no longer means "no thinking": the provider
@@ -166,13 +168,21 @@ public static class ServiceCollectionExtensions
             // an order of magnitude more output tokens per tool-call iteration. An explicit
             // ReasoningEffort.None keeps the agent's replies direct.
             var usageLimiter = sp.GetRequiredService<UsageLimiter>();
-            return new ChatClientFactory(providers, providers.Values.First(),
-                client => client.AsBuilder()
+            return new MomosChatClientFactory(providers, (client, toolRoundContext) =>
+            {
+                var builder = client.AsBuilder()
                     .ConfigureOptions(o => o.Reasoning ??= new ReasoningOptions { Effort = ReasoningEffort.None })
-                    .UseFunctionInvocation(configure: c => c.MaximumIterationsPerRequest = limits.MaxIterationsPerRequest)
-                    .Use(inner => new UsageLimitingChatClient(inner, usageLimiter))
-                    .Build(sp));
+                    .UseFunctionInvocation(configure: c => c.MaximumIterationsPerRequest = limits.MaxIterationsPerRequest);
+                if (toolRoundContext is not null)
+                {
+                    builder = builder.UseToolRoundContext(toolRoundContext);
+                }
+
+                return builder.Use(inner => new UsageLimitingChatClient(inner, usageLimiter)).Build(sp);
+            });
         });
+        // Kept for consumers that resolve the library's factory directly; same pipeline, no reducer.
+        services.AddSingleton(sp => sp.GetRequiredService<MomosChatClientFactory>().For(toolRoundContext: null));
         services.AddSingleton<MomosAgentLoopFactory>();
         services.AddSingleton<IAgentLoopFactory>(sp => sp.GetRequiredService<MomosAgentLoopFactory>());
         services.AddSingleton<ISessionAwareAgentLoopFactory>(sp => sp.GetRequiredService<MomosAgentLoopFactory>());

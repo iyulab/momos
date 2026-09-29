@@ -26,10 +26,14 @@ public sealed class CodeExecutionTools(
     ILogger<CodeExecutionTools> logger,
     int? maxOutputChars = null)
 {
-    [Description("Run a shell command inside the sandboxed inspection workspace and return its output.")]
+    // The command runs as a program with an argument list, not as a shell line — said plainly,
+    // because an agent otherwise puts a whole line, pipes included, into command and it fails.
+    [Description("Run one program inside the sandboxed workspace and return its output. No shell reads the call: put the program in " +
+        "command and each argument in args, e.g. command \"git\", args [\"log\", \"--oneline\", \"-40\"]. For pipes, redirection or wildcards, " +
+        "run a shell yourself: command \"sh\", args [\"-c\", \"grep -rn Foo src | head -20\"].")]
     public async Task<string> RunCommand(
-        [Description("The command or executable name, e.g. \"dotnet\" or \"ls\".")] string command,
-        [Description("Arguments to pass to the command.")] string[]? args = null,
+        [Description("The program alone, e.g. \"dotnet\", \"ls\" or \"sh\" — never a whole command line.")] string command,
+        [Description("The program's arguments, one per element.")] string[]? args = null,
         [Description("Working directory relative to the session workspace root, if not the root itself.")] string? workingDirectory = null,
         CancellationToken cancellationToken = default)
     {
@@ -71,7 +75,7 @@ public sealed class CodeExecutionTools(
 
     private string Cap(string output) =>
         maxOutputChars is { } max && output.Length > max
-            ? $"{output[..max]}\n[Output truncated: {output.Length} characters in all, the first {max} shown. Read a narrower part — a line range (sed -n '120,180p' <file>), grep for what you need, or head/tail.]"
+            ? $"{output[..max]}\n[Output truncated: {output.Length} characters in all, the first {max} shown. Read a narrower part — a line range (command \"sed\", args [\"-n\", \"120,180p\", \"<file>\"]), grep for what you need, or head/tail.]"
             : output;
 
     /// <summary>

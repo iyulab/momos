@@ -36,6 +36,17 @@ public sealed class ProjectModelEndpointsTests(MomosHostFactory factory) : IClas
         await client.PostAsJsonAsync($"/analysis-requests/{requestId}/model", model, TestJsonOptions.Value);
 
     [Fact]
+    public async Task TheModelResponse_SaysWhetherTheKnowledgeIndexHasCaughtUp()
+    {
+        var (projectId, requestId) = await StartAnalysisAsync(_client);
+        Assert.Equal(HttpStatusCode.Created, (await SubmitAsync(_client, requestId, ModelFixtures.ValidSubmission())).StatusCode);
+
+        var json = await _client.GetStringAsync($"/projects/{projectId}/model");
+
+        Assert.Contains("\"knowledgeIndexedAt\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Submit_AValidModel_StoresVersion1AndCompletesTheRequest()
     {
         var (projectId, requestId) = await StartAnalysisAsync(_client);

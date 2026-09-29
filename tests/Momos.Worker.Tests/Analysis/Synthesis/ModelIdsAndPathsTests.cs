@@ -59,15 +59,17 @@ public sealed class ModelIdsAndPathsTests
         Assert.Matches(HostSectionPath, SectionPaths.FromTitle(new string('a', 300), new HashSet<string>()));
 
     [Theory]
-    [InlineData(0, 1, 1, 1)]
-    [InlineData(1, 0, 1, 1)]
-    [InlineData(1, 1, 0, 1)]
-    [InlineData(1, 1, 1, 0)]
-    public void OptionsWithANonPositiveLimit_AreInvalid(int chapters, long chapterTokens, long totalTokens, int minutes) =>
+    [InlineData(0, 1, 1, 1, 1)]
+    [InlineData(1, 0, 1, 1, 1)]
+    [InlineData(1, 1, 0, 1, 1)]
+    [InlineData(1, 1, 1, 0, 1)]
+    [InlineData(1, 1, 1, 1, 0)]
+    public void OptionsWithANonPositiveLimit_AreInvalid(int chapters, long chapterTokens, long overviewTokens, long totalTokens, int minutes) =>
         Assert.False(AnalysisOptions.IsValid(new AnalysisOptions
         {
             MaxChapters = chapters,
             MaxChapterTokens = chapterTokens,
+            MaxOverviewTokens = overviewTokens,
             MaxTotalTokens = totalTokens,
             MaxDuration = TimeSpan.FromMinutes(minutes),
         }));

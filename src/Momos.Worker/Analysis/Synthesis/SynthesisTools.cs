@@ -40,6 +40,14 @@ public sealed record ProposedFlowStep(
 /// </summary>
 public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, int maxChapters, ILogger? logger = null)
 {
+    /// <summary>Appended when Code evidence lacks its locator: the rule alone did not stop an agent
+    /// resending the same shape, a filled-in example does more.</summary>
+    internal const string CodeEvidenceExample =
+        " Example: {\"kind\":\"Code\",\"path\":\"src/Orders/OrderService.cs\",\"symbol\":\"public sealed class OrderService\"} — the symbol is short text you saw in that file.";
+
+    private (string Tool, string Reason, int? Round)? _lastRejection;
+    private int _rejectionsInARow;
+
     public static JsonSerializerOptions ToolJson { get; } = CreateToolJson();
 
     [Description("Plan one chapter of the manual. Give a short title (at most 80 characters) and a one-sentence purpose (at most 200 characters). " +
@@ -58,10 +66,15 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
 
         if (stage.SectionCount >= maxChapters)
         {
-            return Reject(RejectionReason.ChapterLimit, $"The manual already has {maxChapters} chapters; merge this into one of them.");
+            return Reject(RejectionReason.ChapterLimit,
+                $"The chapter plan is full ({maxChapters} of {maxChapters}); merge this into one of them, propose no more chapters and finish the overview.");
         }
 
-        return Recorded(stage.AddSection(title.Trim(), purpose.Trim(), string.IsNullOrWhiteSpace(guide) ? null : guide.Trim()).Path);
+        var recorded = Recorded(stage.AddSection(title.Trim(), purpose.Trim(), string.IsNullOrWhiteSpace(guide) ? null : guide.Trim()).Path);
+        // Told nothing, an agent keeps planning past the limit and spends its budget on rejections.
+        return stage.SectionCount >= maxChapters
+            ? $"{recorded} The chapter plan is now full ({maxChapters} of {maxChapters}). Do not propose more chapters; finish the overview."
+            : recorded;
     }
 
     [Description("Propose one claim. topic is a short, stable name for what it is about; reuse the topic a previous model used when you restate its claim. " +
@@ -276,20 +289,41 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
     private static EvidencePayload ToPayload(ProposedEvidence e) =>
         new(Enum.Parse<EvidenceKind>(e.Kind.ToString()), e.Path, e.Symbol, e.Lines, e.Sha, e.Url, ClaimKey: e.ClaimKey);
 
-    private static string Recorded(string id) => $"Recorded as {id}.";
+    private string Recorded(string id)
+    {
+        _lastRejection = null;
+        _rejectionsInARow = 0;
+        return $"Recorded as {id}.";
+    }
 
-    private string Reject(Verdict verdict, [CallerMemberName] string tool = "") => Reject(verdict.Reason!, verdict.Message, tool);
+    private string Reject(Verdict verdict, [CallerMemberName] string tool = "") => Reject(verdict.Reason!, verdict.Message, tool, verdict.Cause);
 
-    private string Reject(string reason, string message, [CallerMemberName] string tool = "")
+    private string Reject(string reason, string message, [CallerMemberName] string tool = "", string? cause = null)
     {
         stage.Draft.Reject(reason);
         if (logger is not null)
         {
+            // A message that may quote the repository is not logged; its fixed cause is.
             var echoesRepository = reason is RejectionReason.EvidenceNotFound or RejectionReason.UnresolvedReference or RejectionReason.DuplicateTopic;
-            logger.LogInformation("{Tool} proposal rejected — {Reason}: {Detail}", tool, reason, echoesRepository ? "(detail withheld)" : message);
+            logger.LogInformation("{Tool} proposal rejected — {Reason}: {Detail}", tool, reason, echoesRepository ? cause ?? "(detail withheld)" : message);
         }
 
-        return $"Rejected: {message}";
+        // Calls the agent sends together in one round are answered together: a later one in the
+        // same round is not a repeat, since the agent had not yet seen the first answer.
+        var round = FunctionInvokingChatClient.CurrentContext?.Iteration;
+        _rejectionsInARow = _lastRejection is var (lastTool, lastReason, lastRound) && (lastTool, lastReason) == (tool, reason)
+            ? (round is not null && round == lastRound ? _rejectionsInARow : _rejectionsInARow + 1)
+            : 1;
+        _lastRejection = (tool, reason, round);
+        if (reason == RejectionReason.MissingLocator && message.StartsWith("Evidence", StringComparison.Ordinal) && message.Contains("(Code)", StringComparison.Ordinal))
+        {
+            message += CodeEvidenceExample;
+        }
+
+        // Told only what is wrong, an agent has resent the same proposal many times over.
+        return _rejectionsInARow < 2
+            ? $"Rejected: {message}"
+            : $"Rejected: {message} This is rejection {_rejectionsInARow} in a row for the same reason: change what this message names, or drop the proposal and go on.";
     }
 
     private static JsonSerializerOptions CreateToolJson()

@@ -21,7 +21,7 @@ namespace Momos.Worker.Agent;
 /// <see cref="AIFunctionFactory.Create(System.Delegate)"/>-wrapped tools: one bound to a
 /// code-beaker session (one per inspection request), one accumulating
 /// into a <see cref="FindingSink"/> the caller reads back after the run. Actual tool
-/// invocation depends on the chat client resolved by <c>chatClientFactory</c> being wrapped
+/// invocation depends on the chat client resolved by <c>chatClients</c> being wrapped
 /// with <c>UseFunctionInvocation()</c> (see
 /// <see cref="Momos.Worker.ServiceCollectionExtensions.AddIronHiveAgentEngine"/>) —
 /// <c>IAgentLoop.RunAsync</c> itself never invokes a requested tool call.
@@ -34,7 +34,7 @@ namespace Momos.Worker.Agent;
 /// and knowledge tools, the caller's proposal tools, and no finding tool.
 /// </summary>
 public sealed class MomosAgentLoopFactory(
-    IChatClientFactory chatClientFactory,
+    MomosChatClientFactory chatClients,
     IUsageTracker usageTracker,
     UsageLimiter usageLimiter,
     ContextManager contextManager,
@@ -66,18 +66,18 @@ public sealed class MomosAgentLoopFactory(
 
     public async Task<IAgentLoop> CreateAnalysisLoopAsync(
         ExecutionSessionHandle session, Guid projectId, IReadOnlyList<AIFunction> proposalTools, string? model, string systemPrompt,
-        int maxCommandOutputChars, CancellationToken cancellationToken)
+        AnalysisContextOptions context, AnalysisToolMonitor monitor, CancellationToken cancellationToken)
     {
         var toolCalls = new ToolCallTraceSink();
         var tools = new List<AIFunction>
         {
             AIFunctionFactory.Create(
-                new CodeExecutionTools(executionRuntimeProvider, session, toolCalls, loggerFactory.CreateLogger<CodeExecutionTools>(), maxCommandOutputChars).RunCommand),
+                new CodeExecutionTools(executionRuntimeProvider, session, toolCalls, loggerFactory.CreateLogger<CodeExecutionTools>(), context.MaxCommandOutputChars).RunCommand),
             AIFunctionFactory.Create(
                 new KnowledgeQueryTools(hostApiClient, projectId, toolCalls, loggerFactory.CreateLogger<KnowledgeQueryTools>()).QueryProjectKnowledge),
         };
         tools.AddRange(proposalTools);
-        return await BuildLoopAsync(new AgentLoopFactoryOptions { Model = model, SystemPrompt = systemPrompt }, tools, cancellationToken);
+        return await BuildLoopAsync(new AgentLoopFactoryOptions { Model = model, SystemPrompt = systemPrompt }, monitor.Watch(tools), cancellationToken, context);
     }
 
     private async Task<(IAgentLoop Loop, FindingSink Findings, ToolCallTraceSink ToolCalls)> BuildAgentLoopAsync(
@@ -100,7 +100,9 @@ public sealed class MomosAgentLoopFactory(
         return (await BuildLoopAsync(options, tools, cancellationToken), findings, toolCalls);
     }
 
-    private async Task<IAgentLoop> BuildLoopAsync(AgentLoopFactoryOptions options, IReadOnlyList<AIFunction> tools, CancellationToken cancellationToken)
+    private async Task<IAgentLoop> BuildLoopAsync(
+        AgentLoopFactoryOptions options, IReadOnlyList<AIFunction> tools, CancellationToken cancellationToken,
+        AnalysisContextOptions? analysisContext = null)
     {
         // usageLimiter is a single process-wide instance (see
         // ServiceCollectionExtensions.AddIronHiveAgentEngine) tracked against by
@@ -111,9 +113,28 @@ public sealed class MomosAgentLoopFactory(
         // is a TokenBudget, which this reset does not touch.
         usageLimiter.Reset();
 
+        // An inspection keeps the shared manager and a pipeline without a tool-round reducer. An
+        // analysis pass gets its own manager, per loop rather than the shared one: a manager tracks one
+        // conversation's goal and window, and each pass is its own conversation. The same manager
+        // goes to the loop (once per turn) and to the reducer inside function invocation (every
+        // tool round), since a pass is one turn made of many rounds.
+        var loopContext = contextManager;
+        if (analysisContext is { } ac)
+        {
+            loopContext = ContextManager.ForModel(options.Model ?? "analysis", new CompactionConfig
+            {
+                MaxContextTokens = ac.MaxContextTokens,
+                EnableObservationMasking = true,
+                ObservationMaskingProtectedRounds = ac.ProtectedToolRounds,
+                EnableToolResultCompaction = true,
+                MaxToolResultChars = ac.MaxCommandOutputChars,
+            }, summarizer: null);
+        }
+
+        var clients = chatClients.For(analysisContext is null ? null : loopContext);
         var chatClient = string.IsNullOrEmpty(options.Provider)
-            ? await chatClientFactory.CreateAsync(options.Model, cancellationToken)
-            : await chatClientFactory.CreateAsync(options.Provider, options.Model, cancellationToken);
+            ? await clients.CreateAsync(options.Model, cancellationToken)
+            : await clients.CreateAsync(options.Provider, options.Model, cancellationToken);
 
         var agentOptions = new AgentOptions
         {
@@ -134,6 +155,6 @@ public sealed class MomosAgentLoopFactory(
             ToolRetrievalOptions = new ToolRetrievalOptions { AlwaysInclude = [.. tools.Select(t => t.Name)] },
         };
 
-        return new AgentLoop(chatClient, agentOptions, usageTracker, contextManager, errorRecovery, toolRetriever);
+        return new AgentLoop(chatClient, agentOptions, usageTracker, loopContext, errorRecovery, toolRetriever);
     }
 }

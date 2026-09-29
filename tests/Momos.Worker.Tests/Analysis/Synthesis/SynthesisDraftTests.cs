@@ -49,6 +49,42 @@ public sealed class SynthesisDraftTests
     }
 
     [Fact]
+    public void AChapterCommit_PlacesWhatItProposedButDidNotPlace_InTheOrderItWasProposed()
+    {
+        // A chapter cut by its budget usually proposed claims but never reached its placing step;
+        // unplaced, the committed claims belong to no chapter and the chapter reads as empty.
+        var draft = new SynthesisDraft(Skeleton());
+        var overview = draft.Stage(null);
+        var section = overview.AddSection("Risks", "What could go wrong.", guide: null);
+        overview.Commit();
+        var stage = draft.Stage(section);
+
+        stage.AddClaim(Claim("clm.one"));
+        stage.AddInvariant(new InvariantPayload("inv.x", "Never twice.", "concurrency", [], ["clm.one"]));
+        stage.AddClaim(Claim("clm.two"));
+        stage.AddBlock(new OutlineBlockPayload(OutlineBlockKind.Claim, "clm.two"));
+        stage.AddBlock(new OutlineBlockPayload(OutlineBlockKind.Component, "cmp.app"));
+        stage.Commit();
+
+        Assert.Equal(
+            [(OutlineBlockKind.Claim, "clm.two"), (OutlineBlockKind.Component, "cmp.app"), (OutlineBlockKind.Claim, "clm.one"), (OutlineBlockKind.Invariant, "inv.x")],
+            section.Blocks.Select(b => (b.Kind, b.Ref)));
+    }
+
+    [Fact]
+    public void AnOverviewCommit_PlacesNothing()
+    {
+        var draft = new SynthesisDraft(Skeleton());
+        var overview = draft.Stage(null);
+        var section = overview.AddSection("Risks", "What could go wrong.", guide: null);
+        overview.AddClaim(Claim("clm.goal"));
+
+        overview.Commit();
+
+        Assert.Empty(section.Blocks);
+    }
+
+    [Fact]
     public void ASectionAddedInTheOverview_ExistsOnlyAfterTheOverviewCommits()
     {
         var draft = new SynthesisDraft(Skeleton());

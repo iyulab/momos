@@ -38,6 +38,8 @@ builder.Services
     .ValidateOnStart();
 builder.Services.AddKnowledgeIndex();
 builder.Services.AddSingleton<ModelKnowledgeProjector>();
+builder.Services.AddSingleton<ModelProjectionSignal>();
+builder.Services.AddHostedService<ModelProjectionService>();
 
 var app = builder.Build();
 

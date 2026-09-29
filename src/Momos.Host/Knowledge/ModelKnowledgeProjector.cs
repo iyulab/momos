@@ -36,24 +36,26 @@ public sealed class ModelKnowledgeProjector(IKnowledgeIndex index, ILogger<Model
     }
 
     /// <summary>Indexes every claim of <paramref name="model"/> and removes the documents of
-    /// claims that only <paramref name="previous"/> had, so the agent never reads structure the
-    /// latest analysis no longer finds.</summary>
-    public async Task ProjectModelAsync(ProjectModel model, ProjectModel? previous, CancellationToken cancellationToken)
+    /// <paramref name="staleClaimKeys"/>. True only when every document operation succeeded —
+    /// the caller records the model as indexed on true and retries on false.</summary>
+    public async Task<bool> ProjectModelAsync(ProjectModel model, IReadOnlyCollection<string> staleClaimKeys, CancellationToken cancellationToken)
     {
+        var ok = true;
         foreach (var claim in model.Claims)
         {
-            await ProjectClaimAsync(model.ProjectId, claim, cancellationToken);
+            ok &= await ProjectClaimAsync(model.ProjectId, claim, cancellationToken);
         }
 
-        var currentKeys = model.Claims.Select(c => c.Key).ToHashSet(StringComparer.Ordinal);
-        foreach (var gone in previous?.Claims.Where(c => !currentKeys.Contains(c.Key)) ?? [])
+        foreach (var key in staleClaimKeys)
         {
-            await BestEffortAsync(() => index.DeleteAsync(DocumentId(model.ProjectId, gone.Key), cancellationToken), gone.Key);
+            ok &= await TryAsync(() => index.DeleteAsync(DocumentId(model.ProjectId, key), cancellationToken), key);
         }
+
+        return ok;
     }
 
-    public Task ProjectClaimAsync(Guid projectId, ModelClaim claim, CancellationToken cancellationToken) =>
-        BestEffortAsync(async () =>
+    private Task<bool> ProjectClaimAsync(Guid projectId, ModelClaim claim, CancellationToken cancellationToken) =>
+        TryAsync(async () =>
         {
             // Delete first: indexing under an existing document id would otherwise leave the old
             // chunks beside the new ones, and the agent would read both versions of the claim.
@@ -77,17 +79,19 @@ public sealed class ModelKnowledgeProjector(IKnowledgeIndex index, ILogger<Model
         _ => e.Kind.ToString(),
     };
 
-    // Same posture as finding indexing: the model is already committed, so an index failure is
-    // logged, not surfaced — the database stays correct and the next projection repairs the index.
-    private async Task BestEffortAsync(Func<Task> action, string claimKey)
+    // One claim the index refuses must not stop the others from being projected: the failure is
+    // logged and counted, and the caller keeps the model unindexed so the whole model is retried.
+    private async Task<bool> TryAsync(Func<Task> action, string claimKey)
     {
         try
         {
             await action();
+            return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Failed to project model claim {ClaimKey} into the project knowledge base.", claimKey);
+            return false;
         }
     }
 }

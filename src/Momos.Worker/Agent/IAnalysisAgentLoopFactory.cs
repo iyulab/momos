@@ -7,7 +7,8 @@ namespace Momos.Worker.Agent;
 /// <summary>
 /// Builds the agent loop for one analysis pass: the same command and knowledge tools an
 /// inspection has, the pass's proposal tools, and no way to report a finding — an analysis
-/// describes a project, it does not judge it.
+/// describes a project, it does not judge it. Every tool of the pass, its own and the proposal
+/// tools, is watched by <c>monitor</c>.
 /// </summary>
 public interface IAnalysisAgentLoopFactory
 {
@@ -17,6 +18,7 @@ public interface IAnalysisAgentLoopFactory
         IReadOnlyList<AIFunction> proposalTools,
         string? model,
         string systemPrompt,
-        int maxCommandOutputChars,
+        AnalysisContextOptions context,
+        AnalysisToolMonitor monitor,
         CancellationToken cancellationToken);
 }
