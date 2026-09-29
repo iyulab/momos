@@ -11,7 +11,6 @@ public sealed class CheckupReportRendererTests
         ProjectId = Guid.NewGuid(),
         Language = language,
         BaseCommit = "abc1234",
-        ModelVersion = 3,
         Status = CheckupStatus.Completed,
         CompletedAt = DateTimeOffset.Parse("2026-09-30T00:00:00Z", CultureInfo.InvariantCulture),
         Exams = [new ExamRun { Program = ExamProgram.DesignAnalysis, RequestId = Guid.NewGuid(), Status = status, Reason = reason }],
@@ -55,13 +54,42 @@ public sealed class CheckupReportRendererTests
         Assert.DoesNotContain("Normal", results);
     }
 
-    [Fact]
-    public void EveryRelativeLink_PointsAtADocumentInTheTree()
+    /// <summary>A chapter the analysis never got to, recorded in the model's coverage.</summary>
+    private static ProjectModel WithAChapterNotAnalyzed() => DeepReportRendererTests.WithCoverage(DeepReportRendererTests.SampleModel(), new ModelCoverage(
+        [], [new CoverageGap("manual-chapter", "risks.md: token budget reached")], [], null));
+
+    public static TheoryData<string> Trees => ["en completed", "ko completed", "en partial", "not run", "no outline"];
+
+    private static IReadOnlyList<ReportDocument> Tree(string name) => name switch
     {
-        DeepReportRendererTests.AssertEveryRelativeLinkResolves(
-            CheckupReportRenderer.Render("acme", Checkup("en", ExamRunStatus.Completed), DeepReportRendererTests.SampleModel()));
-        DeepReportRendererTests.AssertEveryRelativeLinkResolves(
-            CheckupReportRenderer.Render("acme", Checkup("ko", ExamRunStatus.NotRun, "clone failed"), model: null));
+        "en completed" => CheckupReportRenderer.Render("acme", Checkup("en", ExamRunStatus.Completed), DeepReportRendererTests.SampleModel()),
+        "ko completed" => CheckupReportRenderer.Render("acme", Checkup("ko", ExamRunStatus.Completed), DeepReportRendererTests.SampleModel()),
+        "en partial" => CheckupReportRenderer.Render("acme", Checkup("en", ExamRunStatus.Partial, "token budget reached"), WithAChapterNotAnalyzed()),
+        "not run" => CheckupReportRenderer.Render("acme", Checkup("en", ExamRunStatus.NotRun, "clone failed"), model: null),
+        "no outline" => CheckupReportRenderer.Render("acme", Checkup("en", ExamRunStatus.Completed), DeepReportRendererTests.SampleModel(m => m.Outline.Clear())),
+        _ => throw new ArgumentOutOfRangeException(nameof(name)),
+    };
+
+    [Theory]
+    [MemberData(nameof(Trees))]
+    public void EveryRelativeLink_PointsAtADocumentInTheTree(string tree) =>
+        DeepReportRendererTests.AssertEveryRelativeLinkResolves(Tree(tree));
+
+    [Theory]
+    [MemberData(nameof(Trees))]
+    public void EveryDocument_IsReachableFromTheIndex(string tree) =>
+        DeepReportRendererTests.AssertEveryDocumentIsReachableFrom(Tree(tree), "index.md");
+
+    [Fact]
+    public void TheEvidenceIndex_ListsComponentsAndClaimsNoChapterPlaces()
+    {
+        var docs = CheckupReportRenderer.Render("acme", Checkup("en", ExamRunStatus.Completed), DeepReportRendererTests.SampleModel(m => m.Outline.Clear()));
+        var evidence = Doc(docs, "evidence/index.md");
+
+        Assert.Contains("(components/cmp.lib.md)", evidence);
+        Assert.Contains("(claims/clm.ref.md)", evidence);
+        Assert.Contains("[summary](../index.md)", evidence);
+        Assert.Contains("(evidence/index.md)", Doc(docs, "index.md"));
     }
 
     [Fact]
@@ -84,8 +112,7 @@ public sealed class CheckupReportRendererTests
     [Fact]
     public void TheIndex_StatesWhatThisCheckupCouldNotDo_AndHasNoOverallVerdict()
     {
-        var model = DeepReportRendererTests.WithCoverage(DeepReportRendererTests.SampleModel(), new ModelCoverage(
-            [], [new CoverageGap("manual-chapter", "risks.md: token budget reached")], [], null));
+        var model = WithAChapterNotAnalyzed();
         var index = Doc(CheckupReportRenderer.Render("acme", Checkup("en", ExamRunStatus.Partial, "token budget reached"), model), "index.md");
 
         Assert.StartsWith("# acme checkup results\n", index);

@@ -38,6 +38,7 @@ internal sealed record ReportText
     public required string FollowUpsTitle { get; init; }
     public required string ManualTitle { get; init; }
     public required string UnknownsTitle { get; init; }
+    public required string EvidenceTitle { get; init; }
     public required Func<string, string> ExamRecordTitle { get; init; }
 
     /// <summary>The markdown link target of the summary page, relative to the page it is on.</summary>
@@ -98,6 +99,7 @@ internal sealed record ReportText
         FollowUpsTitle = "Follow-ups",
         ManualTitle = "Engineering manual",
         UnknownsTitle = "What the design analysis does not know",
+        EvidenceTitle = "Evidence: every component and claim",
         ExamRecordTitle = program => $"Exam record: {program}",
         BackToSummary = summary => $"Back to the [summary]({summary}).",
         ResultsIntro = "Every exam program and how it ended in this checkup. A program the checkup did not include is listed as such, so its absence is not read as a clean result.",
@@ -148,6 +150,7 @@ internal sealed record ReportText
         FollowUpsTitle = "재검 권고",
         ManualTitle = "엔지니어링 매뉴얼",
         UnknownsTitle = "설계 분석이 모르는 것",
+        EvidenceTitle = "근거: 모든 구성 요소와 진술",
         ExamRecordTitle = program => $"검사 원자료: {program}",
         BackToSummary = summary => $"[요약]({summary})으로 돌아가기.",
         ResultsIntro = "검사 프로그램마다 이번 검진에서 어떻게 끝났는지를 적는다. 이 검진에 포함되지 않은 프로그램도 그렇다고 적어, 빠진 것을 이상 없음으로 읽지 않게 한다.",

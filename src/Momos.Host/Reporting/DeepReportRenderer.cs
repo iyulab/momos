@@ -86,6 +86,23 @@ public static partial class DeepReportRenderer
     /// <summary>The folder part of a page path: empty for a page at the root, else ending in "/".</summary>
     private static string DirOf(string page) => page[..(page.LastIndexOf('/') + 1)];
 
+    /// <summary>The way into every component and claim page when the summary is elsewhere: the
+    /// structure diagram, the component list and the claims table, at <c>{evidencePrefix}index.md</c>,
+    /// beside the <c>components/</c> and <c>claims/</c> folders it links to. Chapters cite only some
+    /// components and claims; this page keeps the rest reachable, with or without an outline.</summary>
+    internal static ReportDocument EvidenceIndex(ProjectModel model, string evidencePrefix, string summaryPage = "index.md")
+    {
+        var tree = new Tree(model);
+        var md = new StringBuilder()
+            .Line("# Evidence")
+            .Line()
+            .Line($"Every component and every claim of project model version {model.ModelVersion}, each on a page of its own. Back to the [summary]({Relative(evidencePrefix, summaryPage)}).")
+            .Line();
+        Structure(md, model, tree);
+        ClaimsTable(md, tree);
+        return new($"{evidencePrefix}index.md", md.ToString());
+    }
+
     /// <summary>Where the pages a page links to live, relative to that page's folder.</summary>
     private readonly record struct Links(string Claims, string Components, string Summary, string Unknowns)
     {

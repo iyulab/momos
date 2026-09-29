@@ -10,7 +10,7 @@ namespace Momos.Host.Reporting;
 /// top-down and trusted bottom-up. The overview (<c>index.md</c>) states what was examined and what
 /// this checkup could not do; <c>results.md</c> gives every exam program's status; <c>followups/</c>
 /// holds what should be looked at again; the appendices hold the design analysis itself — its
-/// chapters under <c>manual/</c>, the components and claims they cite under <c>evidence/</c>, and
+/// chapters under <c>manual/</c>, every component and claim under <c>evidence/</c>, and
 /// the raw exam record under <c>exams/</c>.
 /// </summary>
 /// <remarks>
@@ -28,6 +28,7 @@ public static class CheckupReportRenderer
     private const string ManualIndex = "manual/index.md";
     private const string Unknowns = "manual/unknowns.md";
     private const string EvidencePrefix = "evidence/";
+    private const string EvidenceIndexPage = "evidence/index.md";
 
     private static string ExamRecord(string program) => $"exams/{program}.md";
 
@@ -57,6 +58,7 @@ public static class CheckupReportRenderer
         if (model is not null)
         {
             documents.Add(UnknownsDocument(model, Unknowns, ManualPrefix, EvidencePrefix, Summary));
+            documents.Add(EvidenceIndex(model, EvidencePrefix, Summary));
             documents.AddRange(AppendixPages(model, ManualPrefix, EvidencePrefix, Summary, Unknowns));
         }
 
@@ -115,7 +117,8 @@ public static class CheckupReportRenderer
 
         if (model is not null)
         {
-            md.Line($"- [{t.UnknownsTitle}]({Unknowns})");
+            md.Line($"- [{t.UnknownsTitle}]({Unknowns})")
+              .Line($"- [{t.EvidenceTitle}]({EvidenceIndexPage})");
         }
 
         foreach (var exam in checkup.Exams)

@@ -67,7 +67,7 @@ public sealed partial class DeepReportRendererTests
     private static partial Regex SafePath();
 
     /// <summary>The path <paramref name="href"/> points at from a page in <paramref name="dir"/>.</summary>
-    private static string Resolve(string dir, string href)
+    internal static string Resolve(string dir, string href)
     {
         var segments = new List<string>(dir.Split('/', StringSplitOptions.RemoveEmptyEntries));
         foreach (var part in href.Split('/'))
@@ -83,6 +83,28 @@ public sealed partial class DeepReportRendererTests
         }
 
         return string.Join('/', segments);
+    }
+
+    /// <summary>Follows relative links from <paramref name="start"/> and asserts every document in the tree is reached.</summary>
+    internal static void AssertEveryDocumentIsReachableFrom(IReadOnlyList<ReportDocument> tree, string start)
+    {
+        var byPath = tree.ToDictionary(d => d.Path, StringComparer.Ordinal);
+        var visited = new HashSet<string>(StringComparer.Ordinal) { start };
+        var queue = new Queue<string>([start]);
+        while (queue.TryDequeue(out var path))
+        {
+            var dir = path.Contains('/') ? path[..path.LastIndexOf('/')] : "";
+            foreach (Match link in MarkdownLink().Matches(byPath[path].Content))
+            {
+                var target = Resolve(dir, link.Groups[1].Value);
+                if (byPath.ContainsKey(target) && visited.Add(target))
+                {
+                    queue.Enqueue(target);
+                }
+            }
+        }
+
+        Assert.All(tree, d => Assert.True(visited.Contains(d.Path), $"{d.Path} cannot be reached from {start}"));
     }
 
     internal static void AssertEveryRelativeLinkResolves(IReadOnlyList<ReportDocument> tree)

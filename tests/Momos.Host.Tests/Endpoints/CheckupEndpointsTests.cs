@@ -172,6 +172,16 @@ public sealed class CheckupEndpointsTests(MomosHostFactory factory) : IClassFixt
         Assert.Equal("en", report.Language);
         Assert.Equal("index.md", report.Documents[0].Path);
         Assert.Contains(report.Documents, d => d.Path.StartsWith("evidence/claims/", StringComparison.Ordinal));
+        var ownVersion = (await client.GetFromJsonAsync<CheckupResponse>($"/checkups/{checkup.Id}", TestJsonOptions.Value))!.ModelVersion!.Value;
+
+        // A later analysis of the same project makes a newer model; the checkup still reports its own.
+        var (_, laterRequest) = await ProjectModelEndpointsTests.StartAnalysisAsync(worker, checkup.ProjectId);
+        Assert.Equal(HttpStatusCode.Created, (await ProjectModelEndpointsTests.SubmitAsync(worker, laterRequest, ModelFixtures.ValidSubmission())).StatusCode);
+        var latest = (await client.GetFromJsonAsync<ProjectModelResponse>($"/projects/{checkup.ProjectId}/model", TestJsonOptions.Value))!.ModelVersion;
+        Assert.True(latest > ownVersion);
+        var again = await client.GetFromJsonAsync<CheckupReportResponse>($"/checkups/{checkup.Id}/report", TestJsonOptions.Value);
+        Assert.Contains($"| Project model version | {ownVersion} |", again!.Documents.Single(d => d.Path == "exams/design-analysis.md").Content);
+
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/checkups/{Guid.NewGuid()}/report")).StatusCode);
     }
 
