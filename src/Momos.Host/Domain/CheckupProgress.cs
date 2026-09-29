@@ -62,5 +62,15 @@ public static class CheckupProgress
         }
     }
 
-    private static string Truncate(string text) => text.Length <= MaxReason ? text : text[..MaxReason];
+    private static string Truncate(string text)
+    {
+        if (text.Length <= MaxReason)
+        {
+            return text;
+        }
+
+        // Never end on half of a surrogate pair: a lone surrogate is not valid text for the database.
+        var end = char.IsHighSurrogate(text[MaxReason - 1]) ? MaxReason - 1 : MaxReason;
+        return text[..end];
+    }
 }

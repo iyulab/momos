@@ -38,16 +38,16 @@ public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : ICla
     [Fact]
     public async Task Submit_AnswersBeforeASlowIndexFinishes_AndTheIndexCatchesUp()
     {
-        var slow = new DelayingKnowledgeIndex(TimeSpan.FromSeconds(2));
+        var slow = new HeldKnowledgeIndex();
         using var f = factory.WithWebHostBuilder(b => b.ConfigureServices(s => s.AddSingleton<IKnowledgeIndex>(slow)));
         var client = Authorized(f);
         var (projectId, requestId) = await ProjectModelEndpointsTests.StartAnalysisAsync(client);
 
-        var started = DateTime.UtcNow;
         var response = await ProjectModelEndpointsTests.SubmitAsync(client, requestId, ModelFixtures.ValidSubmission());
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(2), "submit waited for the index");
+        Assert.False(slow.Finished, "submit waited for the index");
+        slow.Release();
         Assert.NotNull((await WaitIndexedAsync(client, projectId)).KnowledgeIndexedAt);
     }
 
@@ -238,16 +238,26 @@ public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : ICla
         return project.Id;
     }
 
-    private sealed class DelayingKnowledgeIndex(TimeSpan delay) : IKnowledgeIndex
+    private sealed class HeldKnowledgeIndex : IKnowledgeIndex
     {
-        public Task IndexAsync(string content, string documentId, Dictionary<string, object> metadata, CancellationToken cancellationToken) =>
-            Task.Delay(delay, cancellationToken);
+        private readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _finished;
+
+        public bool Finished => Volatile.Read(ref _finished) == 1;
+
+        public void Release() => _gate.TrySetResult();
+
+        public async Task IndexAsync(string content, string documentId, Dictionary<string, object> metadata, CancellationToken cancellationToken)
+        {
+            await _gate.Task.WaitAsync(cancellationToken);
+            Volatile.Write(ref _finished, 1);
+        }
 
         public Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<KnowledgeSearchHit>>([]);
 
         public Task DeleteAsync(string documentId, CancellationToken cancellationToken) =>
-            Task.Delay(delay, cancellationToken);
+            _gate.Task.WaitAsync(cancellationToken);
     }
 
     private sealed class FailingThenWorkingKnowledgeIndex(int failures) : IKnowledgeIndex

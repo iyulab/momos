@@ -789,7 +789,7 @@ public sealed partial class DeepReportRendererTests
         Assert.Contains("- Lib is a .NET project (", chapters);
         Assert.Contains("- App references Lib (", chapters);
         Assert.DoesNotContain("Fourth statement", chapters);
-        Assert.Contains("— and 1 more in the chapter", chapters);
+        Assert.Contains("\n\n… and 1 more in [the chapter](risks.md)\n", chapters);
 
         Assert.StartsWith("# Risks\n\n_What could break_\n\nThis chapter is partial: time budget reached.\n", Doc(tree, "risks.md"));
     }

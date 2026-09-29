@@ -37,7 +37,7 @@ public static class ProjectEndpoints
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["reportLanguage"] = [$"Supported languages: {string.Join(", ", ReportLanguage.Supported)}."],
+                    ["reportLanguage"] = [$"Supported languages: {string.Join(", ", ReportLanguage.Supported.Order())}."],
                 });
             }
 

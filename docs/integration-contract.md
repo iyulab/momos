@@ -60,6 +60,8 @@ JSON 필드 이름은 camelCase이고, enum 값은 PascalCase 문자열로 오�
 - **검진 시작** — `POST /projects/{projectId}/checkups`: `commitRef`(선택), `language`(선택, `en`·`ko` — 생략하면 프로젝트의
   `reportLanguage`, 그것도 없으면 Host 기본값). 지원하지 않는 언어는 `400`, 프로젝트에 `repositoryUrl`이 없어도 `400`, 프로젝트가
   없으면 `404`. 성공하면 `201 Created`와 검진(`id`·`language`·`status`·`exams` 포함), `Location: /checkups/{id}`.
+  검진의 `status`는 `Running`(아직 진행 중)·`Completed`(모든 검진 항목이 끝남), 검진 항목(`exams[]`)의 `status`는 `Pending`(아직 실행 전)·
+  `Completed`(끝까지 실행됨)·`Partial`(결과는 냈지만 예산 등으로 일부가 잘림, 이유는 `reason`)·`NotRun`(결과 없음, 이유는 `reason`)이다.
   `GET /checkups/{id}`는 검진 하나(없으면 `404`), `GET /projects/{projectId}/checkups`는 최신순 목록(프로젝트가 없으면 `404`)이다.
   `GET /checkups/{id}/report`는 결과지 `{checkupId, language, documents: [{path, content}]}`(첫 문서가 `index.md`, 경로는 서로
   상대 링크로 이어진다)이고, 검진이 아직 진행 중이면 `409`, 없으면 `404`다. 설계 분석이 실행되지 않은 검진도 결과지가 있다 —

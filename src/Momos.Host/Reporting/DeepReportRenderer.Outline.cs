@@ -99,7 +99,7 @@ public static partial class DeepReportRenderer
 
         if (claims.Count > PreviewClaims)
         {
-            md.Line($"— and {claims.Count - PreviewClaims} more in the chapter");
+            md.Line().Line($"… and {claims.Count - PreviewClaims} more in [the chapter]({section.Path})");
         }
 
         md.Line();

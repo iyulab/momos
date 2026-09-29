@@ -15,10 +15,16 @@ public sealed class ProjectAnalyzer(
 {
     public async Task<ProjectModelPayload> AnalyzeAsync(ExecutionSessionHandle session, ProjectInfo project, string? language, CancellationToken cancellationToken)
     {
+        if (language is not null && !AnalysisPrompts.LanguageNames.ContainsKey(language))
+        {
+            throw new InvalidOperationException($"This Worker cannot write in '{language}'.");
+        }
+
         var skeleton = await extractor.ExtractAsync(session, cancellationToken);
         if (!options.Value.Synthesis)
         {
-            return skeleton;
+            var off = new CoverageGapPayload("manual-synthesis", "Language-model analysis is turned off by configuration; this model holds deterministic facts only.");
+            return skeleton with { Coverage = skeleton.Coverage with { NotAnalyzed = [.. skeleton.Coverage.NotAnalyzed, off] } };
         }
 
         try
