@@ -66,6 +66,25 @@ public sealed partial class DeepReportRendererTests
     [GeneratedRegex(@"^(index|unknowns|[a-z0-9][a-z0-9-]{0,63}|components/[a-z0-9][a-z0-9._-]*|claims/[a-z0-9][a-z0-9._-]*)\.md$")]
     private static partial Regex SafePath();
 
+    /// <summary>The path <paramref name="href"/> points at from a page in <paramref name="dir"/>.</summary>
+    private static string Resolve(string dir, string href)
+    {
+        var segments = new List<string>(dir.Split('/', StringSplitOptions.RemoveEmptyEntries));
+        foreach (var part in href.Split('/'))
+        {
+            if (part == "..")
+            {
+                segments.RemoveAt(segments.Count - 1);
+            }
+            else
+            {
+                segments.Add(part);
+            }
+        }
+
+        return string.Join('/', segments);
+    }
+
     private static void AssertEveryRelativeLinkResolves(IReadOnlyList<ReportDocument> tree)
     {
         var paths = tree.Select(d => d.Path).ToHashSet(StringComparer.Ordinal);
@@ -76,9 +95,7 @@ public sealed partial class DeepReportRendererTests
             foreach (Match link in MarkdownLink().Matches(doc.Content))
             {
                 var href = link.Groups[1].Value;
-                var target = href.StartsWith("../", StringComparison.Ordinal)
-                    ? href[3..]
-                    : (dir.Length == 0 ? "" : dir + "/") + href;
+                var target = Resolve(dir, href);
                 Assert.True(paths.Contains(target), $"{doc.Path} links to missing {target}");
                 links++;
             }
@@ -681,5 +698,128 @@ public sealed partial class DeepReportRendererTests
             m.Outline[0] = m.Outline[0] with { Title = "[Audit passed](https://example.invalid)" }));
 
         Assert.StartsWith(@"# \[Audit passed\](https://example.invalid)", Doc(tree, "system-map.md"));
+    }
+
+    private static ModelCoverage Coverage(params CoverageGap[] gaps) => new([], gaps, [], null);
+
+    [Fact]
+    public void AChapterCutBeforeItProposedAnything_SaysItWasNotAnalyzed_NotThatThereIsNoEvidence()
+    {
+        var tree = DeepReportRenderer.Render("acme", WithCoverage(
+            Coverage(new CoverageGap("manual-chapter", "risks.md: token budget reached")),
+            m => m.Outline.Add(new OutlineSection("sec.risks", "risks.md", "Risks", "What could go wrong.", [], []))));
+
+        var page = Doc(tree, "risks.md");
+        Assert.Contains("This chapter was not analyzed: token budget reached.", page);
+        Assert.DoesNotContain("No evidence", page);
+        Assert.Contains("This chapter was not analyzed: token budget reached.", Doc(tree, "index.md"));
+        Assert.DoesNotContain("No evidence", Doc(tree, "index.md"));
+        var unknowns = Doc(tree, "unknowns.md");
+        Assert.Contains("Chapters not analyzed", unknowns);
+        Assert.DoesNotContain("Chapters without evidence", unknowns);
+    }
+
+    [Fact]
+    public void AChapterCutPartWayThroughWithNothingInIt_DoesNotPrintThePartialMarkerInTheReason()
+    {
+        var page = Doc(DeepReportRenderer.Render("acme", WithCoverage(
+            Coverage(new CoverageGap("manual-chapter", "risks.md: partial — time budget reached")),
+            m => m.Outline.Add(new OutlineSection("sec.risks", "risks.md", "Risks", "", [], [])))), "risks.md");
+
+        Assert.Contains("This chapter was not analyzed: time budget reached.", page);
+    }
+
+    [Fact]
+    public void NotAnalyzedReason_ReadsTheReasonOfTheChaptersOwnGap_AndNothingElse()
+    {
+        var risks = new OutlineSection("sec.risks", "risks.md", "Risks", "", [], []);
+        var model = WithCoverage(Coverage(
+            new CoverageGap("manual-chapter", "risks.md: partial — time budget reached"),
+            new CoverageGap("manual-chapter", "other.md: token budget reached"),
+            new CoverageGap("source-files", "risks.md: not a chapter gap")));
+
+        Assert.Equal("partial — time budget reached", DeepReportRenderer.NotAnalyzedReason(model, risks));
+        Assert.Null(DeepReportRenderer.NotAnalyzedReason(model, risks with { Path = "flows.md" }));
+        Assert.Null(DeepReportRenderer.NotAnalyzedReason(Model(), risks));
+    }
+
+    [Fact]
+    public void AChapterWithoutAnOwnerSummary_ShowsItsFirstClaimsOnTheIndex()
+    {
+        var tree = DeepReportRenderer.Render("acme", WithCoverage(
+            Coverage(new CoverageGap("manual-chapter", "risks.md: partial — time budget reached")),
+            m =>
+            {
+                m.Claims.Add(Fact(m, "clm.four", "Fourth statement of the chapter"));
+                m.Outline.Add(new OutlineSection("sec.risks", "risks.md", "Risks", "What could break", [],
+                    new[] { "clm.app", "clm.lib", "clm.ref", "clm.four" }.Select(k => new OutlineBlock(OutlineBlockKind.Claim, k)).ToList()));
+            }));
+
+        var index = Doc(tree, "index.md");
+        var chapters = index[index.IndexOf("### [Risks]", StringComparison.Ordinal)..index.IndexOf("## Structure", StringComparison.Ordinal)];
+        Assert.Contains("- App is a .NET project ([`clm.app`](claims/clm.app.md))", chapters);
+        Assert.Contains("- Lib is a .NET project (", chapters);
+        Assert.Contains("- App references Lib (", chapters);
+        Assert.DoesNotContain("Fourth statement", chapters);
+        Assert.Contains("— and 1 more in the chapter", chapters);
+
+        Assert.StartsWith("# Risks\n\n_What could break_\n\nThis chapter is partial: time budget reached.\n", Doc(tree, "risks.md"));
+    }
+
+    [Fact]
+    public void ASynthesizedClaimInNoChapter_IsListedAsNotPlaced()
+    {
+        var tree = DeepReportRenderer.Render("acme", Model(m =>
+        {
+            m.Claims.Add(new ModelClaim
+            {
+                ProjectModelId = m.Id,
+                Key = "clm.orphan",
+                Tier = ClaimTier.Assessment,
+                Statement = "Nothing places this reading",
+                Evidence = [new ClaimEvidence(EvidenceKind.Code, Path: "src/App/App.csproj", Lines: "6")],
+                Confidence = ClaimConfidence.Medium,
+                Origin = ClaimOrigin.Synthesized,
+            });
+            m.Outline.Add(new OutlineSection("sec.map", "system-map.md", "System map", "", ["clm.app"],
+                [new OutlineBlock(OutlineBlockKind.Component, "cmp.lib")]));
+        }));
+
+        var unknowns = Doc(tree, "unknowns.md");
+        Assert.Contains("Not placed in any chapter", unknowns);
+        Assert.Contains("(claims/clm.orphan.md)", unknowns);
+        // Deterministic claims are already in the claims table, and placed ones are on a chapter.
+        var section = unknowns[unknowns.IndexOf("Not placed in any chapter", StringComparison.Ordinal)..];
+        Assert.DoesNotContain("clm.ref.md", section);
+        Assert.DoesNotContain("clm.lib.md", section);
+        Assert.DoesNotContain("clm.app.md", section);
+    }
+
+    [Fact]
+    public void TheModelReportRoute_KeepsItsPagesWhereTheyWere()
+    {
+        var tree = DeepReportRenderer.Render("acme", Outlined());
+
+        var paths = tree.Select(d => d.Path).ToArray();
+        Assert.Equal(new[] { "index.md", "unknowns.md", "system-map.md", "core-flows.md", "risks.md" }, paths.Take(5));
+        Assert.Contains("components/cmp.app.md", paths);
+        Assert.Contains("claims/clm.app.md", paths);
+        Assert.Equal(paths.Length, paths.Distinct().Count());
+    }
+
+    [Fact]
+    public void AppendixPages_UnderPrefixes_KeepEveryLinkBetweenThemResolving()
+    {
+        var model = Outlined(m => m.Claims.Add(Fact(m, "clm.x", "X")));
+        var pages = DeepReportRenderer.AppendixPages(model, "manual/", "evidence/", "checkup.md", "unknowns.md");
+
+        Assert.Contains(pages, d => d.Path == "manual/system-map.md");
+        Assert.Contains(pages, d => d.Path == "evidence/components/cmp.app.md");
+        Assert.Contains(pages, d => d.Path == "evidence/claims/clm.app.md");
+        Assert.All(pages, d => Assert.True(d.Path.StartsWith("manual/", StringComparison.Ordinal) || d.Path.StartsWith("evidence/", StringComparison.Ordinal), d.Path));
+        // The summary and unknowns pages belong to the caller; stand-ins let the closure check see them.
+        AssertEveryRelativeLinkResolves([.. pages, new("checkup.md", ""), new("unknowns.md", "")]);
+        Assert.Contains("[App](../evidence/components/cmp.app.md)", Doc(pages, "manual/system-map.md"));
+        Assert.Contains("Back to the [summary](../../checkup.md).", Doc(pages, "evidence/claims/clm.app.md"));
     }
 }

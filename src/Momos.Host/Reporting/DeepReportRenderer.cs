@@ -37,22 +37,69 @@ public static partial class DeepReportRenderer
             new("index.md", model.Outline.Count > 0 ? OutlineIndex(projectName, model, tree) : Index(projectName, model, tree)),
             new(UnknownsPage, Unknowns(model, tree)),
         };
+        documents.AddRange(AppendixPages(model, "", ""));
+        return documents;
+    }
+
+    /// <summary>
+    /// The chapter pages (at <c>{chapterPrefix}{section.Path}</c>) and the component and claim pages
+    /// they link to (under <c>{evidencePrefix}components/</c> and <c>{evidencePrefix}claims/</c>) — the
+    /// part of the report that does not depend on where its summary lives. Prefixes are empty or end
+    /// in "/"; every link between these pages is relative to the folder of the page it is on. The
+    /// pages' links back to a summary and to an unknowns page point at <paramref name="summaryPage"/>
+    /// and <paramref name="unknownsPage"/>, paths in the same tree as the pages themselves.
+    /// </summary>
+    internal static IReadOnlyList<ReportDocument> AppendixPages(
+        ProjectModel model, string chapterPrefix, string evidencePrefix, string summaryPage = "index.md", string unknownsPage = UnknownsPage)
+    {
+        var tree = new Tree(model);
+        var claimsDir = $"{evidencePrefix}claims/";
+        var componentsDir = $"{evidencePrefix}components/";
+        Links LinksFrom(string dir) => new(
+            Relative(dir, claimsDir), Relative(dir, componentsDir), Relative(dir, summaryPage), Relative(dir, unknownsPage));
+
+        var documents = new List<ReportDocument>();
+        var chapterLinks = LinksFrom(chapterPrefix);
         foreach (var section in model.Outline)
         {
-            documents.Add(new(section.Path, SectionPage(section, model, tree)));
+            documents.Add(new($"{chapterPrefix}{section.Path}", SectionPage(section, model, tree, chapterLinks)));
         }
 
+        var componentLinks = LinksFrom(componentsDir);
         foreach (var component in tree.Components)
         {
-            documents.Add(new($"components/{tree.ComponentFile(component.Id)}", ComponentPage(component, model, tree)));
+            documents.Add(new($"{componentsDir}{tree.ComponentFile(component.Id)}", ComponentPage(component, model, tree, componentLinks)));
         }
 
+        var claimLinks = LinksFrom(claimsDir);
         foreach (var claim in tree.Claims)
         {
-            documents.Add(new($"claims/{tree.ClaimFile(claim.Key)}", ClaimPage(claim, tree)));
+            documents.Add(new($"{claimsDir}{tree.ClaimFile(claim.Key)}", ClaimPage(claim, tree, claimLinks)));
         }
 
         return documents;
+    }
+
+    /// <summary>Where the pages a page links to live, relative to that page's folder.</summary>
+    private readonly record struct Links(string Claims, string Components, string Summary, string Unknowns);
+
+    /// <summary>The relative link from a page in <paramref name="fromDir"/> (empty or ending in "/")
+    /// to <paramref name="to"/>, a file path or a folder ending in "/".</summary>
+    private static string Relative(string fromDir, string to)
+    {
+        var from = fromDir.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var target = to.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var folder = to.EndsWith('/');
+        var limit = Math.Min(from.Length, folder ? target.Length : target.Length - 1);
+        var common = 0;
+        while (common < limit && from[common] == target[common])
+        {
+            common++;
+        }
+
+        var up = string.Concat(Enumerable.Repeat("../", from.Length - common));
+        var down = string.Join('/', target[common..]);
+        return up + down + (folder && down.Length > 0 ? "/" : "");
     }
 
     private static string Index(string projectName, ProjectModel model, Tree tree)
@@ -194,18 +241,18 @@ public static partial class DeepReportRenderer
         }
     }
 
-    private static string ComponentPage(ModelComponent component, ProjectModel model, Tree tree)
+    private static string ComponentPage(ModelComponent component, ProjectModel model, Tree tree, Links l)
     {
         var md = new StringBuilder()
             .Line($"# {Inline(component.Name)}")
             .Line()
-            .Line($"Kind: {Inline(component.Kind)}. Back to the [summary](../index.md).")
+            .Line($"Kind: {Inline(component.Kind)}. Back to the [summary]({l.Summary}).")
             .Line();
         if (!string.IsNullOrWhiteSpace(component.Responsibility))
         {
             // Element text is never shown on its own: the claims that back it sit right beside it.
             md.Line(Block(component.Responsibility)).Line()
-              .Line($"_Backed by {tree.ClaimLinks(component.Claims, "../claims/")}._").Line();
+              .Line($"_Backed by {tree.ClaimLinks(component.Claims, l.Claims)}._").Line();
         }
 
         var outgoing = model.Relations.Where(r => r.From == component.Id && tree.HasComponent(r.To)).ToList();
@@ -215,27 +262,27 @@ public static partial class DeepReportRenderer
             md.Line("## Relations").Line();
             foreach (var r in outgoing)
             {
-                md.Line($"- {Inline(r.Kind)} {tree.ComponentLink(r.To, "")} ({tree.ClaimLinks(r.Claims, "../claims/")})");
+                md.Line($"- {Inline(r.Kind)} {tree.ComponentLink(r.To, "")} ({tree.ClaimLinks(r.Claims, l.Claims)})");
             }
 
             foreach (var r in incoming)
             {
-                md.Line($"- {tree.ComponentLink(r.From, "")} {Inline(r.Kind)} this ({tree.ClaimLinks(r.Claims, "../claims/")})");
+                md.Line($"- {tree.ComponentLink(r.From, "")} {Inline(r.Kind)} this ({tree.ClaimLinks(r.Claims, l.Claims)})");
             }
 
             md.Line();
         }
 
-        md.Line("## Claims behind this component").Line().Line(tree.ClaimLinks(component.Claims, "../claims/"));
+        md.Line("## Claims behind this component").Line().Line(tree.ClaimLinks(component.Claims, l.Claims));
         return md.ToString();
     }
 
-    private static string ClaimPage(ModelClaim claim, Tree tree)
+    private static string ClaimPage(ModelClaim claim, Tree tree, Links l)
     {
         var md = new StringBuilder()
             .Line($"# {Title(claim.Statement)}")
             .Line()
-            .Line($"Claim {Code(claim.Key)}. Back to the [summary](../index.md).")
+            .Line($"Claim {Code(claim.Key)}. Back to the [summary]({l.Summary}).")
             .Line()
             .Line("| Tier | Confidence | Origin | Status |").Line("|---|---|---|---|")
             .Line($"| {claim.Tier} | {claim.Confidence} | {claim.Origin} | {claim.Status} |")

@@ -13,4 +13,10 @@
     <PackageReference Include="FluxIndex.Providers.OpenAI" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- DeepReportRenderer.NotAnalyzedReason and AppendixPages are internal building blocks of the
+         other report renderers; tests reach them directly. -->
+    <InternalsVisibleTo Include="Momos.Host.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -16,16 +16,61 @@ public static partial class DeepReportRenderer
     private static IEnumerable<ModelDecision> Unrecorded(ProjectModel model) =>
         model.Decisions.Where(d => d.Rationale == ModelDecision.Unrecorded);
 
-    /// <summary>Chapters the analysis planned but found nothing for: no owner summary and no blocks.</summary>
+    /// <summary>Chapters with no owner summary and no blocks, and no recorded reason: the analysis ran
+    /// to the end and found nothing.</summary>
     private static IEnumerable<OutlineSection> EmptySections(ProjectModel model) =>
-        model.Outline.Where(s => s.OwnerSummaryClaims.Count == 0 && s.Blocks.Count == 0);
+        model.Outline.Where(s => IsEmpty(s) && NotAnalyzedReason(model, s) is null);
+
+    /// <summary>Chapters with nothing in them because the analysis did not get to them.</summary>
+    private static IEnumerable<(OutlineSection Section, string Reason)> NotAnalyzedSections(ProjectModel model) =>
+        model.Outline.Where(IsEmpty).Select(s => (Section: s, Reason: NotAnalyzedReason(model, s))).Where(x => x.Reason is not null)
+            .Select(x => (x.Section, x.Reason!));
+
+    /// <summary>Synthesized claims that no chapter shows — neither as its owner summary, nor as a
+    /// block, nor as backing for a block's element. Deterministic claims are left out: the claims
+    /// table already lists them all.</summary>
+    private static IEnumerable<ModelClaim> UnplacedClaims(ProjectModel model, Tree tree)
+    {
+        if (model.Outline.Count == 0)
+        {
+            return [];
+        }
+
+        var placed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var section in model.Outline)
+        {
+            placed.UnionWith(section.OwnerSummaryClaims);
+            foreach (var block in section.Blocks)
+            {
+                placed.UnionWith(BlockClaims(block, model, tree));
+            }
+        }
+
+        return tree.Claims.Where(c => c.Origin == ClaimOrigin.Synthesized && !placed.Contains(c.Key));
+    }
+
+    /// <summary>The claims a block puts on its chapter's page: itself, or the claims backing its element.</summary>
+    private static IEnumerable<string> BlockClaims(OutlineBlock block, ProjectModel model, Tree tree) => block.Kind switch
+    {
+        OutlineBlockKind.Claim => [block.Ref],
+        OutlineBlockKind.Component when tree.Component(block.Ref) is { } c => c.Claims,
+        OutlineBlockKind.Pattern when tree.Patterns.TryGetValue(block.Ref, out var p) => p.Claims,
+        OutlineBlockKind.Decision when tree.Decisions.TryGetValue(block.Ref, out var d) => d.Claims,
+        OutlineBlockKind.Intent when tree.Intents.TryGetValue(block.Ref, out var i) => i.Claims,
+        OutlineBlockKind.Flow when tree.Flows.TryGetValue(block.Ref, out var f) => f.Claims.Concat(f.Steps.Select(st => st.ClaimKey)),
+        OutlineBlockKind.Invariant when tree.Invariants.TryGetValue(block.Ref, out var inv) => inv.Claims,
+        OutlineBlockKind.Map when block.Ref != ClaimValidator.MapEverything && tree.Component(block.Ref) is { } centre =>
+            model.Relations.Where(r => r.From == centre.Id || r.To == centre.Id).SelectMany(r => r.Claims),
+        _ => [],
+    };
 
     private static int UnknownCount(ProjectModel model, Tree tree) =>
         (model.Coverage?.NotAnalyzed.Count ?? 1)
         + Unrecorded(model).Count()
         + ReadingsToCheck(tree).Count()
         + Disputed(tree).Count()
-        + EmptySections(model).Count();
+        + EmptySections(model).Count()
+        + UnplacedClaims(model, tree).Count();
 
     /// <summary>The summary's link to the unknowns page, e.g. "[3 open questions](unknowns.md)".</summary>
     private static string UnknownsLink(ProjectModel model, Tree tree)
@@ -104,6 +149,20 @@ public static partial class DeepReportRenderer
             md.Line();
         }
 
+        var notAnalyzed = NotAnalyzedSections(model).ToList();
+        if (notAnalyzed.Count > 0)
+        {
+            md.Line("## Chapters not analyzed").Line()
+              .Line("The analysis ran out of budget or stopped before it wrote these chapters; the repository may well hold evidence for them.")
+              .Line();
+            foreach (var (s, reason) in notAnalyzed)
+            {
+                md.Line($"- [{LinkText(s.Title)}]({s.Path}) — {Inline(reason)}");
+            }
+
+            md.Line();
+        }
+
         var empty = EmptySections(model).ToList();
         if (empty.Count > 0)
         {
@@ -111,6 +170,20 @@ public static partial class DeepReportRenderer
             foreach (var s in empty)
             {
                 md.Line($"- [{LinkText(s.Title)}]({s.Path}) — no evidence for this chapter was found in this repository.");
+            }
+
+            md.Line();
+        }
+
+        var unplaced = UnplacedClaims(model, tree).ToList();
+        if (unplaced.Count > 0)
+        {
+            md.Line("## Not placed in any chapter").Line()
+              .Line("The analysis proposed these statements but no chapter shows them. They are still claims with evidence, on pages of their own.")
+              .Line();
+            foreach (var c in unplaced)
+            {
+                md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, "claims/")})");
             }
 
             md.Line();
