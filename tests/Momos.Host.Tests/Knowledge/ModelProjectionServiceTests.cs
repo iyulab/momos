@@ -16,9 +16,12 @@ namespace Momos.Host.Tests.Knowledge;
 
 public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : IClassFixture<MomosHostFactory>
 {
+    // Indexing can take tens of seconds while the whole suite runs in parallel.
+    internal static readonly TimeSpan IndexCatchUpTimeout = TimeSpan.FromSeconds(120);
+
     internal static async Task<ProjectModelResponse> WaitIndexedAsync(HttpClient client, Guid projectId, int? version = null)
     {
-        var until = DateTime.UtcNow.AddSeconds(30);
+        var until = DateTime.UtcNow + IndexCatchUpTimeout;
         while (true)
         {
             var model = await client.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
@@ -27,7 +30,7 @@ public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : ICla
                 return model;
             }
 
-            Assert.True(DateTime.UtcNow < until, "the knowledge index did not catch up within 30s");
+            Assert.True(DateTime.UtcNow < until, $"the knowledge index did not catch up within {IndexCatchUpTimeout.TotalSeconds:0}s");
             await Task.Delay(100);
         }
     }
@@ -63,6 +66,29 @@ public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : ICla
 
         Assert.True(flaky.Attempts > 3);
         Assert.NotNull(model.KnowledgeIndexedAt);
+    }
+
+    [Fact]
+    public async Task AProjectWhoseIndexKeepsFailing_DoesNotDelayAnotherProjectsModel()
+    {
+        var selective = new FailingForOneProjectKnowledgeIndex();
+        using var f = factory.WithWebHostBuilder(b => b
+            .UseSetting("Momos:Host:Knowledge:ProjectionRetryDelay", "00:00:30")
+            .ConfigureServices(s => s.AddSingleton<IKnowledgeIndex>(selective)));
+        var client = Authorized(f);
+        var (failingProjectId, failingRequestId) = await ProjectModelEndpointsTests.StartAnalysisAsync(client);
+        selective.FailingProjectId = failingProjectId;
+        await ProjectModelEndpointsTests.SubmitAsync(client, failingRequestId, ModelFixtures.ValidSubmission());
+        await selective.FirstFailure.WaitAsync(TimeSpan.FromSeconds(30));
+
+        var (otherProjectId, otherRequestId) = await ProjectModelEndpointsTests.StartAnalysisAsync(client);
+        var submitted = DateTime.UtcNow;
+        await ProjectModelEndpointsTests.SubmitAsync(client, otherRequestId, ModelFixtures.ValidSubmission());
+        var other = await WaitIndexedAsync(client, otherProjectId);
+
+        Assert.NotNull(other.KnowledgeIndexedAt);
+        Assert.True(DateTime.UtcNow - submitted < TimeSpan.FromSeconds(20), "the new submit waited out the retry delay");
+        Assert.Null((await client.GetFromJsonAsync<ProjectModelResponse>($"/projects/{failingProjectId}/model", TestJsonOptions.Value))!.KnowledgeIndexedAt);
     }
 
     [Fact]
@@ -234,6 +260,31 @@ public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : ICla
             Interlocked.Increment(ref _attempts) <= failures
                 ? throw new InvalidOperationException("simulated knowledge index outage")
                 : Task.CompletedTask;
+
+        public Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<KnowledgeSearchHit>>([]);
+
+        public Task DeleteAsync(string documentId, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class FailingForOneProjectKnowledgeIndex : IKnowledgeIndex
+    {
+        private readonly TaskCompletionSource _firstFailure = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Guid? FailingProjectId { get; set; }
+
+        public Task FirstFailure => _firstFailure.Task;
+
+        public Task IndexAsync(string content, string documentId, Dictionary<string, object> metadata, CancellationToken cancellationToken)
+        {
+            if (FailingProjectId is { } id && documentId.StartsWith($"model-claim:{id:N}:", StringComparison.Ordinal))
+            {
+                _firstFailure.TrySetResult();
+                throw new InvalidOperationException("simulated knowledge index outage");
+            }
+
+            return Task.CompletedTask;
+        }
 
         public Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<KnowledgeSearchHit>>([]);

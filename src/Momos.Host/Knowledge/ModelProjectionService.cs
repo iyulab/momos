@@ -29,9 +29,21 @@ public sealed class ModelProjectionService(
             }
             else
             {
-                await Task.Delay(options.Value.ProjectionRetryDelay, time, stoppingToken);
+                await WaitForRetryAsync(stoppingToken);
             }
         }
+    }
+
+    // A model that keeps failing must not hold up a fresh submit for another project: the retry
+    // wait ends at the delay or at the next signal, whichever comes first.
+    private async Task WaitForRetryAsync(CancellationToken stoppingToken)
+    {
+        using var either = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var delay = Task.Delay(options.Value.ProjectionRetryDelay, time, either.Token);
+        var signalled = signal.WaitAsync(either.Token).AsTask();
+        await Task.WhenAny(delay, signalled);
+        await either.CancelAsync();
+        stoppingToken.ThrowIfCancellationRequested();
     }
 
     // An unhandled exception would stop the whole Host (BackgroundService's default), so a pass
