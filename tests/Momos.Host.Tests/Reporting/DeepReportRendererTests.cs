@@ -85,7 +85,7 @@ public sealed partial class DeepReportRendererTests
         return string.Join('/', segments);
     }
 
-    private static void AssertEveryRelativeLinkResolves(IReadOnlyList<ReportDocument> tree)
+    internal static void AssertEveryRelativeLinkResolves(IReadOnlyList<ReportDocument> tree)
     {
         var paths = tree.Select(d => d.Path).ToHashSet(StringComparer.Ordinal);
         var links = 0;
@@ -466,9 +466,12 @@ public sealed partial class DeepReportRendererTests
         Assert.Contains("App references Lib", unknowns);
     }
 
-    private static ProjectModel WithCoverage(ModelCoverage? coverage, Action<ProjectModel>? configure = null)
+    private static ProjectModel WithCoverage(ModelCoverage? coverage, Action<ProjectModel>? configure = null) =>
+        WithCoverage(Model(configure), coverage);
+
+    /// <summary><paramref name="source"/> with its coverage replaced (coverage is init-only).</summary>
+    internal static ProjectModel WithCoverage(ProjectModel source, ModelCoverage? coverage)
     {
-        var source = Model(configure);
         var model = new ProjectModel
         {
             Id = source.Id,
@@ -533,6 +536,9 @@ public sealed partial class DeepReportRendererTests
         Assert.Contains("| Not yet reviewed | 3 |", index);
         Assert.Contains("| Decisions without a recorded rationale | 1 |", index);
     }
+
+    /// <summary>An outlined model with every element kind: the fixture other report tests build on.</summary>
+    internal static ProjectModel SampleModel(Action<ProjectModel>? configure = null) => Outlined(configure);
 
     private static ProjectModel Outlined(Action<ProjectModel>? configure = null) => RichModel(m =>
     {

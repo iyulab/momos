@@ -24,6 +24,7 @@
 | `GET` | `/analysis-requests/{id}` | 분석 요청과 그 현재 상태를 조회한다. |
 | `POST` | `/projects/{projectId}/checkups` | 프로젝트의 검진을 시작한다 — 설계 분석 요청 하나를 큐에 올린다. |
 | `GET` | `/checkups/{id}` | 검진과 검진 항목별 진행 상태를 조회한다. |
+| `GET` | `/checkups/{id}/report` | 끝난 검진의 결과지를 마크다운 문서 트리로 조회한다. |
 | `GET` | `/projects/{projectId}/checkups` | 프로젝트의 검진 목록을 최신순으로 조회한다. |
 | `GET` | `/projects/{id}/model` | 프로젝트의 최신 모델(구성 요소·관계·패턴·결정·의도·흐름·불변식·목차·분석 범위·진술)을 조회한다. |
 | `GET` | `/projects/{id}/model/report` | 최신 모델의 딥 리포트를 마크다운 문서 트리로 조회한다. |
@@ -60,6 +61,9 @@ JSON 필드 이름은 camelCase이고, enum 값은 PascalCase 문자열로 오�
   `reportLanguage`, 그것도 없으면 Host 기본값). 지원하지 않는 언어는 `400`, 프로젝트에 `repositoryUrl`이 없어도 `400`, 프로젝트가
   없으면 `404`. 성공하면 `201 Created`와 검진(`id`·`language`·`status`·`exams` 포함), `Location: /checkups/{id}`.
   `GET /checkups/{id}`는 검진 하나(없으면 `404`), `GET /projects/{projectId}/checkups`는 최신순 목록(프로젝트가 없으면 `404`)이다.
+  `GET /checkups/{id}/report`는 결과지 `{checkupId, language, documents: [{path, content}]}`(첫 문서가 `index.md`, 경로는 서로
+  상대 링크로 이어진다)이고, 검진이 아직 진행 중이면 `409`, 없으면 `404`다. 설계 분석이 실행되지 않은 검진도 결과지가 있다 —
+  실행되지 않은 이유를 적는다. 페이지 구성은 [아키텍처](architecture.md)의 「검진 결과지」 참고.
   분석·검사 요청 응답에는 그 요청이 쓸 리포트 언어 `language`(없으면 `null`)가 함께 담긴다.
 - **지식 문서 등록** — `POST /projects/{id}/knowledge/documents`: `{title, content}`. 성공하면 `201 Created`와
   `{documentId}` — 문서 하나를 다시 읽는 경로는 없으므로 `Location`은 없다. 프로젝트가 없으면 `404`.

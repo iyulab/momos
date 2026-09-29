@@ -155,4 +155,34 @@ public sealed class CheckupEndpointsTests(MomosHostFactory factory) : IClassFixt
         await using var db = factory.CreateDbContext();
         Assert.False(await db.ExamRuns.AnyAsync(e => e.RequestId == requestId));
     }
+
+    [Fact]
+    public async Task TheReport_WaitsForTheCheckupToEnd_ThenStartsAtItsIndex()
+    {
+        var (client, worker, checkup) = await StartCheckupAsync();
+
+        var running = await client.GetAsync($"/checkups/{checkup.Id}/report");
+        Assert.Equal(HttpStatusCode.Conflict, running.StatusCode);
+        Assert.Contains("The checkup is still running.", await running.Content.ReadAsStringAsync());
+
+        await worker.PostAsJsonAsync($"/analysis-requests/{checkup.Exams[0].RequestId}/model", ModelFixtures.ValidSubmission(), TestJsonOptions.Value);
+        var report = await client.GetFromJsonAsync<CheckupReportResponse>($"/checkups/{checkup.Id}/report", TestJsonOptions.Value);
+
+        Assert.Equal(checkup.Id, report!.CheckupId);
+        Assert.Equal("en", report.Language);
+        Assert.Equal("index.md", report.Documents[0].Path);
+        Assert.Contains(report.Documents, d => d.Path.StartsWith("evidence/claims/", StringComparison.Ordinal));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/checkups/{Guid.NewGuid()}/report")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ACheckupWhoseAnalysisNeverRan_StillHasAReport_ThatSaysWhy()
+    {
+        var (client, worker, checkup) = await StartCheckupAsync();
+        await worker.PostAsJsonAsync($"/inspection-requests/{checkup.Exams[0].RequestId}/fail", new { reason = "clone failed", toolCalls = Array.Empty<object>() }, TestJsonOptions.Value);
+
+        var report = await client.GetFromJsonAsync<CheckupReportResponse>($"/checkups/{checkup.Id}/report", TestJsonOptions.Value);
+
+        Assert.Contains("clone failed", report!.Documents.Single(d => d.Path == "manual/index.md").Content);
+    }
 }

@@ -86,6 +86,38 @@ public static class CheckupEndpoints
             .Produces<List<CheckupResponse>>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        app.MapGet("/checkups/{id:guid}/report", async (Guid id, MomosDbContext db, CancellationToken cancellationToken) =>
+        {
+            var checkup = await db.Checkups.AsNoTracking().Include(c => c.Exams).SingleOrDefaultAsync(c => c.Id == id, cancellationToken);
+            if (checkup is null)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Checkup not found.");
+            }
+
+            // The report is assembled from what every program produced; until the last one ends it
+            // would describe a checkup that is not over.
+            if (checkup.Status == CheckupStatus.Running)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "The checkup is still running.");
+            }
+
+            var projectName = await db.Projects.Where(p => p.Id == checkup.ProjectId).Select(p => p.Name).SingleAsync(cancellationToken);
+
+            // The model this checkup's design analysis produced — not the project's latest, which a
+            // later analysis may have replaced.
+            var modelId = checkup.Exams.FirstOrDefault(e => e.Program == ExamProgram.DesignAnalysis)?.ProjectModelId;
+            var model = modelId is { } mid ? await ProjectModelQueries.ByIdAsync(db, mid, cancellationToken) : null;
+
+            return Results.Ok(new CheckupReportResponse(
+                checkup.Id,
+                checkup.Language,
+                CheckupReportRenderer.Render(projectName, checkup, model).Select(d => new ReportDocumentDto(d.Path, d.Content)).ToList()));
+        })
+            .WithName("GetCheckupReport")
+            .Produces<CheckupReportResponse>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         return app;
     }
 

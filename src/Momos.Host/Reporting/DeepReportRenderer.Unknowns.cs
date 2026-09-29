@@ -22,7 +22,7 @@ public static partial class DeepReportRenderer
         model.Outline.Where(s => IsEmpty(s) && NotAnalyzedReason(model, s) is null);
 
     /// <summary>Chapters with nothing in them because the analysis did not get to them.</summary>
-    private static IEnumerable<(OutlineSection Section, string Reason)> NotAnalyzedSections(ProjectModel model) =>
+    internal static IEnumerable<(OutlineSection Section, string Reason)> NotAnalyzedSections(ProjectModel model) =>
         model.Outline.Where(IsEmpty).Select(s => (Section: s, Reason: NotAnalyzedReason(model, s))).Where(x => x.Reason is not null)
             .Select(x => (x.Section, x.Reason!));
 
@@ -79,12 +79,22 @@ public static partial class DeepReportRenderer
         return $"[{count} open question{(count == 1 ? "" : "s")}]({UnknownsPage})";
     }
 
-    private static string Unknowns(ProjectModel model, Tree tree)
+    /// <summary>The unknowns page at <paramref name="page"/>, for chapter pages under
+    /// <paramref name="chapterPrefix"/> and component and claim pages under <paramref name="evidencePrefix"/>
+    /// (the same prefixes as <see cref="AppendixPages"/>), linking back to <paramref name="summaryPage"/>.</summary>
+    internal static ReportDocument UnknownsDocument(
+        ProjectModel model, string page, string chapterPrefix, string evidencePrefix, string summaryPage = "index.md")
+    {
+        var dir = DirOf(page);
+        return new(page, Unknowns(model, new Tree(model), Links.From(dir, evidencePrefix, summaryPage, page), s => Relative(dir, $"{chapterPrefix}{s.Path}")));
+    }
+
+    private static string Unknowns(ProjectModel model, Tree tree, Links l, Func<OutlineSection, string> chapter)
     {
         var md = new StringBuilder()
             .Line("# What this report does not know")
             .Line()
-            .Line("Back to the [summary](index.md). Everything below is either unread, unexplained, or waiting for a developer's verdict — this page is kept even when it is short, because an empty one would be a claim too.")
+            .Line($"Back to the [summary]({l.Summary}). Everything below is either unread, unexplained, or waiting for a developer's verdict — this page is kept even when it is short, because an empty one would be a claim too.")
             .Line();
 
         md.Line("## Areas not analyzed").Line();
@@ -115,7 +125,7 @@ public static partial class DeepReportRenderer
             foreach (var d in unrecorded)
             {
                 // "<summary> — why?" reads the same whether the summary is a sentence or a phrase.
-                md.Line($"- {Inline(d.Summary.TrimEnd('.'))} — why? ({tree.ClaimLinks(d.Claims, "claims/")})");
+                md.Line($"- {Inline(d.Summary.TrimEnd('.'))} — why? ({tree.ClaimLinks(d.Claims, l.Claims)})");
             }
 
             md.Line();
@@ -129,7 +139,7 @@ public static partial class DeepReportRenderer
               .Line();
             foreach (var c in readings)
             {
-                md.Line($"- {Inline(c.Statement)} — {c.Tier} ({tree.ClaimLink(c.Key, "claims/")})");
+                md.Line($"- {Inline(c.Statement)} — {c.Tier} ({tree.ClaimLink(c.Key, l.Claims)})");
             }
 
             md.Line();
@@ -143,7 +153,7 @@ public static partial class DeepReportRenderer
               .Line();
             foreach (var c in disputed)
             {
-                md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, "claims/")})");
+                md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, l.Claims)})");
             }
 
             md.Line();
@@ -157,7 +167,7 @@ public static partial class DeepReportRenderer
               .Line();
             foreach (var (s, reason) in notAnalyzed)
             {
-                md.Line($"- [{LinkText(s.Title)}]({s.Path}) — {Inline(reason)}");
+                md.Line($"- [{LinkText(s.Title)}]({chapter(s)}) — {Inline(reason)}");
             }
 
             md.Line();
@@ -169,7 +179,7 @@ public static partial class DeepReportRenderer
             md.Line("## Chapters without evidence").Line();
             foreach (var s in empty)
             {
-                md.Line($"- [{LinkText(s.Title)}]({s.Path}) — no evidence for this chapter was found in this repository.");
+                md.Line($"- [{LinkText(s.Title)}]({chapter(s)}) — no evidence for this chapter was found in this repository.");
             }
 
             md.Line();
@@ -183,7 +193,7 @@ public static partial class DeepReportRenderer
               .Line();
             foreach (var c in unplaced)
             {
-                md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, "claims/")})");
+                md.Line($"- {Inline(c.Statement)} ({tree.ClaimLink(c.Key, l.Claims)})");
             }
 
             md.Line();

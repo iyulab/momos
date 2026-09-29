@@ -35,7 +35,7 @@ public static partial class DeepReportRenderer
         var documents = new List<ReportDocument>
         {
             new("index.md", model.Outline.Count > 0 ? OutlineIndex(projectName, model, tree) : Index(projectName, model, tree)),
-            new(UnknownsPage, Unknowns(model, tree)),
+            UnknownsDocument(model, UnknownsPage, "", ""),
         };
         documents.AddRange(AppendixPages(model, "", ""));
         return documents;
@@ -53,10 +53,9 @@ public static partial class DeepReportRenderer
         ProjectModel model, string chapterPrefix, string evidencePrefix, string summaryPage = "index.md", string unknownsPage = UnknownsPage)
     {
         var tree = new Tree(model);
-        var claimsDir = $"{evidencePrefix}claims/";
-        var componentsDir = $"{evidencePrefix}components/";
-        Links LinksFrom(string dir) => new(
-            Relative(dir, claimsDir), Relative(dir, componentsDir), Relative(dir, summaryPage), Relative(dir, unknownsPage));
+        var claimsDir = ClaimsDir(evidencePrefix);
+        var componentsDir = ComponentsDir(evidencePrefix);
+        Links LinksFrom(string dir) => Links.From(dir, evidencePrefix, summaryPage, unknownsPage);
 
         var documents = new List<ReportDocument>();
         var chapterLinks = LinksFrom(chapterPrefix);
@@ -80,12 +79,23 @@ public static partial class DeepReportRenderer
         return documents;
     }
 
+    private static string ClaimsDir(string evidencePrefix) => $"{evidencePrefix}claims/";
+
+    private static string ComponentsDir(string evidencePrefix) => $"{evidencePrefix}components/";
+
+    /// <summary>The folder part of a page path: empty for a page at the root, else ending in "/".</summary>
+    private static string DirOf(string page) => page[..(page.LastIndexOf('/') + 1)];
+
     /// <summary>Where the pages a page links to live, relative to that page's folder.</summary>
-    private readonly record struct Links(string Claims, string Components, string Summary, string Unknowns);
+    private readonly record struct Links(string Claims, string Components, string Summary, string Unknowns)
+    {
+        public static Links From(string dir, string evidencePrefix, string summaryPage, string unknownsPage) => new(
+            Relative(dir, ClaimsDir(evidencePrefix)), Relative(dir, ComponentsDir(evidencePrefix)), Relative(dir, summaryPage), Relative(dir, unknownsPage));
+    }
 
     /// <summary>The relative link from a page in <paramref name="fromDir"/> (empty or ending in "/")
     /// to <paramref name="to"/>, a file path or a folder ending in "/".</summary>
-    private static string Relative(string fromDir, string to)
+    internal static string Relative(string fromDir, string to)
     {
         var from = fromDir.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var target = to.Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -323,21 +333,21 @@ public static partial class DeepReportRenderer
         _ => e.Kind.ToString(),
     };
 
-    private static string Date(DateTimeOffset at) => at.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    internal static string Date(DateTimeOffset at) => at.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private const int TitleLength = 80;
 
     /// <summary>Free text that must stay on one line (headings, list items).</summary>
-    private static string Inline(string text) => EscapeHtml(OneLine(text));
+    internal static string Inline(string text) => EscapeHtml(OneLine(text));
 
     /// <summary>A paragraph of free text, with its line endings normalized to <c>\n</c>.</summary>
-    private static string Block(string text) => EscapeHtml(text.ReplaceLineEndings("\n").Trim('\n'));
+    internal static string Block(string text) => EscapeHtml(text.ReplaceLineEndings("\n").Trim('\n'));
 
     private static string OneLine(string text) => text.ReplaceLineEndings(" ");
 
     /// <summary>A page title from free text: the text itself, or — past <see cref="TitleLength"/>
     /// characters — its words up to that length followed by an ellipsis.</summary>
-    private static string Title(string text)
+    internal static string Title(string text)
     {
         var line = OneLine(text).Trim();
         if (line.Length > TitleLength)
@@ -379,7 +389,7 @@ public static partial class DeepReportRenderer
     private static partial Regex CodeSpan();
 
     /// <summary>A table cell from markdown that is already rendered; only pipes are escaped.</summary>
-    private static string Cell(string text) => OneLine(text).Replace("|", @"\|", StringComparison.Ordinal);
+    internal static string Cell(string text) => OneLine(text).Replace("|", @"\|", StringComparison.Ordinal);
 
     /// <summary>Text for an emphasized subtitle: markdown emphasis markers in it are escaped so the
     /// text cannot close the emphasis and continue as ordinary (bold, asserting) prose.</summary>
@@ -388,13 +398,13 @@ public static partial class DeepReportRenderer
         .Replace("_", @"\_", StringComparison.Ordinal)
         .Replace("*", @"\*", StringComparison.Ordinal);
 
-    private static string LinkText(string text) => Inline(text)
+    internal static string LinkText(string text) => Inline(text)
         .Replace(@"\", @"\\", StringComparison.Ordinal)
         .Replace("[", @"\[", StringComparison.Ordinal)
         .Replace("]", @"\]", StringComparison.Ordinal);
 
     /// <summary>An inline code span that survives backticks in its content.</summary>
-    private static string Code(string text)
+    internal static string Code(string text)
     {
         var inline = OneLine(text);
         return inline.Contains('`', StringComparison.Ordinal) ? $"`` {inline} ``" : $"`{inline}`";

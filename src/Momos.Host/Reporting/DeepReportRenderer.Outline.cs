@@ -20,10 +20,12 @@ public static partial class DeepReportRenderer
         return gap?.Reason[start.Length..].Trim();
     }
 
-    private static string? PartialReason(string? reason) =>
+    /// <summary>The reason after the "partial — " marker, or null when <paramref name="reason"/> does not carry it.</summary>
+    internal static string? PartialReason(string? reason) =>
         reason is not null && reason.StartsWith(PartialPrefix, StringComparison.Ordinal) ? reason[PartialPrefix.Length..].Trim() : null;
 
-    private static bool IsEmpty(OutlineSection s) => s.OwnerSummaryClaims.Count == 0 && s.Blocks.Count == 0;
+    /// <summary>True when the chapter has neither an owner summary nor any block — nothing was written in it.</summary>
+    internal static bool IsEmpty(OutlineSection s) => s.OwnerSummaryClaims.Count == 0 && s.Blocks.Count == 0;
 
     /// <summary>What an empty chapter says: that the analysis did not get to it (and why) when coverage
     /// records that, and that the repository holds no evidence only when the analysis ran to the end.</summary>

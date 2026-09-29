@@ -20,6 +20,16 @@ public static class ExamProgram
 {
     /// <summary>The design analysis: the project model and its engineering manual.</summary>
     public const string DesignAnalysis = "design-analysis";
+
+    /// <summary>Static quality: findings from linters and analyzers. No checkup runs it yet.</summary>
+    public const string StaticQuality = "static-quality";
+
+    /// <summary>Convention conformance: the code checked against the project's own conventions. No checkup runs it yet.</summary>
+    public const string ConventionConformance = "convention-conformance";
+
+    /// <summary>Every program a checkup can list, in report order. A program a checkup did not
+    /// include is still shown in its report — as not included, never as passed.</summary>
+    public static IReadOnlyList<string> All { get; } = [DesignAnalysis, StaticQuality, ConventionConformance];
 }
 
 /// <summary>

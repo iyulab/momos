@@ -40,3 +40,6 @@ public sealed record CheckupResponse(
                 e.ProjectModelId is { } modelId && modelVersions.TryGetValue(modelId, out var version) ? version : null))
             .ToList());
 }
+
+/// <summary>A finished checkup's report: markdown documents with relative paths, <c>index.md</c> first.</summary>
+public sealed record CheckupReportResponse(Guid CheckupId, string Language, IReadOnlyList<ReportDocumentDto> Documents);
