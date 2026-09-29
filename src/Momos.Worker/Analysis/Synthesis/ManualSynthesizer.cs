@@ -114,9 +114,9 @@ public sealed class ManualSynthesizer(
                 pass, slice is { } sl ? $"{sl.TotalSeconds:0}s" : "the remaining time", tokens);
             var outcome = await RunAsync();
             logger.LogInformation(
-                "Analysis pass {Pass} {Outcome} after {Seconds:0}s — {Tokens} token(s); tool calls: {Calls}; {Rejected} proposal(s) rejected",
+                "Analysis pass {Pass} {Outcome} after {Seconds:0}s — {Tokens} token(s); tool calls: {Calls}; {Rejected} proposal(s) rejected; {Nudges} reminder(s) to propose",
                 pass, outcome ?? "finished", (time.GetUtcNow() - passStarted).TotalSeconds, budget.Used, monitor.Summary(),
-                draft.Rejections.Values.Sum() - rejectedBefore);
+                draft.Rejections.Values.Sum() - rejectedBefore, monitor.Nudges);
             return outcome;
 
             async Task<string?> RunAsync()

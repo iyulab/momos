@@ -99,5 +99,6 @@ public sealed class AnalysisToolMonitorTests
         Assert.Equal("ran e", await Text(read, Read("e")));
         Assert.Equal("ran f", await Text(read, Read("f")));
         Assert.Contains("without a proposal", await Text(read, Read("g")), StringComparison.Ordinal);
+        Assert.Equal(2, monitor.Nudges);
     }
 }

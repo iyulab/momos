@@ -121,7 +121,7 @@ public sealed class ManualSynthesizerTests
         Assert.Contains(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("retries"));
         var gap = Assert.Single(model.Coverage.NotAnalyzed, g => g.Area == "manual-outline");
         Assert.Equal("partial — token budget reached", gap.Reason);
-        Assert.Contains(model.Coverage.Analyzed, a => a.Area == "manual-synthesis" && a.Detail.StartsWith("1 of 2 chapters", StringComparison.Ordinal));
+        Assert.Contains(model.Coverage.Analyzed, a => a.Area == "manual-synthesis" && a.Detail.StartsWith("2 of 2 chapters", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -190,10 +190,10 @@ public sealed class ManualSynthesizerTests
 
         Assert.Contains(logger.Messages, m => m.StartsWith("Analysis pass overview started", StringComparison.Ordinal));
         Assert.Contains(logger.Messages, m => m.StartsWith("Analysis pass overview finished after", StringComparison.Ordinal)
-            && m.EndsWith("25 token(s); tool calls: ProposeChapter 1; 0 proposal(s) rejected", StringComparison.Ordinal));
+            && m.EndsWith("25 token(s); tool calls: ProposeChapter 1; 0 proposal(s) rejected; 0 reminder(s) to propose", StringComparison.Ordinal));
         Assert.Contains(logger.Messages, m => m.StartsWith("Analysis pass system-map.md started", StringComparison.Ordinal) && m.EndsWith("1000 token(s) at most", StringComparison.Ordinal));
         Assert.Contains(logger.Messages, m => m.StartsWith("Analysis pass system-map.md finished after", StringComparison.Ordinal)
-            && m.EndsWith("tool calls: AddBlock 1, ProposeClaim 1; 1 proposal(s) rejected", StringComparison.Ordinal));
+            && m.EndsWith("tool calls: AddBlock 1, ProposeClaim 1; 1 proposal(s) rejected; 0 reminder(s) to propose", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -240,6 +240,7 @@ public sealed class ManualSynthesizerTests
         Assert.Contains(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("expensive"));
         Assert.DoesNotContain(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("never"));
         Assert.Contains(model.Coverage.NotAnalyzed, g => g.Reason == "system-map.md: partial — token budget reached");
+        Assert.Equal([(OutlineBlockKind.Claim, ModelIds.SynthesizedClaim("expensive"))], model.Outline[0].Blocks.Select(b => (b.Kind, b.Ref)));
     }
 
     [Fact]

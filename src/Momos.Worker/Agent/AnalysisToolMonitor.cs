@@ -21,10 +21,14 @@ public sealed class AnalysisToolMonitor(int readsBeforeNudge, ILogger? logger = 
 
     private readonly ConcurrentDictionary<string, (int Calls, int Failed)> _counts = new(StringComparer.Ordinal);
     private int _readsInARow;
+    private int _nudges;
 
     public int Calls => _counts.Values.Sum(c => c.Calls);
 
     public int Failed => _counts.Values.Sum(c => c.Failed);
+
+    /// <summary>How many times a reminder to propose was appended.</summary>
+    public int Nudges => Volatile.Read(ref _nudges);
 
     public int CallsTo(string tool) => _counts.TryGetValue(tool, out var c) ? c.Calls : 0;
 
@@ -56,6 +60,7 @@ public sealed class AnalysisToolMonitor(int readsBeforeNudge, ILogger? logger = 
         }
 
         Interlocked.Exchange(ref _readsInARow, 0);
+        Interlocked.Increment(ref _nudges);
         return text + string.Create(CultureInfo.InvariantCulture,
             $"\n\n[momos] {reads} reads in a row without a proposal. Propose what you have found so far before reading more: when this pass runs out of time or tokens it keeps only what you proposed.");
     }
