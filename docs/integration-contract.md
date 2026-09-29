@@ -22,6 +22,9 @@
 | `GET` | `/inspection-requests/{id}/report` | 검사 신청서에 대한 검사 결과서를 조회한다. |
 | `POST` | `/projects/{id}/analysis-requests` | 프로젝트 모델을 만들 분석을 요청한다(`commitRef` 선택). |
 | `GET` | `/analysis-requests/{id}` | 분석 요청과 그 현재 상태를 조회한다. |
+| `POST` | `/projects/{projectId}/checkups` | 프로젝트의 검진을 시작한다 — 설계 분석 요청 하나를 큐에 올린다. |
+| `GET` | `/checkups/{id}` | 검진과 검진 항목별 진행 상태를 조회한다. |
+| `GET` | `/projects/{projectId}/checkups` | 프로젝트의 검진 목록을 최신순으로 조회한다. |
 | `GET` | `/projects/{id}/model` | 프로젝트의 최신 모델(구성 요소·관계·패턴·결정·의도·흐름·불변식·목차·분석 범위·진술)을 조회한다. |
 | `GET` | `/projects/{id}/model/report` | 최신 모델의 딥 리포트를 마크다운 문서 트리로 조회한다. |
 | `POST` | `/projects/{id}/model/claims/{claimKey}/corrections` | 최신 모델의 한 진술에 개발자 판정을 기록한다. |
@@ -46,12 +49,18 @@ JSON 필드 이름은 camelCase이고, enum 값은 PascalCase 문자열로 오�
   - 선택: `repositoryUrl`(검사가 체크아웃할 리포 — 분석 요청과 `commitRef`에 필요), `deploymentUrl`(배포된 앱 주소 — 현재
     Worker는 아직 사용하지 않는다). 비공개 리포는 그 요청을 처리하는 Worker의 운영자가 허용한 경우에만 체크아웃된다(README
     「비공개 리포」) — 허용되지 않았으면 요청은 체크아웃 단계에서 실패하고 `failureReason`에 git의 오류가 담긴다.
+  - 선택: `reportLanguage`(`en`·`ko` — 이 프로젝트 검진 리포트의 기본 언어, 지원하지 않는 값은 `400`).
   - 선택, 셋이 함께: `appInstallerUri`, `appInstallPlatform`, `appInstallLaunchCommand`(하나라도 있으면 셋 다 있어야 하며
     아니면 `400`), 그리고 `appInstallArgs`. 설치형 앱 자료이며 현재 Worker는 아직 사용하지 않는다.
   - 성공하면 `201 Created`와 프로젝트(`id` 포함), `Location: /projects/{id}`.
 - **검사 신청** — `POST /projects/{id}/inspection-requests`: `focus`(선택, 에이전트에게 줄 중점 — 예: "로그인 흐름"),
   `commitRef`(선택, 체크아웃할 커밋·브랜치·태그 — 프로젝트에 `repositoryUrl`이 없으면 `400`). 프로젝트가 없으면 `404`.
 - **분석 요청** — `POST /projects/{id}/analysis-requests`: `commitRef`(선택). 응답은 아래 「프로젝트 모델」 참고.
+- **검진 시작** — `POST /projects/{projectId}/checkups`: `commitRef`(선택), `language`(선택, `en`·`ko` — 생략하면 프로젝트의
+  `reportLanguage`, 그것도 없으면 Host 기본값). 지원하지 않는 언어는 `400`, 프로젝트에 `repositoryUrl`이 없어도 `400`, 프로젝트가
+  없으면 `404`. 성공하면 `201 Created`와 검진(`id`·`language`·`status`·`exams` 포함), `Location: /checkups/{id}`.
+  `GET /checkups/{id}`는 검진 하나(없으면 `404`), `GET /projects/{projectId}/checkups`는 최신순 목록(프로젝트가 없으면 `404`)이다.
+  분석·검사 요청 응답에는 그 요청이 쓸 리포트 언어 `language`(없으면 `null`)가 함께 담긴다.
 - **지식 문서 등록** — `POST /projects/{id}/knowledge/documents`: `{title, content}`. 성공하면 `201 Created`와
   `{documentId}` — 문서 하나를 다시 읽는 경로는 없으므로 `Location`은 없다. 프로젝트가 없으면 `404`.
 - **지식 검색** — `POST /projects/{id}/knowledge/query`: `{query, maxResults}`(`maxResults` 기본 5). `200`과

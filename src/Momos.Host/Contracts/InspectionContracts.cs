@@ -15,7 +15,8 @@ public sealed record InspectionRequestResponse(
     InspectionRequestStatus Status,
     string? FailureReason,
     DateTimeOffset? ClaimedAt,
-    InspectionRequestKind Kind)
+    InspectionRequestKind Kind,
+    string? Language = null)
 {
     public static InspectionRequestResponse FromEntity(InspectionRequest request) => new(
         request.Id,
@@ -26,7 +27,8 @@ public sealed record InspectionRequestResponse(
         request.Status,
         request.FailureReason,
         request.ClaimedAt,
-        request.Kind);
+        request.Kind,
+        request.Language);
 }
 
 public sealed record FindingResponse(Guid Id, FindingCategory Category, string Description, string Evidence)
