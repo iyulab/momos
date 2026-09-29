@@ -12,7 +12,8 @@ public sealed record CreateProjectRequest(
     string? AppInstallerUri = null,
     string? AppInstallPlatform = null,
     string? AppInstallArgs = null,
-    string? AppInstallLaunchCommand = null);
+    string? AppInstallLaunchCommand = null,
+    string? ReportLanguage = null);
 
 public sealed record ProjectResponse(
     Guid Id,
@@ -26,7 +27,8 @@ public sealed record ProjectResponse(
     string? AppInstallerUri = null,
     string? AppInstallPlatform = null,
     string? AppInstallArgs = null,
-    string? AppInstallLaunchCommand = null)
+    string? AppInstallLaunchCommand = null,
+    string? ReportLanguage = null)
 {
     public static ProjectResponse FromEntity(Project project) => new(
         project.Id,
@@ -40,5 +42,6 @@ public sealed record ProjectResponse(
         project.AppInstallerUri,
         project.AppInstallPlatform,
         project.AppInstallArgs,
-        project.AppInstallLaunchCommand);
+        project.AppInstallLaunchCommand,
+        project.ReportLanguage);
 }

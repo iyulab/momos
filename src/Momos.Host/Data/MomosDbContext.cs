@@ -12,6 +12,8 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
     public DbSet<ToolCall> ToolCalls => Set<ToolCall>();
     public DbSet<ProjectModel> ProjectModels => Set<ProjectModel>();
     public DbSet<ModelClaim> ModelClaims => Set<ModelClaim>();
+    public DbSet<Checkup> Checkups => Set<Checkup>();
+    public DbSet<ExamRun> ExamRuns => Set<ExamRun>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -86,5 +88,19 @@ public sealed class MomosDbContext(DbContextOptions<MomosDbContext> options) : D
         claim.Property(c => c.Status).HasConversion<string>();
         claim.Property(c => c.Origin).HasConversion<string>();
         claim.HasIndex(c => new { c.ProjectModelId, c.Key }).IsUnique();
+
+        // Restrict throughout, like the request history: a checkup is an audit record of what was
+        // examined and must not disappear through a project, request or model deletion.
+        var checkup = modelBuilder.Entity<Checkup>();
+        checkup.Property(c => c.Status).HasConversion<string>();
+        checkup.HasIndex(c => new { c.ProjectId, c.CreatedAt });
+        checkup.HasOne<Project>().WithMany().HasForeignKey(c => c.ProjectId).OnDelete(DeleteBehavior.Restrict);
+        checkup.HasMany(c => c.Exams).WithOne().HasForeignKey(e => e.CheckupId).OnDelete(DeleteBehavior.Cascade);
+
+        var exam = modelBuilder.Entity<ExamRun>();
+        exam.Property(e => e.Status).HasConversion<string>();
+        exam.HasIndex(e => e.RequestId).IsUnique();
+        exam.HasOne<InspectionRequest>().WithMany().HasForeignKey(e => e.RequestId).OnDelete(DeleteBehavior.Restrict);
+        exam.HasOne<ProjectModel>().WithMany().HasForeignKey(e => e.ProjectModelId).OnDelete(DeleteBehavior.Restrict);
     }
 }

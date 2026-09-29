@@ -33,6 +33,14 @@ public static class ProjectEndpoints
                 });
             }
 
+            if (!ReportLanguage.TryNormalize(request.ReportLanguage, out var language))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["reportLanguage"] = [$"Supported languages: {string.Join(", ", ReportLanguage.Supported)}."],
+                });
+            }
+
             var project = new Project
             {
                 Name = request.Name,
@@ -45,6 +53,7 @@ public static class ProjectEndpoints
                 Purpose = request.Purpose,
                 Vision = request.Vision,
                 Scope = request.Scope,
+                ReportLanguage = language,
             };
 
             db.Projects.Add(project);

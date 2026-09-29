@@ -28,5 +28,8 @@ public sealed class Project
     public required string Purpose { get; set; }
     public required string Vision { get; set; }
     public required string Scope { get; set; }
+    /// <summary>The default language of this project's checkups. When empty, the Host default applies.</summary>
+    public string? ReportLanguage { get; set; }
+
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 }

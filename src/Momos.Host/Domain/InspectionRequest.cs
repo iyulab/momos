@@ -38,6 +38,10 @@ public sealed class InspectionRequest
     /// </summary>
     public string? CommitRef { get; set; }
 
+    /// <summary>The language the language model writes in. When empty, English — for requests that
+    /// are not part of a checkup and for requests submitted before the field existed.</summary>
+    public string? Language { get; init; }
+
     public DateTimeOffset SubmittedAt { get; init; } = DateTimeOffset.UtcNow;
     public InspectionRequestStatus Status { get; set; } = InspectionRequestStatus.Pending;
     public string? FailureReason { get; set; }
