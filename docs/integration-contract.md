@@ -77,6 +77,8 @@ sha다. 인용한 제목은 커밋 자신의 문장일 뿐 변경 이유에 대�
   `GET /analysis-requests/{id}`는 검사 신청서의 id에는 `404`를 돌려준다.
 - **모델 버전** — 분석이 완료될 때마다 새 모델 버전(`modelVersion`, 1부터 증가)이 만들어진다. 같은 커밋을 다시
   분석해도 새 버전이다. `GET /projects/{id}/model`은 최신 버전을 돌려주고, 아직 모델이 없으면 `404`다.
+  응답의 `knowledgeIndexedAt`은 지식 검색 색인이 이 모델을 따라잡은 시각(ISO-8601)이고, 아직이면 `null`이다 — 모델은 제출 즉시 읽히지만
+  지식 검색에의 반영은 백그라운드에서 뒤따른다.
 - **진술** — 각 진술은 안정된 `key`, 등급 `tier`(`Fact`·`History`·`Assessment`), `statement`, 근거 목록
   `evidence`(`kind`: `Code`·`Commit`·`PullRequest`·`Issue`·`Finding`·`Claim`), `confidence`(`High`·`Medium`·`Low`), 생성 방식 `origin`(`Deterministic`·`Synthesized` — 제출에 필수),
   판정 상태 `status`(`Proposed`·`Confirmed`·`Disputed`·`Corrected`)와 `correction`·`correctedAt`을 갖는다. 근거 없는

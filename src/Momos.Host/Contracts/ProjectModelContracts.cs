@@ -209,7 +209,7 @@ public sealed record ProjectModelResponse(
     IReadOnlyList<ModelPatternDto> Patterns, IReadOnlyList<ModelDecisionDto> Decisions,
     IReadOnlyList<ModelIntentDto> Intents, IReadOnlyList<ModelFlowDto> Flows,
     IReadOnlyList<ModelInvariantDto> Invariants, IReadOnlyList<OutlineSectionDto> Outline,
-    ModelCoverageDto? Coverage, IReadOnlyList<ClaimResponse> Claims)
+    ModelCoverageDto? Coverage, IReadOnlyList<ClaimResponse> Claims, DateTimeOffset? KnowledgeIndexedAt)
 {
     public static ProjectModelResponse FromEntity(ProjectModel m) => new(
         m.ProjectId, m.ModelVersion, m.BaseCommit, m.AnalysisRequestId, m.CreatedAt,
@@ -223,7 +223,8 @@ public sealed record ProjectModelResponse(
         m.Outline.Select(s => new OutlineSectionDto(s.Id, s.Path, s.Title, s.Purpose, s.OwnerSummaryClaims,
             s.Blocks.Select(b => new OutlineBlockDto(b.Kind, b.Ref)).ToList())).ToList(),
         m.Coverage is null ? null : ModelCoverageDto.FromDomain(m.Coverage),
-        m.Claims.OrderBy(c => c.Key, StringComparer.Ordinal).Select(ClaimResponse.FromEntity).ToList());
+        m.Claims.OrderBy(c => c.Key, StringComparer.Ordinal).Select(ClaimResponse.FromEntity).ToList(),
+        m.KnowledgeIndexedAt);
 }
 
 public sealed record ReportDocumentDto(string Path, string Content);
