@@ -201,7 +201,7 @@ public sealed class PullExecutionBackgroundService(
                 // language-model passes then add what they can verify (see ProjectAnalyzer). A failed
                 // extraction throws into the catch below and is reported like any failed run, so the
                 // request never stays Running.
-                var model = await analyzer.AnalyzeAsync(session, project, cancellationToken);
+                var model = await analyzer.AnalyzeAsync(session, project, request.Language, cancellationToken);
                 logger.LogInformation(
                     "Analysis for request {RequestId} built {ComponentCount} component(s), {ClaimCount} claim(s) and {ChapterCount} chapter(s) at {BaseCommit}",
                     request.Id, model.Components.Count, model.Claims.Count, model.Outline.Count, model.BaseCommit);

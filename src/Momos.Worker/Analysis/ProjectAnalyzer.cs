@@ -13,7 +13,7 @@ namespace Momos.Worker.Analysis;
 public sealed class ProjectAnalyzer(
     IProjectModelExtractor extractor, IManualSynthesizer synthesizer, IOptions<AnalysisOptions> options, ILogger<ProjectAnalyzer> logger) : IProjectAnalyzer
 {
-    public async Task<ProjectModelPayload> AnalyzeAsync(ExecutionSessionHandle session, ProjectInfo project, CancellationToken cancellationToken)
+    public async Task<ProjectModelPayload> AnalyzeAsync(ExecutionSessionHandle session, ProjectInfo project, string? language, CancellationToken cancellationToken)
     {
         var skeleton = await extractor.ExtractAsync(session, cancellationToken);
         if (!options.Value.Synthesis)
@@ -23,7 +23,7 @@ public sealed class ProjectAnalyzer(
 
         try
         {
-            return await synthesizer.SynthesizeAsync(skeleton, session, project, cancellationToken);
+            return await synthesizer.SynthesizeAsync(skeleton, session, project, language, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

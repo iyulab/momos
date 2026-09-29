@@ -187,7 +187,7 @@ public sealed class ManualSynthesisRoundTripTests : IAsyncLifetime
             Options.Create(new GpuStackLlmOptions { Endpoint = "http://llm.invalid", ApiKey = "k", Model = "scripted-model" }),
             TimeProvider.System, NullLogger<ManualSynthesizer>.Instance);
         var analyzer = new ProjectAnalyzer(new ProjectModelExtractor(_runtime), synthesizer, Options.Create(new AnalysisOptions()), NullLogger<ProjectAnalyzer>.Instance);
-        return await analyzer.AnalyzeAsync(_session, new ProjectInfo(Guid.NewGuid(), "acme", _source, null, "p", "v", "s"), CancellationToken.None);
+        return await analyzer.AnalyzeAsync(_session, new ProjectInfo(Guid.NewGuid(), "acme", _source, null, "p", "v", "s"), null, CancellationToken.None);
     }
 
     private async Task CommitAsync(string message, params (string Path, string Content)[] files)

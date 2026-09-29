@@ -36,7 +36,8 @@ public sealed record ClaimedInspectionRequest(
     DateTimeOffset SubmittedAt,
     InspectionRequestStatus Status,
     string? FailureReason,
-    InspectionRequestKind Kind = InspectionRequestKind.Inspection);
+    InspectionRequestKind Kind = InspectionRequestKind.Inspection,
+    string? Language = null);
 
 public sealed record ProjectInfo(
     Guid Id,

@@ -210,6 +210,26 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
     }
 
     [Fact]
+    public async Task ClaimNextAsync_CarriesACheckupsLanguageToTheWorker()
+    {
+        while ((await _client.ClaimNextAsync(CancellationToken.None)).Request is not null)
+        {
+        }
+
+        var httpClient = _factory.CreateAuthorizedClient();
+        var project = await httpClient.PostAsJsonAsync("/projects",
+            new CreateProjectRequest("acme-checkup", "https://example.invalid/acme.git", null, "purpose", "vision", "scope"));
+        var projectId = (await project.Content.ReadFromJsonAsync<ProjectResponse>())!.Id;
+        var created = await httpClient.PostAsJsonAsync($"/projects/{projectId}/checkups", new { language = "ko" });
+        created.EnsureSuccessStatusCode();
+
+        var claimed = (await _client.ClaimNextAsync(CancellationToken.None)).Request!;
+
+        Assert.Equal(Momos.Worker.Execution.InspectionRequestKind.Analysis, claimed.Kind);
+        Assert.Equal("ko", claimed.Language);
+    }
+
+    [Fact]
     public async Task SubmitModelAsync_CompletesAClaimedAnalysisRequest()
     {
         while ((await _client.ClaimNextAsync(CancellationToken.None)).Request is not null)

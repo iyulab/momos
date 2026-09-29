@@ -8,7 +8,7 @@ namespace Momos.Worker.Analysis.Synthesis;
 
 public interface IManualSynthesizer
 {
-    Task<ProjectModelPayload> SynthesizeAsync(ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, CancellationToken cancellationToken);
+    Task<ProjectModelPayload> SynthesizeAsync(ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, string? language, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -34,7 +34,7 @@ public sealed class ManualSynthesizer(
     private const string TokenBudgetReached = "token budget reached";
 
     public async Task<ProjectModelPayload> SynthesizeAsync(
-        ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, CancellationToken cancellationToken)
+        ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, string? language, CancellationToken cancellationToken)
     {
         var started = time.GetUtcNow();
         var o = options.Value;
@@ -147,7 +147,7 @@ public sealed class ManualSynthesizer(
                 {
                     using (TokenBudget.Enter(budget))
                     {
-                        var loop = await loops.CreateAnalysisLoopAsync(session, project.Id, passTools, model, AnalysisPrompts.System,
+                        var loop = await loops.CreateAnalysisLoopAsync(session, project.Id, passTools, model, AnalysisPrompts.System(language),
                             new AnalysisContextOptions(o.MaxCommandOutputChars, o.MaxContextTokens, o.ProtectedToolRounds), monitor, passDeadline.Token);
                         await loop.RunAsync(prompt, passDeadline.Token);
                     }

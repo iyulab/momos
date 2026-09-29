@@ -143,10 +143,12 @@ Worker 전용 엔드포인트는 `Authorization: Bearer` 공유 키로 보호된
   `origin`이나 블록의 `kind`를 빠뜨려도 `400`이다. 근거 규칙을 어긴 진술도 `400`이다. 요청이 `Running`이 아니거나 검사 신청서의 id면 `409`,
   성공하면 `201 Created`로 요청이 `Completed`가 된다. 반대로 분석 요청의 id로 검사 결과서를 제출하면 `409`다.
 - 분석이 실패하면 검사와 같은 `POST /inspection-requests/{id}/fail`로 보고한다.
-- 와이어 프로토콜 버전은 **4**다. 프로토콜 4는 모델 제출에 `flows`·`invariants`·`outline`·`coverage`를 필수로
+- 와이어 프로토콜 버전은 **5**다. 프로토콜 4는 모델 제출에 `flows`·`invariants`·`outline`·`coverage`를 필수로
   더했다 — 그것을 보내지 않는 프로토콜 3 Worker는 분석을 다 마친 뒤 제출에서야 거부되므로, 이 Host는 프로토콜 4
   미만 Worker에게 일을 넘기지 않고 업데이트가 필요하다는 신호(`updateRequired: true`)만 돌려준다. (프로토콜 3은
-  `claim-next` 응답에 요청 종류 `kind`를 더했었다.)
+  `claim-next` 응답에 요청 종류 `kind`를 더했었다.) 프로토콜 5는 `claim-next` 응답의 요청에 `language`(`en`·`ko`,
+  분석 요청에서 생략되면 `null`)를 더했다 — Worker는 매뉴얼을 그 언어로 쓴다. 프로토콜 4 Worker는 언제나 영어로 쓰므로
+  이 Host는 프로토콜 5 미만 Worker에게 일을 넘기지 않는다.
 
 ## 안정성 약속
 

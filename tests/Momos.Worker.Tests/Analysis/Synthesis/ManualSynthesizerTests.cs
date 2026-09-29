@@ -71,8 +71,21 @@ public sealed class ManualSynthesizerTests
             TimeProvider.System, logger ?? NullLogger<ManualSynthesizer>.Instance);
     }
 
-    private static Task<ProjectModelPayload> Run(ManualSynthesizer synthesizer, CancellationToken cancellationToken = default) =>
-        synthesizer.SynthesizeAsync(SynthesisDraftTests.Skeleton(), new ExecutionSessionHandle("s"), Project, cancellationToken);
+    private static Task<ProjectModelPayload> Run(ManualSynthesizer synthesizer, CancellationToken cancellationToken = default, string? language = null) =>
+        synthesizer.SynthesizeAsync(SynthesisDraftTests.Skeleton(), new ExecutionSessionHandle("s"), Project, language, cancellationToken);
+
+    [Fact]
+    public async Task TheLanguage_ReachesEveryPassesSystemPrompt()
+    {
+        var overview = Pass(Call("ProposeChapter", Chapter("System map", "system-map")), Done());
+        var chapter = Pass(Done());
+        var synthesizer = Build(null, overview, chapter);
+
+        await synthesizer.SynthesizeAsync(SynthesisDraftTests.Skeleton(), new ExecutionSessionHandle("s"), Project, "ko", CancellationToken.None);
+
+        Assert.Contains(overview.LastMessages!, m => m.Role == ChatRole.System && m.Text.Contains("Write in Korean", StringComparison.Ordinal));
+        Assert.Contains(chapter.LastMessages!, m => m.Role == ChatRole.System && m.Text.Contains("Write in Korean", StringComparison.Ordinal));
+    }
 
     [Fact]
     public async Task TheOverviewPlansChapters_AndEachChapterPassFillsOne()

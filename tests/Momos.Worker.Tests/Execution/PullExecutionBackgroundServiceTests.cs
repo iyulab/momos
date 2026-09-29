@@ -725,7 +725,7 @@ public sealed class PullExecutionBackgroundServiceTests
 
     private sealed class UnusedSynthesizer : IManualSynthesizer
     {
-        public Task<ProjectModelPayload> SynthesizeAsync(ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, CancellationToken cancellationToken) =>
+        public Task<ProjectModelPayload> SynthesizeAsync(ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, string? language, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("synthesis is switched off in these tests");
     }
 }

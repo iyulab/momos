@@ -21,7 +21,7 @@ public sealed class ProjectAnalyzerTests
     {
         public int Calls { get; private set; }
 
-        public Task<ProjectModelPayload> SynthesizeAsync(ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, CancellationToken cancellationToken)
+        public Task<ProjectModelPayload> SynthesizeAsync(ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, string? language, CancellationToken cancellationToken)
         {
             Calls++;
             return Task.FromResult(run(skeleton));
@@ -36,7 +36,7 @@ public sealed class ProjectAnalyzerTests
     {
         var synthesizer = new Synthesizer(_ => throw new InvalidOperationException("not called"));
 
-        var model = await Analyzer(synthesizer, synthesis: false).AnalyzeAsync(new ExecutionSessionHandle("s"), Project, CancellationToken.None);
+        var model = await Analyzer(synthesizer, synthesis: false).AnalyzeAsync(new ExecutionSessionHandle("s"), Project, null, CancellationToken.None);
 
         Assert.Equal(0, synthesizer.Calls);
         Assert.Equal(SynthesisDraftTests.Skeleton().Claims.Select(c => c.Key), model.Claims.Select(c => c.Key));
@@ -47,7 +47,7 @@ public sealed class ProjectAnalyzerTests
     public async Task WhenSynthesisThrows_TheSkeletonIsSubmittedWithTheReason()
     {
         var model = await Analyzer(new Synthesizer(_ => throw new InvalidOperationException("broken")))
-            .AnalyzeAsync(new ExecutionSessionHandle("s"), Project, CancellationToken.None);
+            .AnalyzeAsync(new ExecutionSessionHandle("s"), Project, null, CancellationToken.None);
 
         Assert.Equal(SynthesisDraftTests.Skeleton().Claims.Select(c => c.Key), model.Claims.Select(c => c.Key));
         var gap = Assert.Single(model.Coverage.NotAnalyzed, g => g.Area == "manual-synthesis");
@@ -61,6 +61,6 @@ public sealed class ProjectAnalyzerTests
         await cts.CancelAsync();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            Analyzer(new Synthesizer(_ => throw new OperationCanceledException(cts.Token))).AnalyzeAsync(new ExecutionSessionHandle("s"), Project, cts.Token));
+            Analyzer(new Synthesizer(_ => throw new OperationCanceledException(cts.Token))).AnalyzeAsync(new ExecutionSessionHandle("s"), Project, null, cts.Token));
     }
 }
