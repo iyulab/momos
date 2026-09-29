@@ -30,6 +30,18 @@ public sealed class SessionScopedAgentLoop(
     public IAsyncEnumerable<AgentResponseChunk> RunStreamingAsync(string input, ChatOptions? chatOptions, CancellationToken cancellationToken = default) =>
         inner.RunStreamingAsync(input, chatOptions, cancellationToken);
 
+    public Task<AgentResponse> ContinueAsync(CancellationToken cancellationToken = default) =>
+        inner.ContinueAsync(cancellationToken);
+
+    public Task<AgentResponse> ContinueAsync(ChatOptions? chatOptions, CancellationToken cancellationToken = default) =>
+        inner.ContinueAsync(chatOptions, cancellationToken);
+
+    public IAsyncEnumerable<AgentResponseChunk> ContinueStreamingAsync(CancellationToken cancellationToken = default) =>
+        inner.ContinueStreamingAsync(cancellationToken);
+
+    public IAsyncEnumerable<AgentResponseChunk> ContinueStreamingAsync(ChatOptions? chatOptions, CancellationToken cancellationToken = default) =>
+        inner.ContinueStreamingAsync(chatOptions, cancellationToken);
+
     public void InitializeHistory(IEnumerable<ChatMessage> messages) => inner.InitializeHistory(messages);
 
     public void ClearHistory() => inner.ClearHistory();
