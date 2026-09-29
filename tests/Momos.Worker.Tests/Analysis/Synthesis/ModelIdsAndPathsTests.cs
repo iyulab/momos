@@ -38,7 +38,23 @@ public sealed class ModelIdsAndPathsTests
     [InlineData("…", "chapter.md")]
     public void APath_IsDerivedFromTheTitle(string title, string expected)
     {
-        var path = SectionPaths.FromTitle(title, new HashSet<string>());
+        var path = SectionPaths.FromTitle(title, guide: null, new HashSet<string>());
+
+        Assert.Equal(expected, path);
+        Assert.Matches(HostSectionPath, path);
+    }
+
+    /// <summary>A title in a script the slug cannot hold (a manual written in Korean, say) would leave
+    /// every chapter a bare "chapter-N": the guide chapter it follows names it instead.</summary>
+    [Theory]
+    [InlineData("핵심 흐름", "core-flows", "core-flows.md")]
+    [InlineData("핵심 흐름", "Core Flows!", "core-flows.md")]
+    [InlineData("인증과 보안", null, "chapter.md")]
+    [InlineData("인증과 보안", "", "chapter.md")]
+    [InlineData("System map", "core-flows", "system-map.md")]
+    public void ATitleWithNoSlugCharacters_IsNamedAfterItsGuideChapter(string title, string? guide, string expected)
+    {
+        var path = SectionPaths.FromTitle(title, guide, new HashSet<string>());
 
         Assert.Equal(expected, path);
         Assert.Matches(HostSectionPath, path);
@@ -49,14 +65,14 @@ public sealed class ModelIdsAndPathsTests
     {
         var taken = new HashSet<string>();
 
-        Assert.Equal("risks.md", SectionPaths.FromTitle("Risks", taken));
-        Assert.Equal("risks-2.md", SectionPaths.FromTitle("Risks", taken));
-        Assert.Equal("risks-3.md", SectionPaths.FromTitle("risks", taken));
+        Assert.Equal("risks.md", SectionPaths.FromTitle("Risks", guide: null, taken));
+        Assert.Equal("risks-2.md", SectionPaths.FromTitle("Risks", guide: null, taken));
+        Assert.Equal("risks-3.md", SectionPaths.FromTitle("risks", guide: null, taken));
     }
 
     [Fact]
     public void AVeryLongTitle_StillYieldsAValidPath() =>
-        Assert.Matches(HostSectionPath, SectionPaths.FromTitle(new string('a', 300), new HashSet<string>()));
+        Assert.Matches(HostSectionPath, SectionPaths.FromTitle(new string('a', 300), guide: null, new HashSet<string>()));
 
     [Theory]
     [InlineData(0, 1, 1, 1, 1)]
