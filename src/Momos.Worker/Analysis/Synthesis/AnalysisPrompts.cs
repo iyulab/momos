@@ -13,7 +13,7 @@ public sealed record GuideChapter(string Id, string Title, IReadOnlyList<string>
 /// </summary>
 public static class AnalysisPrompts
 {
-    public const string Version = "p3.3";
+    public const string Version = "p3.4";
 
     private const int MaxListedClaims = 300;
 
@@ -87,6 +87,9 @@ public static class AnalysisPrompts
         - History: something the commit history shows. Cite a commit sha, or a pull request or issue URL that
           appears in the repository or a commit message.
         - Assessment: your interpretation or advice. Cite the claims it interprets; its confidence is Low.
+        - The checks confirm that the text you cite is there, not what you work out from it. Do not state
+          counts, totals or "all", "every", "none" or "only" about the code unless one cited line says so
+          itself; describe what the cited text shows instead.
         - Never state why something was decided unless a History claim shows the reason. Otherwise the
           decision's rationale is 'unrecorded'. Saying you do not know is correct; guessing is not.
         - When a tool answers "Rejected: …", fix the proposal or drop it. Do not repeat it unchanged.

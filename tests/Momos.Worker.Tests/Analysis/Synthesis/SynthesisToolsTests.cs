@@ -56,6 +56,61 @@ public sealed class SynthesisToolsTests
     }
 
     [Fact]
+    public async Task CodeEvidenceWithoutASymbol_IsAnsweredWithAnExample()
+    {
+        var (tools, _) = Tools();
+
+        var answer = await tools.ProposeClaim("no symbol", ClaimTier.Fact, "There is a queue.", ClaimConfidence.High,
+            [new(ProposedEvidenceKind.Code, Path: "src/App/Queue.cs")], CancellationToken.None);
+
+        Assert.StartsWith("Rejected: Evidence 1 (Code) has no symbol.", answer, StringComparison.Ordinal);
+        Assert.EndsWith(SynthesisTools.CodeEvidenceExample, answer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheSameRejectionTwiceInARow_SaysToChangeOrDrop_AndARecordedProposalResetsIt()
+    {
+        var (tools, _) = Tools();
+        Task<string> Fabricated(string topic) => tools.ProposeClaim(topic, ClaimTier.Fact, "There is a cache.", ClaimConfidence.High,
+            [new(ProposedEvidenceKind.Code, Path: "src/App/Cache.cs", Symbol: "Cache")], CancellationToken.None);
+
+        Assert.DoesNotContain("in a row", await Fabricated("one"), StringComparison.Ordinal);
+        Assert.Contains("rejection 2 in a row for the same reason", await Fabricated("two"), StringComparison.Ordinal);
+        Assert.Contains("rejection 3 in a row", await Fabricated("three"), StringComparison.Ordinal);
+
+        await tools.ProposeClaim("the queue type", ClaimTier.Fact, "Requests queue in the Queue type.", ClaimConfidence.High, [QueueCode], CancellationToken.None);
+        Assert.DoesNotContain("in a row", await Fabricated("four"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ARejectionThatWouldQuoteTheRepository_LogsItsCauseInstead()
+    {
+        var logger = new ListLogger();
+        var draft = new SynthesisDraft(SynthesisDraftTests.Skeleton());
+        var runtime = new FakeExecutionRuntimeProvider { Respond = _ => new(false, "", "exit 1", 1) };
+        var tools = new SynthesisTools(draft.Stage(null), new EvidenceVerifier(runtime, new ExecutionSessionHandle("s"), Base), 12, logger);
+
+        await tools.ProposeClaim("made up", ClaimTier.Fact, "There is a cache.", ClaimConfidence.High,
+            [new(ProposedEvidenceKind.Code, Path: "src/App/Cache.cs", Symbol: "SecretCache")], CancellationToken.None);
+
+        var line = Assert.Single(logger.Messages);
+        Assert.EndsWith("no file at the analyzed commit", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("Cache", line, StringComparison.Ordinal);
+    }
+
+    private sealed class ListLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
+    }
+
+    [Fact]
     public async Task ARepeatedTopic_IsRejected()
     {
         var (tools, _) = Tools();

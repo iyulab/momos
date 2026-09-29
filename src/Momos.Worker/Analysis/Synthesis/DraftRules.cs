@@ -16,13 +16,17 @@ public static class RejectionReason
 }
 
 /// <summary>The outcome of checking one proposal; <see cref="Message"/> is what the model reads.</summary>
-public sealed record Verdict(string? Reason, string Message)
+/// <param name="Reason">The rejection reason, or null when accepted.</param>
+/// <param name="Message">What the agent is told; may quote what it proposed.</param>
+/// <param name="Cause">A fixed description of what failed that never quotes the proposal, so it can
+/// be logged where <paramref name="Message"/> cannot.</param>
+public sealed record Verdict(string? Reason, string Message, string? Cause = null)
 {
     public static Verdict Accept { get; } = new(null, "Accepted.");
 
     public bool Accepted => Reason is null;
 
-    public static Verdict Reject(string reason, string message) => new(reason, message);
+    public static Verdict Reject(string reason, string message, string? cause = null) => new(reason, message, cause);
 }
 
 /// <summary>

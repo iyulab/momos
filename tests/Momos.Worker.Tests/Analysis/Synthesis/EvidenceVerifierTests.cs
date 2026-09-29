@@ -73,7 +73,23 @@ public sealed class EvidenceVerifierTests
         if (!accepted)
         {
             Assert.Equal(RejectionReason.EvidenceNotFound, verdict.Reason);
+            Assert.False(string.IsNullOrEmpty(verdict.Cause), $"{because}: a rejection names its cause");
+            Assert.DoesNotContain("'", verdict.Cause, StringComparison.Ordinal);
         }
+    }
+
+    [Theory]
+    [InlineData("Claim()", "1-2", "symbol outside the cited lines", "it does appear elsewhere in the file")]
+    [InlineData("Release()", "1-2", "symbol not in the file", "copied exactly from the file")]
+    [InlineData("Release()", null, "symbol not in the file", "copied exactly from the file")]
+    public async Task AMissedSymbol_SaysWhetherOnlyTheLinesAreWrong(string symbol, string? lines, string cause, string advice)
+    {
+        var (verifier, _) = Verifier();
+
+        var (verdict, _) = await verifier.VerifyAsync(new(EvidenceKind.Code, Path: "src/App/Queue.cs", Symbol: symbol, Lines: lines), CancellationToken.None);
+
+        Assert.Equal(cause, verdict.Cause);
+        Assert.Contains(advice, verdict.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -40,6 +40,14 @@ public sealed record ProposedFlowStep(
 /// </summary>
 public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, int maxChapters, ILogger? logger = null)
 {
+    /// <summary>Appended when Code evidence lacks its locator: the rule alone did not stop an agent
+    /// resending the same shape, a filled-in example does more.</summary>
+    internal const string CodeEvidenceExample =
+        " Example: {\"kind\":\"Code\",\"path\":\"src/Orders/OrderService.cs\",\"symbol\":\"public sealed class OrderService\"} — the symbol is short text you saw in that file.";
+
+    private (string Tool, string Reason)? _lastRejection;
+    private int _rejectionsInARow;
+
     public static JsonSerializerOptions ToolJson { get; } = CreateToolJson();
 
     [Description("Plan one chapter of the manual. Give a short title (at most 80 characters) and a one-sentence purpose (at most 200 characters). " +
@@ -281,20 +289,36 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
     private static EvidencePayload ToPayload(ProposedEvidence e) =>
         new(Enum.Parse<EvidenceKind>(e.Kind.ToString()), e.Path, e.Symbol, e.Lines, e.Sha, e.Url, ClaimKey: e.ClaimKey);
 
-    private static string Recorded(string id) => $"Recorded as {id}.";
+    private string Recorded(string id)
+    {
+        _lastRejection = null;
+        _rejectionsInARow = 0;
+        return $"Recorded as {id}.";
+    }
 
-    private string Reject(Verdict verdict, [CallerMemberName] string tool = "") => Reject(verdict.Reason!, verdict.Message, tool);
+    private string Reject(Verdict verdict, [CallerMemberName] string tool = "") => Reject(verdict.Reason!, verdict.Message, tool, verdict.Cause);
 
-    private string Reject(string reason, string message, [CallerMemberName] string tool = "")
+    private string Reject(string reason, string message, [CallerMemberName] string tool = "", string? cause = null)
     {
         stage.Draft.Reject(reason);
         if (logger is not null)
         {
+            // A message that may quote the repository is not logged; its fixed cause is.
             var echoesRepository = reason is RejectionReason.EvidenceNotFound or RejectionReason.UnresolvedReference or RejectionReason.DuplicateTopic;
-            logger.LogInformation("{Tool} proposal rejected — {Reason}: {Detail}", tool, reason, echoesRepository ? "(detail withheld)" : message);
+            logger.LogInformation("{Tool} proposal rejected — {Reason}: {Detail}", tool, reason, echoesRepository ? cause ?? "(detail withheld)" : message);
         }
 
-        return $"Rejected: {message}";
+        _rejectionsInARow = _lastRejection == (tool, reason) ? _rejectionsInARow + 1 : 1;
+        _lastRejection = (tool, reason);
+        if (reason == RejectionReason.MissingLocator && message.StartsWith("Evidence", StringComparison.Ordinal) && message.Contains("(Code)", StringComparison.Ordinal))
+        {
+            message += CodeEvidenceExample;
+        }
+
+        // Told only what is wrong, an agent has resent the same proposal many times over.
+        return _rejectionsInARow < 2
+            ? $"Rejected: {message}"
+            : $"Rejected: {message} This is rejection {_rejectionsInARow} in a row for the same reason: change what this message names, or drop the proposal and go on.";
     }
 
     private static JsonSerializerOptions CreateToolJson()
