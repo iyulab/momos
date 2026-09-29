@@ -25,9 +25,19 @@ public sealed class AnalysisOptions
     public long MaxTotalTokens { get; set; } = 2_000_000;
 
     /// <summary>Characters of one command's output the analysis agent gets back; the rest is cut
-    /// with a note telling it to read a narrower part. Every output stays in the conversation the
-    /// model is sent on each later turn, so this bounds how fast a pass spends its tokens.</summary>
+    /// with a note telling it to read a narrower part. The outputs of the last
+    /// <see cref="ProtectedToolRounds"/> rounds are re-sent in full on each later model call, so this
+    /// bounds how fast a pass spends its tokens.</summary>
     public int MaxCommandOutputChars { get; set; } = 8_000;
+
+    /// <summary>The model's context window in tokens. Needed because a self-hosted model is not in
+    /// the agent library's catalog; without it compaction works against a guess.</summary>
+    public int MaxContextTokens { get; set; } = 32_000;
+
+    /// <summary>Most recent tool rounds whose outputs the agent keeps verbatim; older outputs are
+    /// replaced by short placeholders before each model call. Every output otherwise rides along
+    /// on every later call, which is what exhausted chapter budgets.</summary>
+    public int ProtectedToolRounds { get; set; } = 4;
 
     /// <summary>
     /// Wall-clock time the passes may take. Keep it below the Host's
@@ -38,5 +48,6 @@ public sealed class AnalysisOptions
     public TimeSpan MaxDuration { get; set; } = TimeSpan.FromMinutes(20);
 
     public static bool IsValid(AnalysisOptions o) =>
-        o.MaxChapters > 0 && o.MaxCommandOutputChars > 0 && o.MaxChapterTokens > 0 && o.MaxTotalTokens > 0 && o.MaxDuration > TimeSpan.Zero;
+        o.MaxChapters > 0 && o.MaxCommandOutputChars > 0 && o.MaxChapterTokens > 0 && o.MaxTotalTokens > 0 && o.MaxDuration > TimeSpan.Zero
+        && o.MaxContextTokens > 0 && o.ProtectedToolRounds > 0;
 }

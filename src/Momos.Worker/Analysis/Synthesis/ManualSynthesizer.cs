@@ -88,7 +88,8 @@ public sealed class ManualSynthesizer(
             {
                 using (TokenBudget.Enter(new TokenBudget(o.MaxChapterTokens, total)))
                 {
-                    var loop = await loops.CreateAnalysisLoopAsync(session, project.Id, passTools, model, AnalysisPrompts.System, o.MaxCommandOutputChars, deadline.Token);
+                    var loop = await loops.CreateAnalysisLoopAsync(session, project.Id, passTools, model, AnalysisPrompts.System,
+                        new AnalysisContextOptions(o.MaxCommandOutputChars, o.MaxContextTokens, o.ProtectedToolRounds), deadline.Token);
                     await loop.RunAsync(prompt, deadline.Token);
                 }
 
