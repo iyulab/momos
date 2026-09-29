@@ -15,8 +15,10 @@ public sealed class AnalysisOptions
     /// <summary>The model the analysis passes ask for; empty means the provider's configured model.</summary>
     public string? Model { get; set; }
 
-    /// <summary>The most chapters the overview pass may plan.</summary>
-    public int MaxChapters { get; set; } = 12;
+    /// <summary>The most chapters the overview pass may plan. The overview tends to plan up to this
+    /// limit, and each chapter gets an equal share of <see cref="MaxDuration"/>, so a high limit
+    /// leaves every chapter too little time.</summary>
+    public int MaxChapters { get; set; } = 8;
 
     /// <summary>Tokens one pass (the overview, or one chapter) may spend before that pass stops.</summary>
     public long MaxChapterTokens { get; set; } = 250_000;

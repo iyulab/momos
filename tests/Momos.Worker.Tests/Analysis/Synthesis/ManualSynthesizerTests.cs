@@ -54,7 +54,7 @@ public sealed class ManualSynthesizerTests
         var loops = services.BuildServiceProvider().GetRequiredService<IAnalysisAgentLoopFactory>();
         return new ManualSynthesizer(loops, runtime, Options.Create(options ?? new AnalysisOptions()),
             Options.Create(new GpuStackLlmOptions { Endpoint = "http://llm.invalid", ApiKey = "k", Model = "configured-model" }),
-            NullLogger<ManualSynthesizer>.Instance);
+            TimeProvider.System, NullLogger<ManualSynthesizer>.Instance);
     }
 
     private static Task<ProjectModelPayload> Run(ManualSynthesizer synthesizer, CancellationToken cancellationToken = default) =>
@@ -106,7 +106,7 @@ public sealed class ManualSynthesizerTests
     }
 
     [Fact]
-    public async Task AChapterOverItsTokenBudget_IsDropped()
+    public async Task AChapterOverItsTokenBudget_KeepsWhatWasAlreadyVerified_AsAPartialChapter()
     {
         var synthesizer = Build(new AnalysisOptions { MaxChapterTokens = 100 },
             Pass(Call("ProposeChapter", Chapter("System map", "system-map")), Done()),
@@ -114,8 +114,9 @@ public sealed class ManualSynthesizerTests
 
         var model = await Run(synthesizer);
 
-        Assert.DoesNotContain(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("expensive"));
-        Assert.Contains(model.Coverage.NotAnalyzed, g => g.Reason.Contains("token budget", StringComparison.Ordinal));
+        Assert.Contains(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("expensive"));
+        Assert.DoesNotContain(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("never"));
+        Assert.Contains(model.Coverage.NotAnalyzed, g => g.Reason == "system-map.md: partial — token budget reached");
     }
 
     [Fact]
@@ -141,8 +142,25 @@ public sealed class ManualSynthesizerTests
 
         var model = await Run(synthesizer);
 
-        Assert.Contains(model.Coverage.NotAnalyzed, g => g.Reason.Contains("time budget", StringComparison.Ordinal));
+        Assert.Contains(model.Coverage.NotAnalyzed, g => g.Reason == "system-map.md: time budget reached");
         Assert.DoesNotContain(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("slow"));
+    }
+
+    [Fact]
+    public async Task EachChapter_GetsItsShareOfTheRemainingTime()
+    {
+        // Two chapters, 2s in total: the first may not take the whole deadline — it is cut at
+        // its share, and the second still runs.
+        var second = Pass(Call("ProposeClaim", Assessment("second")), Done());
+        var synthesizer = Build(new AnalysisOptions { MaxDuration = TimeSpan.FromSeconds(2) },
+            Pass(Call("ProposeChapter", Chapter("System map", "system-map")), Call("ProposeChapter", Chapter("Risks", "risks-and-debt")), Done()),
+            new FakeChatClient([], Done()) { Delay = TimeSpan.FromSeconds(10) },
+            second);
+
+        var model = await Run(synthesizer);
+
+        Assert.Contains(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("second"));
+        Assert.Contains(model.Coverage.NotAnalyzed, g => g.Reason == "system-map.md: time budget reached");
     }
 
     [Fact]

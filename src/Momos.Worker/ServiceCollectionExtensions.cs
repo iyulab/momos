@@ -12,6 +12,7 @@ using IronHive.Agent.Tracking;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Momos.Worker.Agent;
@@ -52,6 +53,7 @@ public static class ServiceCollectionExtensions
             .Bind(configuration.GetSection(AnalysisOptions.SectionName))
             .Validate(AnalysisOptions.IsValid, $"{AnalysisOptions.SectionName} limits must all be greater than zero")
             .ValidateOnStart();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IManualSynthesizer, ManualSynthesizer>();
         services.AddSingleton<IProjectAnalyzer, ProjectAnalyzer>();
         services

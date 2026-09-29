@@ -24,8 +24,8 @@ public sealed record ComponentUpdate(string Responsibility, IReadOnlyList<string
 
 /// <summary>
 /// What an analysis has accepted so far, on top of the deterministic skeleton. A pass writes to a
-/// <see cref="DraftStage"/>; only a pass that finishes commits it, so a chapter that runs out of
-/// budget leaves nothing half-written behind.
+/// <see cref="DraftStage"/>, and nothing reaches the draft until the stage is committed — the caller
+/// decides whether a pass that did not finish keeps what it staged.
 /// </summary>
 public sealed class SynthesisDraft
 {
@@ -115,6 +115,11 @@ public sealed class DraftStage(SynthesisDraft draft, DraftSection? section)
     public SynthesisDraft Draft { get; } = draft;
 
     public int StagedClaimCount => _claims.Count;
+
+    /// <summary>Whether <see cref="Commit"/> would add anything to the draft.</summary>
+    public bool HasContent =>
+        _claims.Count > 0 || _components.Count > 0 || _flows.Count > 0 || _invariants.Count > 0 || _patterns.Count > 0
+        || _decisions.Count > 0 || _intents.Count > 0 || _sections.Count > 0 || _blocks.Count > 0 || _ownerSummary is not null;
 
     public int SectionCount => Draft.Sections.Count + _sections.Count;
 

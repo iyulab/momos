@@ -13,16 +13,18 @@ public interface IManualSynthesizer
 
 /// <summary>
 /// Runs the language-model passes of an analysis over the deterministic skeleton: one overview
-/// pass that plans the chapters, then one pass per chapter. A pass that runs out of tokens or
-/// time, or whose model call fails, loses only its own additions — the analysis still completes
-/// with what the other passes wrote, and the coverage says what was lost and why. Only a shutdown
-/// of the Worker itself ends the analysis early.
+/// pass that plans the chapters, then one pass per chapter, each chapter getting an equal share of
+/// the time still left. A chapter that runs out of tokens or time keeps what it already got
+/// verified, as a partial chapter; one whose model call fails loses its additions. Either way the
+/// analysis still completes with what the passes wrote, and the coverage says what was partial or
+/// lost and why. Only a shutdown of the Worker itself ends the analysis early.
 /// </summary>
 public sealed class ManualSynthesizer(
     IAnalysisAgentLoopFactory loops,
     IExecutionRuntimeProvider runtime,
     IOptions<AnalysisOptions> options,
     IOptions<GpuStackLlmOptions> llm,
+    TimeProvider time,
     ILogger<ManualSynthesizer> logger) : IManualSynthesizer
 {
     private const string TimeBudgetReached = "time budget reached";
@@ -31,6 +33,7 @@ public sealed class ManualSynthesizer(
     public async Task<ProjectModelPayload> SynthesizeAsync(
         ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, CancellationToken cancellationToken)
     {
+        var started = time.GetUtcNow();
         var o = options.Value;
         var model = string.IsNullOrWhiteSpace(o.Model) ? null : o.Model;
         var generator = new CoverageGeneratorPayload(model ?? llm.Value.Model, AnalysisPrompts.Version);
@@ -51,13 +54,27 @@ public sealed class ManualSynthesizer(
         }
 
         overview.Commit();
-        foreach (var section in draft.Sections.ToList())
+        var sections = draft.Sections.ToList();
+        for (var i = 0; i < sections.Count; i++)
         {
+            var section = sections[i];
             var stage = draft.Stage(section);
-            failure = await RunPassAsync(new SynthesisTools(stage, verifier, o.MaxChapters, logger).ForChapter(), AnalysisPrompts.Chapter(section, draft));
+            // A chapter may use its share of what is left, so an early chapter that never
+            // settles cannot starve the ones after it.
+            var remaining = o.MaxDuration - (time.GetUtcNow() - started);
+            var share = remaining / (sections.Count - i);
+            failure = await RunPassAsync(new SynthesisTools(stage, verifier, o.MaxChapters, logger).ForChapter(),
+                AnalysisPrompts.Chapter(section, draft), share);
             if (failure is null)
             {
                 stage.Commit();
+            }
+            else if (failure is (TokenBudgetReached or TimeBudgetReached) && stage.HasContent)
+            {
+                // Every proposal in the stage already passed the verifier; a budget running out
+                // says nothing against them. A failed model call still drops the chapter whole.
+                stage.Commit();
+                gaps.Add(new CoverageGapPayload("manual-chapter", $"{section.Path}: partial — {failure}"));
             }
             else
             {
@@ -72,9 +89,16 @@ public sealed class ManualSynthesizer(
         return assembled;
 
         // Null when the pass finished; otherwise why it did not. Lets only a shutdown through.
-        async Task<string?> RunPassAsync(IReadOnlyList<AIFunction> passTools, string prompt)
+        // A slice bounds the pass further, inside the analysis's own deadline.
+        async Task<string?> RunPassAsync(IReadOnlyList<AIFunction> passTools, string prompt, TimeSpan? slice = null)
         {
             if (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                return TimeBudgetReached;
+            }
+
+            // The deadline's timer may not have fired yet although no time is left.
+            if (slice <= TimeSpan.Zero)
             {
                 return TimeBudgetReached;
             }
@@ -84,18 +108,24 @@ public sealed class ManualSynthesizer(
                 return TokenBudgetReached;
             }
 
+            using var passDeadline = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+            if (slice is { } s)
+            {
+                passDeadline.CancelAfter(s);
+            }
+
             try
             {
                 using (TokenBudget.Enter(new TokenBudget(o.MaxChapterTokens, total)))
                 {
                     var loop = await loops.CreateAnalysisLoopAsync(session, project.Id, passTools, model, AnalysisPrompts.System,
-                        new AnalysisContextOptions(o.MaxCommandOutputChars, o.MaxContextTokens, o.ProtectedToolRounds), deadline.Token);
-                    await loop.RunAsync(prompt, deadline.Token);
+                        new AnalysisContextOptions(o.MaxCommandOutputChars, o.MaxContextTokens, o.ProtectedToolRounds), passDeadline.Token);
+                    await loop.RunAsync(prompt, passDeadline.Token);
                 }
 
                 return null;
             }
-            catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (passDeadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
                 return TimeBudgetReached;
             }
