@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Momos.Host.Contracts;
 using Momos.Host.Data;
@@ -108,6 +109,36 @@ public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : ICla
             new CorrectClaimRequest(ClaimStatus.Corrected, "Lib is loaded at run time"), TestJsonOptions.Value);
         Assert.Equal(HttpStatusCode.OK, correction.StatusCode);
         gated.Release();
+
+        await WaitIndexedAsync(client, projectId);
+
+        Assert.Contains("Developer correction (authoritative): Lib is loaded at run time",
+            gated.LastContent(ModelKnowledgeProjector.DocumentId(projectId, "clm.ref")));
+    }
+
+    [Fact]
+    public async Task ACorrectionLoadedBeforeTheServiceMarksTheModelIndexed_IsIndexedToo()
+    {
+        // The correction reads the model while it is still unindexed, the service then finishes
+        // and marks it indexed, and only then is the correction saved: the save must still mark
+        // the model unindexed, although the value it loaded was already null.
+        var gated = new GatedKnowledgeIndex();
+        var heldSave = new HeldCorrectionSave();
+        using var f = factory.WithWebHostBuilder(b => b.ConfigureServices(s => s
+            .AddSingleton<IKnowledgeIndex>(gated)
+            .ConfigureDbContext<MomosDbContext>(o => o.AddInterceptors(heldSave))));
+        var client = Authorized(f);
+        var (projectId, requestId) = await ProjectModelEndpointsTests.StartAnalysisAsync(client);
+        await ProjectModelEndpointsTests.SubmitAsync(client, requestId, ModelFixtures.ValidSubmission());
+        await gated.Entered.WaitAsync(TimeSpan.FromSeconds(30));
+
+        var correction = client.PostAsJsonAsync($"/projects/{projectId}/model/claims/clm.ref/corrections",
+            new CorrectClaimRequest(ClaimStatus.Corrected, "Lib is loaded at run time"), TestJsonOptions.Value);
+        await heldSave.Reached.WaitAsync(TimeSpan.FromSeconds(30));
+        gated.Release();
+        await WaitIndexedAsync(client, projectId);
+        heldSave.Release();
+        Assert.Equal(HttpStatusCode.OK, (await correction).StatusCode);
 
         await WaitIndexedAsync(client, projectId);
 
@@ -229,6 +260,31 @@ public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : ICla
         {
             Deleted.Enqueue(documentId);
             return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Holds the first save that records a claim verdict until released, so a test can
+    /// let the projection service finish between the correction's read and its write.</summary>
+    private sealed class HeldCorrectionSave : SaveChangesInterceptor
+    {
+        private readonly TaskCompletionSource _reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Reached => _reached.Task;
+
+        public void Release() => _released.TrySetResult();
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            var savesAVerdict = eventData.Context!.ChangeTracker.Entries<ModelClaim>()
+                .Any(e => e.State == EntityState.Modified && e.Entity.CorrectedAt is not null);
+            if (savesAVerdict && _reached.TrySetResult())
+            {
+                await _released.Task.WaitAsync(cancellationToken);
+            }
+
+            return result;
         }
     }
 

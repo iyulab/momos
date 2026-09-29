@@ -86,8 +86,11 @@ public static class ProjectModelEndpoints
             claim.CorrectedAt = timeProvider.GetUtcNow();
 
             // The indexed document still carries the old verdict: the model is unindexed again
-            // until ModelProjectionService re-projects it in the background.
+            // until ModelProjectionService re-projects it in the background. Written even when
+            // the loaded value is already null — the service may mark the model indexed between
+            // this read and the save, and change tracking would otherwise skip the column.
             model!.KnowledgeIndexedAt = null;
+            db.Entry(model).Property(m => m.KnowledgeIndexedAt).IsModified = true;
             await db.SaveChangesAsync(cancellationToken);
             projection.Notify();
             return Results.Ok(ClaimResponse.FromEntity(claim));
