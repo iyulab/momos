@@ -132,7 +132,7 @@ public static class InspectionRequestEndpoints
             .Produces<ClaimNextResponse>()
             .Produces(StatusCodes.Status401Unauthorized);
 
-        app.MapPost("/inspection-requests/{id:guid}/fail", async (Guid id, FailInspectionRequestRequest request, MomosDbContext db, CancellationToken cancellationToken) =>
+        app.MapPost("/inspection-requests/{id:guid}/fail", async (Guid id, FailInspectionRequestRequest request, MomosDbContext db, TimeProvider timeProvider, CancellationToken cancellationToken) =>
         {
             var inspectionRequest = await db.InspectionRequests.FindAsync([id], cancellationToken);
             if (inspectionRequest is null)
@@ -167,6 +167,7 @@ public static class InspectionRequestEndpoints
 
             inspectionRequest.Status = InspectionRequestStatus.Failed;
             inspectionRequest.FailureReason = request.Reason;
+            await CheckupProgress.OnRequestFailedAsync(db, inspectionRequest, request.Reason, timeProvider, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(InspectionRequestResponse.FromEntity(inspectionRequest));

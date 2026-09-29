@@ -87,4 +87,72 @@ public sealed class CheckupEndpointsTests(MomosHostFactory factory) : IClassFixt
         var list = await client.GetFromJsonAsync<List<CheckupResponse>>($"/projects/{projectId}/checkups", TestJsonOptions.Value);
         Assert.Equal([second.Id, first.Id], list!.Select(c => c.Id));
     }
+
+    private async Task<(HttpClient Client, HttpClient Worker, CheckupResponse Checkup)> StartCheckupAsync()
+    {
+        var client = factory.CreateAuthorizedClient();
+        var worker = factory.CreateAuthorizedClient();
+        var claimNext = new ClaimNextRequest(ProtocolVersion: TestProtocol.Current, WorkerVersion: "0.1.0");
+        while ((await (await worker.PostAsJsonAsync("/inspection-requests/claim-next", claimNext))
+            .Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value))!.Request is not null)
+        {
+        }
+
+        var projectId = await ProjectAsync(client);
+        var checkup = (await (await client.PostAsJsonAsync($"/projects/{projectId}/checkups", new { })).Content.ReadFromJsonAsync<CheckupResponse>(TestJsonOptions.Value))!;
+        var claim = await (await worker.PostAsJsonAsync("/inspection-requests/claim-next", claimNext))
+            .Content.ReadFromJsonAsync<ClaimNextResponse>(TestJsonOptions.Value);
+        Assert.Equal(checkup.Exams[0].RequestId, claim!.Request!.Id);
+        return (client, worker, checkup);
+    }
+
+    [Fact]
+    public async Task SubmittingTheModel_EndsTheExam_AndTheCheckup()
+    {
+        var (client, worker, checkup) = await StartCheckupAsync();
+
+        var submitted = await worker.PostAsJsonAsync($"/analysis-requests/{checkup.Exams[0].RequestId}/model", ModelFixtures.ValidSubmission(), TestJsonOptions.Value);
+        Assert.Equal(HttpStatusCode.Created, submitted.StatusCode);
+
+        var after = await client.GetFromJsonAsync<CheckupResponse>($"/checkups/{checkup.Id}", TestJsonOptions.Value);
+        Assert.Equal(CheckupStatus.Completed, after!.Status);
+        Assert.NotNull(after.CompletedAt);
+        Assert.NotNull(after.ModelVersion);
+        Assert.NotNull(after.BaseCommit);
+        Assert.Contains(after.Exams[0].Status, new[] { ExamRunStatus.Completed, ExamRunStatus.Partial });
+        Assert.Equal(after.ModelVersion, after.Exams[0].ModelVersion);
+
+        // A second submission for the same request is refused and changes nothing.
+        var again = await worker.PostAsJsonAsync($"/analysis-requests/{checkup.Exams[0].RequestId}/model", ModelFixtures.ValidSubmission(), TestJsonOptions.Value);
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        Assert.Equal(after.CompletedAt, (await client.GetFromJsonAsync<CheckupResponse>($"/checkups/{checkup.Id}", TestJsonOptions.Value))!.CompletedAt);
+    }
+
+    [Fact]
+    public async Task AFailedDesignAnalysis_EndsTheCheckupWithTheExamNotRun_AndItsReason()
+    {
+        var (client, worker, checkup) = await StartCheckupAsync();
+
+        var failed = await worker.PostAsJsonAsync($"/inspection-requests/{checkup.Exams[0].RequestId}/fail", new { reason = "clone failed", toolCalls = Array.Empty<object>() }, TestJsonOptions.Value);
+        Assert.Equal(HttpStatusCode.OK, failed.StatusCode);
+
+        var after = await client.GetFromJsonAsync<CheckupResponse>($"/checkups/{checkup.Id}", TestJsonOptions.Value);
+        Assert.Equal(CheckupStatus.Completed, after!.Status);
+        Assert.Equal(ExamRunStatus.NotRun, after.Exams[0].Status);
+        Assert.Equal("clone failed", after.Exams[0].Reason);
+    }
+
+    [Fact]
+    public async Task AnAnalysisOutsideACheckup_StillCompletesAsBefore()
+    {
+        // Regression guard: the progress hook must ignore requests no exam run owns.
+        var client = factory.CreateAuthorizedClient();
+        var (_, requestId) = await ProjectModelEndpointsTests.StartAnalysisAsync(client);
+
+        var submitted = await ProjectModelEndpointsTests.SubmitAsync(client, requestId, ModelFixtures.ValidSubmission());
+
+        Assert.Equal(HttpStatusCode.Created, submitted.StatusCode);
+        await using var db = factory.CreateDbContext();
+        Assert.False(await db.ExamRuns.AnyAsync(e => e.RequestId == requestId));
+    }
 }
