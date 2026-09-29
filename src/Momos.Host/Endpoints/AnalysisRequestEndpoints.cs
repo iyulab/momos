@@ -55,7 +55,7 @@ public static class AnalysisRequestEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         app.MapPost("/analysis-requests/{id:guid}/model", async (
-            Guid id, SubmitProjectModelRequest request, MomosDbContext db, ModelKnowledgeProjector projector,
+            Guid id, SubmitProjectModelRequest request, MomosDbContext db, ModelProjectionSignal projection,
             CancellationToken cancellationToken) =>
         {
             var analysisRequest = await db.InspectionRequests.FindAsync([id], cancellationToken);
@@ -136,9 +136,10 @@ public static class AnalysisRequestEndpoints
             analysisRequest.Status = InspectionRequestStatus.Completed;
             await db.SaveChangesAsync(cancellationToken);
 
-            // After the commit: the index is derived from the stored model, and projection is
-            // best-effort, so a failure here never turns an accepted model into an error.
-            await projector.ProjectModelAsync(model, previous, cancellationToken);
+            // The knowledge index is derived from the stored model and filled in the background
+            // (ModelProjectionService): answering only after it would tie the submit to the
+            // index's speed, and a caller giving up would cut the projection short.
+            projection.Notify();
 
             return Results.Created($"/projects/{model.ProjectId}/model", ProjectModelResponse.FromEntity(model));
         })

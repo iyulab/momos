@@ -67,7 +67,9 @@ public sealed partial class WalkingSkeletonTests(TestMomosHostFactory factory) :
             new CorrectClaimRequest(HostClaimStatus.Corrected, CorrectionText), TestJsonOptions.Value);
         corrected.EnsureSuccessStatusCode();
 
-        // 7: what the inspection agent's QueryProjectKnowledge tool gets back.
+        // 7: what the inspection agent's QueryProjectKnowledge tool gets back, once the Host has
+        // indexed the corrected model in the background.
+        await WaitKnowledgeIndexedAsync(http, projectId, version: 1);
         await AssertKnowledgeCarriesCorrectionAsync(host, projectId);
 
         // Re-analysis of the unchanged repository: the statement is the same, so the verdict carries over.
@@ -78,6 +80,7 @@ public sealed partial class WalkingSkeletonTests(TestMomosHostFactory factory) :
         var carried = reanalyzed.Claims.Single(c => c.Key == referenceKey);
         Assert.Equal(HostClaimStatus.Corrected, carried.Status);
         Assert.Equal(CorrectionText, carried.Correction);
+        await WaitKnowledgeIndexedAsync(http, projectId, version: 2);
         await AssertKnowledgeCarriesCorrectionAsync(host, projectId);
     }
 
@@ -135,6 +138,25 @@ public sealed partial class WalkingSkeletonTests(TestMomosHostFactory factory) :
 
         Assert.True(status?.Status == HostRequestStatus.Completed,
             $"Analysis ended as {status?.Status}: {status?.FailureReason}");
+    }
+
+    // Generous on purpose: with the in-memory embedding fallback and every test class booting its
+    // own containers in parallel, indexing a model's claims can take tens of seconds on a loaded
+    // machine — the same headroom the submit request used to get from the Worker's HTTP timeout.
+    private static async Task WaitKnowledgeIndexedAsync(HttpClient http, Guid projectId, int version)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(120);
+        while (true)
+        {
+            var model = await http.GetFromJsonAsync<ProjectModelResponse>($"/projects/{projectId}/model", TestJsonOptions.Value);
+            if (model!.ModelVersion == version && model.KnowledgeIndexedAt is not null)
+            {
+                return;
+            }
+
+            Assert.True(DateTimeOffset.UtcNow < deadline, $"The knowledge index did not catch up with model {version} within 120s.");
+            await Task.Delay(100);
+        }
     }
 
     private static async Task AssertKnowledgeCarriesCorrectionAsync(HostApiClient host, Guid projectId)

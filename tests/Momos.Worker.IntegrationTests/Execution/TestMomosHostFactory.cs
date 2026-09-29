@@ -27,9 +27,12 @@ public sealed class TestMomosHostFactory : WebApplicationFactory<global::Program
         await _dbContainer.StartAsync();
         await _knowledgeContainer.StartAsync();
 
-        using var scope = Services.CreateScope();
-        await scope.ServiceProvider.GetRequiredService<Momos.Host.Data.MomosDbContext>()
-            .Database.MigrateAsync();
+        // Migrate before the Host starts, as a deployment does: the Host's hosted services read
+        // the schema as soon as it starts, so migrating through Services (which starts it) would
+        // race them against a database that has no tables yet.
+        await using var db = new Momos.Host.Data.MomosDbContext(
+            new DbContextOptionsBuilder<Momos.Host.Data.MomosDbContext>().UseNpgsql(_dbContainer.GetConnectionString()).Options);
+        await db.Database.MigrateAsync();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>

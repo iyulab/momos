@@ -57,7 +57,7 @@ public static class ProjectModelEndpoints
         // constrained by the route; an unknown key is simply a claim that is not there (404).
         app.MapPost("/projects/{projectId:guid}/model/claims/{claimKey}/corrections", async (
             Guid projectId, string claimKey, CorrectClaimRequest request, MomosDbContext db,
-            ModelKnowledgeProjector projector, TimeProvider timeProvider, CancellationToken cancellationToken) =>
+            ModelProjectionSignal projection, TimeProvider timeProvider, CancellationToken cancellationToken) =>
         {
             if (request.Status == ClaimStatus.Proposed)
             {
@@ -84,10 +84,12 @@ public static class ProjectModelEndpoints
             claim.Status = request.Status;
             claim.Correction = string.IsNullOrWhiteSpace(request.Correction) ? null : request.Correction.Trim();
             claim.CorrectedAt = timeProvider.GetUtcNow();
-            await db.SaveChangesAsync(cancellationToken);
 
-            // After the commit, best-effort like every projection: the database holds the verdict.
-            await projector.ProjectClaimAsync(projectId, claim, cancellationToken);
+            // The indexed document still carries the old verdict: the model is unindexed again
+            // until ModelProjectionService re-projects it in the background.
+            model!.KnowledgeIndexedAt = null;
+            await db.SaveChangesAsync(cancellationToken);
+            projection.Notify();
             return Results.Ok(ClaimResponse.FromEntity(claim));
         })
             .WithName("CorrectProjectModelClaim")
