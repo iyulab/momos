@@ -184,7 +184,7 @@ public sealed class DraftStage(SynthesisDraft draft, DraftSection? section)
 
     public DraftSection AddSection(string title, string purpose, string? guide)
     {
-        var path = SectionPaths.FromTitle(title, Draft.Paths);
+        var path = SectionPaths.FromTitle(title, guide, Draft.Paths);
         var added = new DraftSection(ModelIds.Section(path), path, title, purpose, guide);
         _sections.Add(added);
         return added;
