@@ -50,10 +50,16 @@ public sealed class MomosHostFactory : WebApplicationFactory<Program>, IAsyncLif
         // Migrate before the Host starts, as a deployment does: the Host's hosted services read
         // the schema as soon as it starts, so migrating through Services (which starts it) would
         // race them against a database that has no tables yet.
-        await using var db = new Momos.Host.Data.MomosDbContext(
-            new DbContextOptionsBuilder<Momos.Host.Data.MomosDbContext>().UseNpgsql(_dbContainer.GetConnectionString()).Options);
+        await using var db = CreateDbContext();
         await db.Database.MigrateAsync();
     }
+
+    /// <summary>
+    /// A context over this factory's database that does not start the Host — for tests that
+    /// must put rows in place without any host's background services seeing them first.
+    /// </summary>
+    public Momos.Host.Data.MomosDbContext CreateDbContext() => new(
+        new DbContextOptionsBuilder<Momos.Host.Data.MomosDbContext>().UseNpgsql(_dbContainer.GetConnectionString()).Options);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         builder

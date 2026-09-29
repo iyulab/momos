@@ -70,7 +70,7 @@ public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : ICla
         var recording = new RecordingKnowledgeIndex();
         using var f = factory.WithWebHostBuilder(b => b.ConfigureServices(s => s.AddSingleton<IKnowledgeIndex>(recording)));
         var client = Authorized(f);
-        var projectId = await SeedTwoUnindexedVersionsAsync(f, withLegacyClaimOnlyInV1: true);
+        var projectId = await SeedTwoUnindexedVersionsAsync(withLegacyClaimOnlyInV1: true);
 
         f.Services.GetRequiredService<ModelProjectionSignal>().Notify();
         await WaitIndexedAsync(client, projectId, version: 2);
@@ -87,7 +87,7 @@ public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : ICla
     {
         // Seed straight into the database (as if the Host died mid-projection), then boot a
         // fresh host over the same database: the service's startup sweep must pick it up.
-        var projectId = await SeedTwoUnindexedVersionsAsync(factory, withLegacyClaimOnlyInV1: false);
+        var projectId = await SeedTwoUnindexedVersionsAsync(withLegacyClaimOnlyInV1: false);
         using var fresh = factory.WithWebHostBuilder(_ => { });
 
         Assert.NotNull((await WaitIndexedAsync(Authorized(fresh), projectId, version: 2)).KnowledgeIndexedAt);
@@ -124,11 +124,12 @@ public sealed class ModelProjectionServiceTests(MomosHostFactory factory) : ICla
 
     /// <summary>Stores a project with two model versions that were never indexed — v1 carrying
     /// <c>clm.ref</c> (and optionally <c>clm.legacy</c>), v2 carrying only <c>clm.ref</c> —
-    /// straight through the database, bypassing the endpoints and their signal.</summary>
-    private static async Task<Guid> SeedTwoUnindexedVersionsAsync(WebApplicationFactory<Program> f, bool withLegacyClaimOnlyInV1)
+    /// straight through the database, bypassing the endpoints and their signal — and without
+    /// starting the fixture's own host, whose projection service would otherwise race the host
+    /// under test for these rows.</summary>
+    private async Task<Guid> SeedTwoUnindexedVersionsAsync(bool withLegacyClaimOnlyInV1)
     {
-        using var scope = f.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<MomosDbContext>();
+        await using var db = factory.CreateDbContext();
 
         var project = new Project
         {
