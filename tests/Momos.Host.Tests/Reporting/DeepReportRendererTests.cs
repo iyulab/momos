@@ -308,6 +308,22 @@ public sealed partial class DeepReportRendererTests
         Assert.DoesNotContain("<OutputType>", claim);
     }
 
+    /// <summary>Repository text can hold the report's own wiki-link syntax (a citation marker such as
+    /// <c>[[cite:1]]</c>); left as it is, the site generator reads it as a link to a missing page and
+    /// refuses to build.</summary>
+    [Fact]
+    public void FreeText_ShowsWikiLinkSyntaxLiterally_OutsideCodeSpans()
+    {
+        var claim = Doc(DeepReportRenderer.Render("acme", Model(m =>
+        {
+            var c = m.Claims.Single(c => c.Key == "clm.app");
+            c.Status = ClaimStatus.Corrected;
+            c.Correction = "Markers look like [[cite:1]], [[[3]]] or `[[2]]` in code.";
+        })), "claims/clm.app.md");
+
+        Assert.Contains("> Markers look like &#91;[cite:1]], &#91;&#91;[3]]] or `[[2]]` in code.", claim);
+    }
+
     [Fact]
     public void ANameInATableLink_IsEscapedOnce()
     {

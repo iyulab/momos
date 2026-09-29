@@ -197,6 +197,34 @@ public sealed class ManualSynthesizerTests
     }
 
     [Fact]
+    public async Task RejectionsSentTogetherInOneRound_AreNotCalledARepeat_ButTheNextRoundIs()
+    {
+        static FunctionCallContent Unlocated(string topic) => new(Guid.NewGuid().ToString("N"), "ProposeClaim", new Dictionary<string, object?>
+        {
+            ["topic"] = topic,
+            ["tier"] = ClaimTier.Fact,
+            ["statement"] = "A statement.",
+            ["confidence"] = ClaimConfidence.High,
+            ["evidence"] = new[] { new ProposedEvidence(ProposedEvidenceKind.Code, Path: "a.cs") },
+        });
+        var overview = new FakeChatClient(
+            [
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, [Unlocated("one"), Unlocated("two")])),
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, [Unlocated("three")])),
+            ],
+            Done());
+        var synthesizer = Build(null, overview);
+
+        await Run(synthesizer);
+
+        var answers = overview.LastMessages!.SelectMany(m => m.Contents.OfType<FunctionResultContent>()).Select(r => r.Result?.ToString() ?? "").ToList();
+        Assert.Equal(3, answers.Count);
+        Assert.DoesNotContain("in a row", answers[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("in a row", answers[1], StringComparison.Ordinal);
+        Assert.Contains("rejection 2 in a row", answers[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AChapterPass_IsToldItsShareOfTimeAndTokens_AndToProposeAsItReads()
     {
         var chapter = Pass(Done());

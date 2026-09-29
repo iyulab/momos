@@ -45,7 +45,7 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
     internal const string CodeEvidenceExample =
         " Example: {\"kind\":\"Code\",\"path\":\"src/Orders/OrderService.cs\",\"symbol\":\"public sealed class OrderService\"} — the symbol is short text you saw in that file.";
 
-    private (string Tool, string Reason)? _lastRejection;
+    private (string Tool, string Reason, int? Round)? _lastRejection;
     private int _rejectionsInARow;
 
     public static JsonSerializerOptions ToolJson { get; } = CreateToolJson();
@@ -308,8 +308,13 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
             logger.LogInformation("{Tool} proposal rejected — {Reason}: {Detail}", tool, reason, echoesRepository ? cause ?? "(detail withheld)" : message);
         }
 
-        _rejectionsInARow = _lastRejection == (tool, reason) ? _rejectionsInARow + 1 : 1;
-        _lastRejection = (tool, reason);
+        // Calls the agent sends together in one round are answered together: a later one in the
+        // same round is not a repeat, since the agent had not yet seen the first answer.
+        var round = FunctionInvokingChatClient.CurrentContext?.Iteration;
+        _rejectionsInARow = _lastRejection is var (lastTool, lastReason, lastRound) && (lastTool, lastReason) == (tool, reason)
+            ? (round is not null && round == lastRound ? _rejectionsInARow : _rejectionsInARow + 1)
+            : 1;
+        _lastRejection = (tool, reason, round);
         if (reason == RejectionReason.MissingLocator && message.StartsWith("Evidence", StringComparison.Ordinal) && message.Contains("(Code)", StringComparison.Ordinal))
         {
             message += CodeEvidenceExample;
