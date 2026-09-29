@@ -14,10 +14,11 @@ public interface IManualSynthesizer
 /// <summary>
 /// Runs the language-model passes of an analysis over the deterministic skeleton: one overview
 /// pass that plans the chapters, then one pass per chapter, each chapter getting an equal share of
-/// the time still left. A chapter that runs out of tokens or time keeps what it already got
-/// verified, as a partial chapter; one whose model call fails loses its additions. Either way the
-/// analysis still completes with what the passes wrote, and the coverage says what was partial or
-/// lost and why. Only a shutdown of the Worker itself ends the analysis early.
+/// the time still left. A pass that runs out of tokens or time keeps what it already got verified:
+/// an overview keeps the chapters it planned, a chapter becomes a partial chapter. A pass whose
+/// model call fails loses its additions — for the overview, the whole plan. Either way the analysis
+/// still completes with what the passes wrote, and the coverage says what was partial or lost and
+/// why. Only a shutdown of the Worker itself ends the analysis early.
 /// </summary>
 public sealed class ManualSynthesizer(
     IAnalysisAgentLoopFactory loops,
@@ -46,40 +47,22 @@ public sealed class ManualSynthesizer(
 
         var overview = draft.Stage(section: null);
         var failure = await RunPassAsync(new SynthesisTools(overview, verifier, o.MaxChapters, logger).ForOverview(),
-            AnalysisPrompts.Overview(project, skeleton, o.MaxChapters));
-        if (failure is not null)
+            AnalysisPrompts.Overview(project, skeleton, o.MaxChapters), o.MaxOverviewTokens);
+        // Only planned chapters make a plan worth keeping; a claim the overview verified on its
+        // own has no chapter to live in.
+        if (failure is null || KeepsPartial(failure, overview.SectionCount > 0))
+        {
+            overview.Commit();
+            if (failure is not null)
+            {
+                gaps.Add(new CoverageGapPayload("manual-outline", $"partial — {failure}"));
+            }
+
+            await WriteChaptersAsync();
+        }
+        else
         {
             gaps.Add(new CoverageGapPayload("manual-outline", $"The overview pass did not finish ({failure}); no chapters were written."));
-            return ModelAssembler.Assemble(draft, gaps, generator, chaptersPlanned: 0);
-        }
-
-        overview.Commit();
-        var sections = draft.Sections.ToList();
-        for (var i = 0; i < sections.Count; i++)
-        {
-            var section = sections[i];
-            var stage = draft.Stage(section);
-            // A chapter may use its share of what is left, so an early chapter that never
-            // settles cannot starve the ones after it.
-            var remaining = o.MaxDuration - (time.GetUtcNow() - started);
-            var share = remaining / (sections.Count - i);
-            failure = await RunPassAsync(new SynthesisTools(stage, verifier, o.MaxChapters, logger).ForChapter(),
-                AnalysisPrompts.Chapter(section, draft), share);
-            if (failure is null)
-            {
-                stage.Commit();
-            }
-            else if (failure is (TokenBudgetReached or TimeBudgetReached) && stage.HasContent)
-            {
-                // Every proposal in the stage already passed the verifier; a budget running out
-                // says nothing against them. A failed model call still drops the chapter whole.
-                stage.Commit();
-                gaps.Add(new CoverageGapPayload("manual-chapter", $"{section.Path}: partial — {failure}"));
-            }
-            else
-            {
-                gaps.Add(new CoverageGapPayload("manual-chapter", $"{section.Path}: {failure}"));
-            }
         }
 
         var assembled = ModelAssembler.Assemble(draft, gaps, generator, draft.Sections.Count);
@@ -88,9 +71,38 @@ public sealed class ManualSynthesizer(
             draft.Sections.Count, draft.Claims.Count, draft.Rejections.Values.Sum(), total.Used);
         return assembled;
 
+        async Task WriteChaptersAsync()
+        {
+            var sections = draft.Sections.ToList();
+            for (var i = 0; i < sections.Count; i++)
+            {
+                var section = sections[i];
+                var stage = draft.Stage(section);
+                // A chapter may use its share of what is left, so an early chapter that never
+                // settles cannot starve the ones after it.
+                var remaining = o.MaxDuration - (time.GetUtcNow() - started);
+                var share = remaining / (sections.Count - i);
+                var chapterFailure = await RunPassAsync(new SynthesisTools(stage, verifier, o.MaxChapters, logger).ForChapter(),
+                    AnalysisPrompts.Chapter(section, draft), o.MaxChapterTokens, share);
+                if (chapterFailure is null)
+                {
+                    stage.Commit();
+                }
+                else if (KeepsPartial(chapterFailure, stage.HasContent))
+                {
+                    stage.Commit();
+                    gaps.Add(new CoverageGapPayload("manual-chapter", $"{section.Path}: partial — {chapterFailure}"));
+                }
+                else
+                {
+                    gaps.Add(new CoverageGapPayload("manual-chapter", $"{section.Path}: {chapterFailure}"));
+                }
+            }
+        }
+
         // Null when the pass finished; otherwise why it did not. Lets only a shutdown through.
         // A slice bounds the pass further, inside the analysis's own deadline.
-        async Task<string?> RunPassAsync(IReadOnlyList<AIFunction> passTools, string prompt, TimeSpan? slice = null)
+        async Task<string?> RunPassAsync(IReadOnlyList<AIFunction> passTools, string prompt, long tokens, TimeSpan? slice = null)
         {
             if (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
@@ -116,7 +128,7 @@ public sealed class ManualSynthesizer(
 
             try
             {
-                using (TokenBudget.Enter(new TokenBudget(o.MaxChapterTokens, total)))
+                using (TokenBudget.Enter(new TokenBudget(tokens, total)))
                 {
                     var loop = await loops.CreateAnalysisLoopAsync(session, project.Id, passTools, model, AnalysisPrompts.System,
                         new AnalysisContextOptions(o.MaxCommandOutputChars, o.MaxContextTokens, o.ProtectedToolRounds), passDeadline.Token);
@@ -142,4 +154,12 @@ public sealed class ManualSynthesizer(
             }
         }
     }
+
+    /// <summary>
+    /// Whether a pass that did not finish still commits its stage. Every proposal in a stage already
+    /// passed the verifier, so a budget running out says nothing against them; a failed model call
+    /// does, and drops the stage whole.
+    /// </summary>
+    private static bool KeepsPartial(string failure, bool hasWork) =>
+        failure is (TokenBudgetReached or TimeBudgetReached) && hasWork;
 }

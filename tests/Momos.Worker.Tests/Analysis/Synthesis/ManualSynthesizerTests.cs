@@ -42,7 +42,21 @@ public sealed class ManualSynthesizerTests
         ["evidence"] = new[] { new ProposedEvidence(ProposedEvidenceKind.Claim, ClaimKey: "clm.fact") },
     };
 
-    private static ManualSynthesizer Build(AnalysisOptions? options, params FakeChatClient[] passes)
+    /// <summary>Captures each formatted log message so a test can assert on the pass telemetry.</summary>
+    private sealed class RecordingLogger : ILogger<ManualSynthesizer>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
+    }
+
+    private static ManualSynthesizer Build(AnalysisOptions? options, params FakeChatClient[] passes) => Build(options, null, passes);
+
+    private static ManualSynthesizer Build(AnalysisOptions? options, ILogger<ManualSynthesizer>? logger, params FakeChatClient[] passes)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IChatClientProvider>(new FakeChatClientProvider(passes));
@@ -54,7 +68,7 @@ public sealed class ManualSynthesizerTests
         var loops = services.BuildServiceProvider().GetRequiredService<IAnalysisAgentLoopFactory>();
         return new ManualSynthesizer(loops, runtime, Options.Create(options ?? new AnalysisOptions()),
             Options.Create(new GpuStackLlmOptions { Endpoint = "http://llm.invalid", ApiKey = "k", Model = "configured-model" }),
-            TimeProvider.System, NullLogger<ManualSynthesizer>.Instance);
+            TimeProvider.System, logger ?? NullLogger<ManualSynthesizer>.Instance);
     }
 
     private static Task<ProjectModelPayload> Run(ManualSynthesizer synthesizer, CancellationToken cancellationToken = default) =>
@@ -87,6 +101,81 @@ public sealed class ManualSynthesizerTests
         Assert.Equal(SynthesisDraftTests.Skeleton().Claims.Select(c => c.Key), model.Claims.Select(c => c.Key));
         var gap = Assert.Single(model.Coverage.NotAnalyzed, g => g.Area == "manual-outline");
         Assert.Contains("HttpRequestException", gap.Reason);
+    }
+
+    [Fact]
+    public async Task AnOverviewCutByItsBudget_KeepsTheChaptersItPlanned_AndTheyAreWritten()
+    {
+        // The second chapter's answer spends the overview's budget; both chapters were already
+        // verified and staged, so the next call is what the budget stops.
+        var synthesizer = Build(new AnalysisOptions { MaxOverviewTokens = 100 },
+            Pass(Call("ProposeChapter", Chapter("System map", "system-map")), Call("ProposeChapter", Chapter("Risks", "risks-and-debt"), tokens: 500),
+                Call("ProposeChapter", Chapter("Never", "")), Done()),
+            Pass(Call("AddBlock", new() { ["kind"] = OutlineBlockKind.Map, ["reference"] = "*" }), Done()),
+            Pass(Call("ProposeClaim", Assessment("retries")), Done()));
+
+        var model = await Run(synthesizer);
+
+        Assert.Equal(["system-map.md", "risks.md"], model.Outline.Select(s => s.Path));
+        Assert.Equal(OutlineBlockKind.Map, Assert.Single(model.Outline[0].Blocks).Kind);
+        Assert.Contains(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("retries"));
+        var gap = Assert.Single(model.Coverage.NotAnalyzed, g => g.Area == "manual-outline");
+        Assert.Equal("partial — token budget reached", gap.Reason);
+        Assert.Contains(model.Coverage.Analyzed, a => a.Area == "manual-synthesis" && a.Detail.StartsWith("1 of 2 chapters", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnOverviewCutByItsBudget_BeforeAnyChapter_LeavesTheSkeleton()
+    {
+        // A verified claim alone is no plan: without a chapter there is nothing to write.
+        var synthesizer = Build(new AnalysisOptions { MaxOverviewTokens = 100 },
+            Pass(Call("ProposeClaim", Assessment("early"), tokens: 500), Call("ProposeChapter", Chapter("Never", "")), Done()));
+
+        var model = await Run(synthesizer);
+
+        Assert.Empty(model.Outline);
+        Assert.DoesNotContain(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("early"));
+        var gap = Assert.Single(model.Coverage.NotAnalyzed, g => g.Area == "manual-outline");
+        Assert.Equal("The overview pass did not finish (token budget reached); no chapters were written.", gap.Reason);
+    }
+
+    [Fact]
+    public async Task AFailedOverviewCall_DropsTheChaptersItHadPlanned()
+    {
+        var synthesizer = Build(null,
+            FailingPass(new HttpRequestException("model endpoint down"), Call("ProposeChapter", Chapter("System map", "system-map"))));
+
+        var model = await Run(synthesizer);
+
+        Assert.Empty(model.Outline);
+        var gap = Assert.Single(model.Coverage.NotAnalyzed, g => g.Area == "manual-outline");
+        Assert.Contains("HttpRequestException", gap.Reason);
+    }
+
+    [Fact]
+    public async Task TheOverviewUsesItsOwnBudget_NotTheChapterBudget()
+    {
+        var synthesizer = Build(new AnalysisOptions { MaxChapterTokens = 100 },
+            Pass(Call("ProposeChapter", Chapter("System map", "system-map"), tokens: 200), Call("ProposeChapter", Chapter("Risks", "risks-and-debt"), tokens: 200), Done(100)),
+            Pass(Done()),
+            Pass(Done()));
+
+        var model = await Run(synthesizer);
+
+        Assert.Equal(2, model.Outline.Count);
+        Assert.DoesNotContain(model.Coverage.NotAnalyzed, g => g.Area == "manual-outline");
+    }
+
+    [Fact]
+    public async Task AFailedOverview_StillLogsThePassTelemetry()
+    {
+        var logger = new RecordingLogger();
+        var synthesizer = Build(null, logger,
+            FailingPass(new HttpRequestException("model endpoint down"), Call("ProposeChapter", Chapter("", "")), Call("ProposeChapter", Chapter("System map", "system-map"), tokens: 30)));
+
+        await Run(synthesizer);
+
+        Assert.Contains(logger.Messages, m => m == "Analysis passes planned 0 chapter(s) and added 0 claim(s); 1 proposal(s) rejected, 40 token(s) used");
     }
 
     [Fact]

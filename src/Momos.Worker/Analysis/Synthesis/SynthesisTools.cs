@@ -58,10 +58,15 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
 
         if (stage.SectionCount >= maxChapters)
         {
-            return Reject(RejectionReason.ChapterLimit, $"The manual already has {maxChapters} chapters; merge this into one of them.");
+            return Reject(RejectionReason.ChapterLimit,
+                $"The chapter plan is full ({maxChapters} of {maxChapters}); merge this into one of them, propose no more chapters and finish the overview.");
         }
 
-        return Recorded(stage.AddSection(title.Trim(), purpose.Trim(), string.IsNullOrWhiteSpace(guide) ? null : guide.Trim()).Path);
+        var recorded = Recorded(stage.AddSection(title.Trim(), purpose.Trim(), string.IsNullOrWhiteSpace(guide) ? null : guide.Trim()).Path);
+        // Told nothing, an agent keeps planning past the limit and spends its budget on rejections.
+        return stage.SectionCount >= maxChapters
+            ? $"{recorded} The chapter plan is now full ({maxChapters} of {maxChapters}). Do not propose more chapters; finish the overview."
+            : recorded;
     }
 
     [Description("Propose one claim. topic is a short, stable name for what it is about; reuse the topic a previous model used when you restate its claim. " +

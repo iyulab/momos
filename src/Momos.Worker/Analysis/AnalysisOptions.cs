@@ -20,8 +20,13 @@ public sealed class AnalysisOptions
     /// leaves every chapter too little time.</summary>
     public int MaxChapters { get; set; } = 8;
 
-    /// <summary>Tokens one pass (the overview, or one chapter) may spend before that pass stops.</summary>
+    /// <summary>Tokens one chapter pass may spend before that pass stops.</summary>
     public long MaxChapterTokens { get; set; } = 250_000;
+
+    /// <summary>Tokens the overview pass may spend before it stops. The overview surveys the whole
+    /// repository once to plan the chapters, so it needs more than one chapter does; it still counts
+    /// against <see cref="MaxTotalTokens"/>.</summary>
+    public long MaxOverviewTokens { get; set; } = 400_000;
 
     /// <summary>Tokens all passes of one analysis may spend together.</summary>
     public long MaxTotalTokens { get; set; } = 2_000_000;
@@ -50,6 +55,6 @@ public sealed class AnalysisOptions
     public TimeSpan MaxDuration { get; set; } = TimeSpan.FromMinutes(20);
 
     public static bool IsValid(AnalysisOptions o) =>
-        o.MaxChapters > 0 && o.MaxCommandOutputChars > 0 && o.MaxChapterTokens > 0 && o.MaxTotalTokens > 0 && o.MaxDuration > TimeSpan.Zero
+        o.MaxChapters > 0 && o.MaxCommandOutputChars > 0 && o.MaxChapterTokens > 0 && o.MaxOverviewTokens > 0 && o.MaxTotalTokens > 0 && o.MaxDuration > TimeSpan.Zero
         && o.MaxContextTokens > 0 && o.ProtectedToolRounds > 0;
 }

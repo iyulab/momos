@@ -78,12 +78,26 @@ public sealed class SynthesisToolsTests
     }
 
     [Fact]
-    public void AChapterBeyondTheLimit_IsRejected()
+    public void AChapterBeforeTheLimit_IsRecordedPlainly()
+    {
+        var (tools, _) = Tools(maxChapters: 2);
+
+        Assert.Equal("Recorded as system-map.md.", tools.ProposeChapter("System map", "The parts.", "system-map"));
+    }
+
+    [Fact]
+    public void TheChapterThatFillsThePlan_SaysThePlanIsFull_AndOneBeyondIsRejectedWithTheSameAdvice()
     {
         var (tools, _) = Tools(maxChapters: 1);
 
-        Assert.Equal("Recorded as system-map.md.", tools.ProposeChapter("System map", "The parts.", "system-map"));
-        Assert.StartsWith("Rejected: ", tools.ProposeChapter("Risks", "What could go wrong.", null));
+        var filled = tools.ProposeChapter("System map", "The parts.", "system-map");
+        Assert.StartsWith("Recorded as system-map.md.", filled, StringComparison.Ordinal);
+        Assert.Contains("plan is now full (1 of 1)", filled, StringComparison.Ordinal);
+
+        var beyond = tools.ProposeChapter("Risks", "What could go wrong.", null);
+        Assert.StartsWith("Rejected: ", beyond, StringComparison.Ordinal);
+        Assert.Contains("plan is full", beyond, StringComparison.Ordinal);
+        Assert.Contains("finish the overview", beyond, StringComparison.Ordinal);
     }
 
     [Fact]
