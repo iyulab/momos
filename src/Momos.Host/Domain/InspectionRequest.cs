@@ -54,6 +54,11 @@ public sealed class InspectionRequest
     /// </summary>
     public DateTimeOffset? ClaimedAt { get; set; }
 
+    /// <summary>How many times claim-next has handed this request to a Worker. A request whose
+    /// Worker keeps stopping would otherwise be reclaimed for ever; past
+    /// <c>InspectionClaimOptions.MaxClaims</c> it is failed instead.</summary>
+    public int ClaimCount { get; set; }
+
     /// <summary>Every tool call the agent loop made while running this request, regardless of
     /// whether the run ended in an <see cref="InspectionReport"/> or a failure.</summary>
     public ICollection<ToolCall> ToolCalls { get; init; } = new List<ToolCall>();

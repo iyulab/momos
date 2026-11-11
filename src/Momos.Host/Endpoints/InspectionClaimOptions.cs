@@ -16,4 +16,14 @@ public sealed class InspectionClaimOptions
     /// a bad finding. Sized before long-run measurements exist; recalibrate after the next one.
     /// </summary>
     public TimeSpan ReclaimTimeout { get; set; } = TimeSpan.FromMinutes(60);
+
+    /// <summary>
+    /// How many times one request may be handed to a Worker. A request whose Worker stops each
+    /// time (an out-of-memory kill, a crash on that repository) is reclaimed after every
+    /// <see cref="ReclaimTimeout"/>; without a limit it is reclaimed for ever and a checkup waiting
+    /// on it never completes. Once a request has been claimed this many times and its latest
+    /// claim has also gone stale, claim-next fails it with a reason, so the exam behind it ends
+    /// as not run and the checkup still produces its report.
+    /// </summary>
+    public int MaxClaims { get; set; } = 3;
 }

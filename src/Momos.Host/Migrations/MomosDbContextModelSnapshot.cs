@@ -17,7 +17,7 @@ namespace Momos.Host.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -155,6 +155,9 @@ namespace Momos.Host.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<int>("ClaimCount")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset?>("ClaimedAt")
                         .HasColumnType("timestamp with time zone");

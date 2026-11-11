@@ -140,7 +140,9 @@ Worker 전용 엔드포인트는 `Authorization: Bearer` 공유 키로 보호된
 - Worker는 `POST /inspection-requests/claim-next`로 대기 중인 요청 하나를 가져간다(본문 `{protocolVersion, workerVersion}`).
   응답은 항상 `200`이고 `{request, updateRequired, recommendedWorkerVersion}`이다 — 가져갈 것이 없거나 Worker의 프로토콜이
   지원되지 않으면 `request`는 `null`이며 둘은 `updateRequired`로 구별된다. 가져간 요청은 `Running`이 되고,
-  `Momos:Host:InspectionClaim:ReclaimTimeout`(기본 60분) 안에 결과가 오지 않으면 다음 `claim-next`가 다시 가져갈 수 있다.
+  `Momos:Host:InspectionClaim:ReclaimTimeout`(기본 60분) 안에 결과가 오지 않으면 다음 `claim-next`가 다시 가져갈 수 있다. 같은 요청은 `Momos:Host:InspectionClaim:MaxClaims`(기본 3)번까지만 가져갈 수 있다 — 그만큼 가져간 뒤에도
+  결과 없이 다시 `ReclaimTimeout`이 지나면 `claim-next`가 그 요청을 사유와 함께 `Failed`로 끝낸다(Worker가 계속 멈추는 요청이
+  무한히 다시 돌며 검진을 `Running`에 붙잡아 두지 않게).
 - 검사를 마친 Worker는 결과서를 `POST /inspection-requests/{id}/report`로 제출한다(`{findings, toolCalls}`).
 
 - 분석을 마친 Worker는 모델을 `POST /analysis-requests/{id}/model`로 제출한다. 목록 필드(`components`·`relations`·

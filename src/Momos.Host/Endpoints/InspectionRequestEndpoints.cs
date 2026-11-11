@@ -79,6 +79,30 @@ public static class InspectionRequestEndpoints
             // cutoff is the only signal; a request reclaimed too early can end up running twice,
             // but report/fail's Running-only guard stops the loser from corrupting the result.
             var reclaimCutoff = timeProvider.GetUtcNow() - claimOptions.Value.ReclaimTimeout;
+            var maxClaims = claimOptions.Value.MaxClaims;
+
+            // A request that has used up its claims and whose last claim has also gone stale will
+            // not be handed out again; it ends here, so whatever waits on it (a checkup) can end.
+            var exhausted = await db.InspectionRequests
+                .Where(r => r.Status == InspectionRequestStatus.Running && r.ClaimedAt < reclaimCutoff && r.ClaimCount >= maxClaims)
+                .Select(r => new { r.Id, r.ClaimedAt })
+                .ToListAsync(cancellationToken);
+            foreach (var abandoned in exhausted)
+            {
+                var reason = $"Abandoned after {maxClaims} attempts: the Worker running it stopped reporting each time.";
+                var failed = await db.InspectionRequests
+                    .Where(r => r.Id == abandoned.Id && r.Status == InspectionRequestStatus.Running && r.ClaimedAt == abandoned.ClaimedAt)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(r => r.Status, InspectionRequestStatus.Failed)
+                        .SetProperty(r => r.FailureReason, reason), cancellationToken);
+                if (failed == 1)
+                {
+                    var request = await db.InspectionRequests.FindAsync([abandoned.Id], cancellationToken);
+                    await db.Entry(request!).ReloadAsync(cancellationToken);
+                    await CheckupProgress.OnRequestFailedAsync(db, request!, reason, timeProvider, cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+            }
 
             // Conditional ExecuteUpdate (not a read-then-write) so the eligibility recheck and
             // the transition to Running happen as one statement — under PostgreSQL's default
@@ -94,7 +118,7 @@ public static class InspectionRequestEndpoints
                 // whole Pending+Running set on every worker poll.
                 var candidate = await db.InspectionRequests
                     .Where(r => r.Status == InspectionRequestStatus.Pending
-                        || (r.Status == InspectionRequestStatus.Running && r.ClaimedAt < reclaimCutoff))
+                        || (r.Status == InspectionRequestStatus.Running && r.ClaimedAt < reclaimCutoff && r.ClaimCount < maxClaims))
                     .OrderBy(r => r.SubmittedAt)
                     .Select(r => new { r.Id, r.SubmittedAt, r.Status, r.ClaimedAt })
                     .FirstOrDefaultAsync(cancellationToken);
@@ -115,7 +139,8 @@ public static class InspectionRequestEndpoints
                     .ExecuteUpdateAsync(
                         setters => setters
                             .SetProperty(r => r.Status, InspectionRequestStatus.Running)
-                            .SetProperty(r => r.ClaimedAt, claimedAt),
+                            .SetProperty(r => r.ClaimedAt, claimedAt)
+                            .SetProperty(r => r.ClaimCount, r => r.ClaimCount + 1),
                         cancellationToken);
 
                 if (claimed == 0)

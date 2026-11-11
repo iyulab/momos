@@ -86,4 +86,65 @@ public sealed class InspectionRequestReclaimTests : IAsyncLifetime
         Assert.Equal(InspectionRequestStatus.Running, reclaimed.Status);
         Assert.True(reclaimed.ClaimedAt > claimed.ClaimedAt);
     }
+
+    private async Task<InspectionRequestResponse> GetAsync(Guid id) =>
+        (await _client.GetFromJsonAsync<InspectionRequestResponse>($"/inspection-requests/{id}", TestJsonOptions.Value))!;
+
+    private async Task StaleAsync() => _time.Advance(_factory.InspectionClaimReclaimTimeout + TimeSpan.FromSeconds(1));
+
+    [Fact]
+    public async Task ARequestClaimedThreeTimesWhoseWorkerKeepsStopping_IsFailedInsteadOfReclaimedAgain()
+    {
+        var first = await CreateAndClaimAsync();
+        for (var claim = 2; claim <= 3; claim++)
+        {
+            await StaleAsync();
+            Assert.Equal(first.Id, (await ClaimNextAsync()).Request!.Id);
+        }
+
+        await StaleAsync();
+        var response = await ClaimNextAsync();
+
+        Assert.Null(response.Request);
+        var ended = await GetAsync(first.Id);
+        Assert.Equal(InspectionRequestStatus.Failed, ended.Status);
+        Assert.Equal("Abandoned after 3 attempts: the Worker running it stopped reporting each time.", ended.FailureReason);
+    }
+
+    [Fact]
+    public async Task ARequestStillWithinItsClaims_IsReclaimedAsBefore()
+    {
+        var first = await CreateAndClaimAsync();
+        await StaleAsync();
+        Assert.Equal(first.Id, (await ClaimNextAsync()).Request!.Id);
+        await StaleAsync();
+
+        Assert.Equal(first.Id, (await ClaimNextAsync()).Request!.Id);
+        Assert.Equal(InspectionRequestStatus.Running, (await GetAsync(first.Id)).Status);
+    }
+
+    [Fact]
+    public async Task AnAbandonedCheckupExam_EndsAsNotRun_AndTheCheckupCompletes()
+    {
+        var project = await (await _client.PostAsJsonAsync(
+            "/projects", new CreateProjectRequest("acme", "https://example.invalid/acme.git", null, "purpose", "vision", "scope")))
+            .Content.ReadFromJsonAsync<ProjectResponse>();
+        var created = await _client.PostAsJsonAsync($"/projects/{project!.Id}/checkups", new { });
+        var checkup = (await created.Content.ReadFromJsonAsync<CheckupResponse>(TestJsonOptions.Value))!;
+        Assert.Equal(checkup.Exams[0].RequestId, (await ClaimNextAsync()).Request!.Id);
+        for (var claim = 2; claim <= 3; claim++)
+        {
+            await StaleAsync();
+            Assert.NotNull((await ClaimNextAsync()).Request);
+        }
+
+        await StaleAsync();
+        Assert.Null((await ClaimNextAsync()).Request);
+
+        var ended = (await _client.GetFromJsonAsync<CheckupResponse>($"/checkups/{checkup.Id}", TestJsonOptions.Value))!;
+        Assert.Equal(CheckupStatus.Completed, ended.Status);
+        var exam = Assert.Single(ended.Exams);
+        Assert.Equal(ExamRunStatus.NotRun, exam.Status);
+        Assert.StartsWith("Abandoned after 3 attempts", exam.Reason, StringComparison.Ordinal);
+    }
 }
