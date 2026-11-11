@@ -271,7 +271,7 @@ public class MomosAgentLoopFactoryTests
     }
 
     private static readonly AnalysisContextOptions DefaultContext =
-        new(MaxCommandOutputChars: 8_000, MaxContextTokens: 32_000, ProtectedToolRounds: 4);
+        new(MaxCommandOutputChars: 8_000, MaxContextTokens: 32_000, ProtectedToolTokens: 8_000);
 
     private static IAnalysisAgentLoopFactory AnalysisFactory(FakeChatClientProvider chatClientProvider)
     {
@@ -355,7 +355,7 @@ public class MomosAgentLoopFactoryTests
 
         var loop = await AnalysisFactory(new FakeChatClientProvider([chat])).CreateAnalysisLoopAsync(
             new ExecutionSessionHandle("s"), Guid.NewGuid(), [echo], model: null, "system",
-            new AnalysisContextOptions(MaxCommandOutputChars: 8_000, MaxContextTokens: 32_000, ProtectedToolRounds: 2), new AnalysisToolMonitor(100), CancellationToken.None);
+            new AnalysisContextOptions(MaxCommandOutputChars: 8_000, MaxContextTokens: 32_000, ProtectedToolTokens: 2_000), new AnalysisToolMonitor(100), CancellationToken.None);
         await loop.RunAsync("go");
 
         var toolTexts = chat.LastMessages!.SelectMany(m => m.Contents.OfType<FunctionResultContent>())

@@ -21,6 +21,22 @@ public sealed class SessionScopedAgentLoopTests
     }
 
     [Fact]
+    public async Task RunFromAMessage_AndTools_AreForwardedToTheInnerLoop()
+    {
+        var inner = new RecordingLoop();
+        var loop = new SessionScopedAgentLoop(inner, new FakeExecutionRuntimeProvider(), new ExecutionSessionHandle("s"));
+        var message = new ChatMessage(ChatRole.User, "hello");
+
+        await loop.RunAsync(message);
+        await loop.RunAsync(message, new ChatOptions());
+        await foreach (var _ in loop.RunStreamingAsync(message)) { }
+        await foreach (var _ in loop.RunStreamingAsync(message, new ChatOptions())) { }
+
+        Assert.Equal(["Run(message, options)", "Run(message, options)", "RunStreaming(message, options)", "RunStreaming(message, options)"], inner.Calls);
+        Assert.Same(inner.Tools, loop.Tools);
+    }
+
+    [Fact]
     public async Task Disposing_ClosesTheSession()
     {
         var runtime = new FakeExecutionRuntimeProvider();
@@ -34,6 +50,9 @@ public sealed class SessionScopedAgentLoopTests
     {
         public List<string> Calls { get; } = [];
         public IReadOnlyList<ChatMessage> History => [];
+        public IReadOnlyList<AITool> Tools { get; } = [];
+        public Task<AgentResponse> RunAsync(ChatMessage message, ChatOptions? chatOptions, CancellationToken cancellationToken = default) { Calls.Add("Run(message, options)"); return Task.FromResult(Response()); }
+        public IAsyncEnumerable<AgentResponseChunk> RunStreamingAsync(ChatMessage message, ChatOptions? chatOptions, CancellationToken cancellationToken = default) { Calls.Add("RunStreaming(message, options)"); return Empty(); }
         public Task<AgentResponse> RunAsync(string input, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<AgentResponse> RunAsync(string input, ChatOptions? chatOptions, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public IAsyncEnumerable<AgentResponseChunk> RunStreamingAsync(string input, CancellationToken cancellationToken = default) => throw new NotSupportedException();

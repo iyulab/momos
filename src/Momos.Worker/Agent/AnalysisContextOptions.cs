@@ -5,6 +5,6 @@ namespace Momos.Worker.Agent;
 /// </summary>
 /// <param name="MaxCommandOutputChars">Characters of one command's output the agent gets back.</param>
 /// <param name="MaxContextTokens">The model's context window in tokens.</param>
-/// <param name="ProtectedToolRounds">Most recent tool rounds whose outputs are sent verbatim; older
+/// <param name="ProtectedToolTokens">Token room for the newest tool outputs, sent verbatim; older
 /// outputs are replaced by short placeholders before each model call.</param>
-public sealed record AnalysisContextOptions(int MaxCommandOutputChars, int MaxContextTokens, int ProtectedToolRounds);
+public sealed record AnalysisContextOptions(int MaxCommandOutputChars, int MaxContextTokens, int ProtectedToolTokens);

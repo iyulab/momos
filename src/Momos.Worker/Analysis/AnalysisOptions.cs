@@ -35,8 +35,8 @@ public sealed class AnalysisOptions
     public long MaxTotalTokens { get; set; } = 4_400_000;
 
     /// <summary>Characters of one command's output the analysis agent gets back; the rest is cut
-    /// with a note telling it to read a narrower part. The outputs of the last
-    /// <see cref="ProtectedToolRounds"/> rounds are re-sent in full on each later model call, so this
+    /// with a note telling it to read a narrower part. The newest
+    /// <see cref="ProtectedToolTokens"/> tokens of outputs are re-sent in full on each later model call, so this
     /// bounds how fast a pass spends its tokens.</summary>
     public int MaxCommandOutputChars { get; set; } = 8_000;
 
@@ -44,10 +44,12 @@ public sealed class AnalysisOptions
     /// the agent library's catalog; without it compaction works against a guess.</summary>
     public int MaxContextTokens { get; set; } = 32_000;
 
-    /// <summary>Most recent tool rounds whose outputs the agent keeps verbatim; older outputs are
-    /// replaced by short placeholders before each model call. Every output otherwise rides along
-    /// on every later call, which is what exhausted chapter budgets.</summary>
-    public int ProtectedToolRounds { get; set; } = 4;
+    /// <summary>Token room for the most recent tool outputs, which the agent keeps verbatim; older
+    /// outputs are replaced by short placeholders before each model call. Every output otherwise
+    /// rides along on every later call, which is what exhausted chapter budgets. Sized by tokens,
+    /// not rounds, so short results (an acknowledgement after a write) do not push the reads still
+    /// in use out of view; about a quarter of <see cref="MaxContextTokens"/> is a good default.</summary>
+    public int ProtectedToolTokens { get; set; } = 8_000;
 
     /// <summary>Reading calls (commands, knowledge queries) in a row after which the agent is
     /// reminded to propose what it found. Left alone, an agent reads a chapter's whole subject
@@ -66,5 +68,5 @@ public sealed class AnalysisOptions
 
     public static bool IsValid(AnalysisOptions o) =>
         o.MaxChapters > 0 && o.MaxCommandOutputChars > 0 && o.MaxChapterTokens > 0 && o.MaxOverviewTokens > 0 && o.MaxTotalTokens > 0 && o.MaxDuration > TimeSpan.Zero
-        && o.MaxContextTokens > 0 && o.ProtectedToolRounds > 0 && o.ReadsBeforeNudge > 0;
+        && o.MaxContextTokens > 0 && o.ProtectedToolTokens > 0 && o.ReadsBeforeNudge > 0;
 }

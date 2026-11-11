@@ -18,6 +18,8 @@ public sealed class SessionScopedAgentLoop(
 {
     public IReadOnlyList<ChatMessage> History => inner.History;
 
+    public IReadOnlyList<AITool> Tools => inner.Tools;
+
     public Task<AgentResponse> RunAsync(string input, CancellationToken cancellationToken = default) =>
         inner.RunAsync(input, cancellationToken);
 
@@ -29,6 +31,18 @@ public sealed class SessionScopedAgentLoop(
 
     public IAsyncEnumerable<AgentResponseChunk> RunStreamingAsync(string input, ChatOptions? chatOptions, CancellationToken cancellationToken = default) =>
         inner.RunStreamingAsync(input, chatOptions, cancellationToken);
+
+    public Task<AgentResponse> RunAsync(ChatMessage message, ChatOptions? chatOptions, CancellationToken cancellationToken = default) =>
+        inner.RunAsync(message, chatOptions, cancellationToken);
+
+    public Task<AgentResponse> RunAsync(ChatMessage message, CancellationToken cancellationToken = default) =>
+        inner.RunAsync(message, cancellationToken);
+
+    public IAsyncEnumerable<AgentResponseChunk> RunStreamingAsync(ChatMessage message, ChatOptions? chatOptions, CancellationToken cancellationToken = default) =>
+        inner.RunStreamingAsync(message, chatOptions, cancellationToken);
+
+    public IAsyncEnumerable<AgentResponseChunk> RunStreamingAsync(ChatMessage message, CancellationToken cancellationToken = default) =>
+        inner.RunStreamingAsync(message, cancellationToken);
 
     public Task<AgentResponse> ContinueAsync(CancellationToken cancellationToken = default) =>
         inner.ContinueAsync(cancellationToken);

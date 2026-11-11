@@ -49,9 +49,10 @@ public sealed class HostApiClientTests : IClassFixture<TestMomosHostFactory>
     {
         var httpClient = _factory.CreateAuthorizedClient();
         var projectId = await CreateProjectAsync();
-        await httpClient.PostAsJsonAsync(
+        var registered = await httpClient.PostAsJsonAsync(
             $"/projects/{projectId}/knowledge/documents",
             new { Title = "PRD", Content = "The checkout flow must support Apple Pay." });
+        registered.EnsureSuccessStatusCode();
 
         var snippets = await _client.QueryKnowledgeAsync(projectId, "Apple Pay", CancellationToken.None);
 

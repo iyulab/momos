@@ -125,7 +125,7 @@ public sealed class MomosAgentLoopFactory(
             {
                 MaxContextTokens = ac.MaxContextTokens,
                 EnableObservationMasking = true,
-                ObservationMaskingProtectedRounds = ac.ProtectedToolRounds,
+                ObservationMaskingProtectedTokens = ac.ProtectedToolTokens,
                 EnableToolResultCompaction = true,
                 MaxToolResultChars = ac.MaxCommandOutputChars,
             }, summarizer: null);
