@@ -39,6 +39,10 @@ public static class KnowledgeServiceCollectionExtensions
             }
             else
             {
+                // Since FluxIndex 0.65.0 a context with no embedder is keyword-only; the in-memory
+                // embedder has to be chosen explicitly (the validator only lets this through
+                // outside production).
+                builder.UseInMemoryEmbedding();
                 sp.GetRequiredService<ILogger<FluxIndexKnowledgeIndex>>().LogWarning(
                     "Momos:Host:Knowledge:EmbeddingEndpoint is not set — the project " +
                     "knowledge index will use FluxIndex's in-memory embedding fallback, " +
