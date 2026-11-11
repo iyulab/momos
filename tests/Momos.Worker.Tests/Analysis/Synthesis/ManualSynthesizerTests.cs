@@ -153,6 +153,31 @@ public sealed class ManualSynthesizerTests
     }
 
     [Fact]
+    public async Task AChapterWhoseAgentKeepsSendingTheSameRejectedProposal_IsGivenUp_AndTheNextChapterStillRuns()
+    {
+        Dictionary<string, object?> NoSymbol(int i) => new()
+        {
+            ["topic"] = $"try {i}",
+            ["tier"] = ClaimTier.Fact,
+            ["statement"] = "There is a queue.",
+            ["confidence"] = ClaimConfidence.High,
+            ["evidence"] = new[] { new ProposedEvidence(ProposedEvidenceKind.Code, Path: "src/App/Queue.cs") },
+        };
+
+        var synthesizer = Build(null,
+            Pass(Call("ProposeChapter", Chapter("System map", "system-map")), Call("ProposeChapter", Chapter("Risks", "risks-and-debt")), Done()),
+            Pass([.. Enumerable.Range(1, 8).Select(i => Call("ProposeClaim", NoSymbol(i))), Done()]),
+            Pass(Call("ProposeClaim", Assessment("retries")), Done()));
+
+        var model = await Run(synthesizer);
+
+        var gap = Assert.Single(model.Coverage.NotAnalyzed, g => g.Area == "manual-chapter");
+        Assert.StartsWith("system-map.md: ", gap.Reason, StringComparison.Ordinal);
+        Assert.Contains("stopped after 5 rejections in a row from ProposeClaim", gap.Reason, StringComparison.Ordinal);
+        Assert.Contains(model.Claims, c => c.Key == ModelIds.SynthesizedClaim("retries"));
+    }
+
+    [Fact]
     public async Task AFailedOverviewCall_DropsTheChaptersItHadPlanned()
     {
         var synthesizer = Build(null,

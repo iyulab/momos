@@ -38,8 +38,11 @@ public sealed record ProposedFlowStep(
 /// Each rejection is logged by tool and reason (the coverage keeps only the counts) — the message
 /// itself only where it cannot echo repository text back into the Worker's log.
 /// </summary>
-public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, int maxChapters, ILogger? logger = null)
+public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, int maxChapters, ILogger? logger = null, int stuckAfter = SynthesisTools.DefaultStuckAfter)
 {
+    /// <summary>Rejections in a row, from one tool for one reason, after which the pass is given up.</summary>
+    public const int DefaultStuckAfter = 5;
+
     /// <summary>Appended when Code evidence lacks its locator: the rule alone did not stop an agent
     /// resending the same shape, a filled-in example does more.</summary>
     internal const string CodeEvidenceExample =
@@ -47,6 +50,13 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
 
     private (string Tool, string Reason, int? Round)? _lastRejection;
     private int _rejectionsInARow;
+
+    /// <summary>Called once, when the agent keeps sending proposals that are rejected for the same
+    /// reason and the pass should end instead of spending the rest of its time on them.</summary>
+    public Action? OnStuck { get; set; }
+
+    /// <summary>Why the pass was given up, or null while it is still going.</summary>
+    public string? StuckReason { get; private set; }
 
     public static JsonSerializerOptions ToolJson { get; } = CreateToolJson();
 
@@ -83,6 +93,11 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
     public async Task<string> ProposeClaim(
         string topic, ClaimTier tier, string statement, ClaimConfidence confidence, ProposedEvidence[] evidence, CancellationToken cancellationToken = default)
     {
+        if (StuckReason is not null)
+        {
+            return PassClosed;
+        }
+
         if (string.IsNullOrWhiteSpace(topic))
         {
             return Reject(RejectionReason.InvalidElement, "A claim needs a topic.");
@@ -97,7 +112,7 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
         var claim = new ClaimPayload(key, tier, statement.Trim(), [.. evidence.Select(ToPayload)], confidence, ClaimOrigin.Synthesized);
         if (DraftRules.CheckClaim(claim, stage.FindClaim) is { Accepted: false } rule)
         {
-            return Reject(rule);
+            return Reject(rule, shape: EvidenceShape(evidence));
         }
 
         var verified = new List<EvidencePayload>(claim.Evidence.Count);
@@ -106,7 +121,7 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
             var (verdict, normalized) = await verifier.VerifyAsync(e, cancellationToken);
             if (!verdict.Accepted)
             {
-                return Reject(verdict);
+                return Reject(verdict, shape: EvidenceShape(evidence));
             }
 
             verified.Add(normalized);
@@ -296,16 +311,28 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
         return $"Recorded as {id}.";
     }
 
-    private string Reject(Verdict verdict, [CallerMemberName] string tool = "") => Reject(verdict.Reason!, verdict.Message, tool, verdict.Cause);
+    private const string PassClosed =
+        "Rejected: this pass is closed because proposals kept being rejected for the same reason. Stop proposing and finish.";
 
-    private string Reject(string reason, string message, [CallerMemberName] string tool = "", string? cause = null)
+    /// <summary>Which fields of each piece of evidence were filled in — never their values, which may
+    /// quote the repository. Tells a missing field from one filled in under the wrong name.</summary>
+    private static string EvidenceShape(ProposedEvidence[] evidence) =>
+        string.Join("; ", evidence.Select((e, i) =>
+            $"[{i}] {e.Kind}: path={Presence(e.Path)} symbol={Presence(e.Symbol)} lines={Presence(e.Lines)} sha={Presence(e.Sha)} url={Presence(e.Url)} claimKey={Presence(e.ClaimKey)}"));
+
+    private static string Presence(string? value) => string.IsNullOrWhiteSpace(value) ? "empty" : "set";
+
+    private string Reject(Verdict verdict, [CallerMemberName] string tool = "", string? shape = null) => Reject(verdict.Reason!, verdict.Message, tool, verdict.Cause, shape);
+
+    private string Reject(string reason, string message, [CallerMemberName] string tool = "", string? cause = null, string? shape = null)
     {
         stage.Draft.Reject(reason);
         if (logger is not null)
         {
             // A message that may quote the repository is not logged; its fixed cause is.
             var echoesRepository = reason is RejectionReason.EvidenceNotFound or RejectionReason.UnresolvedReference or RejectionReason.DuplicateTopic;
-            logger.LogInformation("{Tool} proposal rejected — {Reason}: {Detail}", tool, reason, echoesRepository ? cause ?? "(detail withheld)" : message);
+            logger.LogInformation("{Tool} proposal rejected — {Reason}: {Detail}{Shape}", tool, reason, echoesRepository ? cause ?? "(detail withheld)" : message,
+                shape is null ? "" : $" (fields {shape})");
         }
 
         // Calls the agent sends together in one round are answered together: a later one in the
@@ -315,6 +342,13 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
             ? (round is not null && round == lastRound ? _rejectionsInARow : _rejectionsInARow + 1)
             : 1;
         _lastRejection = (tool, reason, round);
+        if (_rejectionsInARow >= stuckAfter && StuckReason is null)
+        {
+            StuckReason = $"stopped after {_rejectionsInARow} rejections in a row from {tool} for {reason}";
+            logger?.LogWarning("Analysis pass given up — {Reason}", StuckReason);
+            OnStuck?.Invoke();
+        }
+
         if (reason == RejectionReason.MissingLocator && message.StartsWith("Evidence", StringComparison.Ordinal) && message.Contains("(Code)", StringComparison.Ordinal))
         {
             message += CodeEvidenceExample;

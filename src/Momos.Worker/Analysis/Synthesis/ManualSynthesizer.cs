@@ -14,7 +14,8 @@ public interface IManualSynthesizer
 /// <summary>
 /// Runs the language-model passes of an analysis over the deterministic skeleton: one overview
 /// pass that plans the chapters, then one pass per chapter, each chapter getting an equal share of
-/// the time still left. A pass that runs out of tokens or time keeps what it already got verified:
+/// the time still left. A pass that runs out of tokens or time, or that is given up because its agent
+/// kept sending proposals rejected for the same reason, keeps what it already got verified:
 /// an overview keeps the chapters it planned, a chapter becomes a partial chapter. A pass whose
 /// model call fails loses its additions — for the overview, the whole plan. Either way the analysis
 /// still completes with what the passes wrote, and the coverage says what was partial or lost and
@@ -32,6 +33,7 @@ public sealed class ManualSynthesizer(
 {
     private const string TimeBudgetReached = "time budget reached";
     private const string TokenBudgetReached = "token budget reached";
+    private const string StoppedPrefix = "stopped after ";
 
     public async Task<ProjectModelPayload> SynthesizeAsync(
         ProjectModelPayload skeleton, ExecutionSessionHandle session, ProjectInfo project, string? language, CancellationToken cancellationToken)
@@ -48,7 +50,8 @@ public sealed class ManualSynthesizer(
         deadline.CancelAfter(o.MaxDuration);
 
         var overview = draft.Stage(section: null);
-        var failure = await RunPassAsync("overview", new SynthesisTools(overview, verifier, o.MaxChapters, logger).ForOverview(),
+        var overviewTools = new SynthesisTools(overview, verifier, o.MaxChapters, logger);
+        var failure = await RunPassAsync("overview", overviewTools, overviewTools.ForOverview(),
             AnalysisPrompts.Overview(project, skeleton, o.MaxChapters), o.MaxOverviewTokens);
         // Only planned chapters make a plan worth keeping; a claim the overview verified on its
         // own has no chapter to live in.
@@ -84,7 +87,8 @@ public sealed class ManualSynthesizer(
                 // settles cannot starve the ones after it.
                 var remaining = o.MaxDuration - (time.GetUtcNow() - started);
                 var share = remaining / (sections.Count - i);
-                var chapterFailure = await RunPassAsync(section.Path, new SynthesisTools(stage, verifier, o.MaxChapters, logger).ForChapter(),
+                var chapterTools = new SynthesisTools(stage, verifier, o.MaxChapters, logger);
+                var chapterFailure = await RunPassAsync(section.Path, chapterTools, chapterTools.ForChapter(),
                     AnalysisPrompts.Chapter(section, draft, share, o.MaxChapterTokens), o.MaxChapterTokens, share);
                 if (chapterFailure is null)
                 {
@@ -104,7 +108,7 @@ public sealed class ManualSynthesizer(
 
         // Null when the pass finished; otherwise why it did not. Lets only a shutdown through.
         // A slice bounds the pass further, inside the analysis's own deadline.
-        async Task<string?> RunPassAsync(string pass, IReadOnlyList<AIFunction> passTools, string prompt, long tokens, TimeSpan? slice = null)
+        async Task<string?> RunPassAsync(string pass, SynthesisTools tools, IReadOnlyList<AIFunction> passTools, string prompt, long tokens, TimeSpan? slice = null)
         {
             var passStarted = time.GetUtcNow();
             var budget = new TokenBudget(tokens, total);
@@ -137,7 +141,11 @@ public sealed class ManualSynthesizer(
                     return TokenBudgetReached;
                 }
 
-                using var passDeadline = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+                // A pass whose agent keeps resending a proposal that is rejected for the same reason
+                // ends here, and the time it would have spent goes to the chapters after it.
+                using var stuck = new CancellationTokenSource();
+                tools.OnStuck = stuck.Cancel;
+                using var passDeadline = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, stuck.Token);
                 if (slice is { } s)
                 {
                     passDeadline.CancelAfter(s);
@@ -153,6 +161,10 @@ public sealed class ManualSynthesizer(
                     }
 
                     return null;
+                }
+                catch (OperationCanceledException) when (stuck.IsCancellationRequested && !deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    return tools.StuckReason;
                 }
                 catch (OperationCanceledException) when (passDeadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
                 {
@@ -179,5 +191,5 @@ public sealed class ManualSynthesizer(
     /// does, and drops the stage whole.
     /// </summary>
     private static bool KeepsPartial(string failure, bool hasWork) =>
-        failure is (TokenBudgetReached or TimeBudgetReached) && hasWork;
+        (failure is (TokenBudgetReached or TimeBudgetReached) || failure.StartsWith(StoppedPrefix, StringComparison.Ordinal)) && hasWork;
 }

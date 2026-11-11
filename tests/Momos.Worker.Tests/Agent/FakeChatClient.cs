@@ -56,6 +56,8 @@ public sealed class FakeChatClient : IChatClient
     {
         LastOptions = options;
         LastMessages = [.. messages];
+        // A real client stops on a cancelled token; so does this one.
+        cancellationToken.ThrowIfCancellationRequested();
         if (Delay > TimeSpan.Zero)
         {
             await Task.Delay(Delay, cancellationToken);

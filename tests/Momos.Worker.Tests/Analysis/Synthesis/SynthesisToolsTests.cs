@@ -83,6 +83,67 @@ public sealed class SynthesisToolsTests
     }
 
     [Fact]
+    public async Task TheSameRejectionFiveTimesInARow_GivesUpThePass_AndAProposalAfterwardsIsTurnedAway()
+    {
+        var (tools, _) = Tools();
+        var stuckSignals = 0;
+        tools.OnStuck = () => stuckSignals++;
+        Task<string> NoSymbol(string topic) => tools.ProposeClaim(topic, ClaimTier.Fact, "There is a queue.", ClaimConfidence.High,
+            [new(ProposedEvidenceKind.Code, Path: "src/App/Queue.cs")], CancellationToken.None);
+
+        for (var i = 1; i <= 4; i++)
+        {
+            await NoSymbol($"try {i}");
+        }
+
+        Assert.Null(tools.StuckReason);
+        Assert.Equal(0, stuckSignals);
+
+        await NoSymbol("try 5");
+
+        Assert.Equal(1, stuckSignals);
+        Assert.StartsWith("stopped after 5 rejections in a row from ProposeClaim for ", tools.StuckReason, StringComparison.Ordinal);
+        Assert.Contains("pass is closed", await NoSymbol("try 6"), StringComparison.Ordinal);
+        Assert.Equal(1, stuckSignals);
+    }
+
+    [Fact]
+    public async Task ARecordedProposal_StartsTheCountAgain_SoRejectionsBetweenAcceptancesNeverGiveUp()
+    {
+        var (tools, _) = Tools();
+        Task<string> NoSymbol(string topic) => tools.ProposeClaim(topic, ClaimTier.Fact, "There is a queue.", ClaimConfidence.High,
+            [new(ProposedEvidenceKind.Code, Path: "src/App/Queue.cs")], CancellationToken.None);
+
+        for (var round = 0; round < 3; round++)
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                await NoSymbol($"try {round}-{i}");
+            }
+
+            await tools.ProposeClaim($"good {round}", ClaimTier.Fact, "Requests queue in the Queue type.", ClaimConfidence.High, [QueueCode], CancellationToken.None);
+        }
+
+        Assert.Null(tools.StuckReason);
+    }
+
+    [Fact]
+    public async Task ARejectedProposal_LogsWhichEvidenceFieldsWereFilledIn_NeverTheirValues()
+    {
+        var logger = new ListLogger();
+        var draft = new SynthesisDraft(SynthesisDraftTests.Skeleton());
+        var runtime = new FakeExecutionRuntimeProvider { Respond = _ => new(true, "", "", 0) };
+        var tools = new SynthesisTools(draft.Stage(null), new EvidenceVerifier(runtime, new ExecutionSessionHandle("s"), Base), 12, logger);
+
+        await tools.ProposeClaim("no symbol", ClaimTier.Fact, "There is a queue.", ClaimConfidence.High,
+            [new(ProposedEvidenceKind.Code, Path: "src/App/SecretQueue.cs")], CancellationToken.None);
+
+        var line = Assert.Single(logger.Messages);
+        Assert.Contains("[0] Code: path=set symbol=empty lines=empty sha=empty url=empty claimKey=empty", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("SecretQueue", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ARejectionThatWouldQuoteTheRepository_LogsItsCauseInstead()
     {
         var logger = new ListLogger();
@@ -94,7 +155,7 @@ public sealed class SynthesisToolsTests
             [new(ProposedEvidenceKind.Code, Path: "src/App/Cache.cs", Symbol: "SecretCache")], CancellationToken.None);
 
         var line = Assert.Single(logger.Messages);
-        Assert.EndsWith("no file at the analyzed commit", line, StringComparison.Ordinal);
+        Assert.Contains("no file at the analyzed commit", line, StringComparison.Ordinal);
         Assert.DoesNotContain("Cache", line, StringComparison.Ordinal);
     }
 
