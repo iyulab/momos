@@ -1,0 +1,36 @@
+name: CLA
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# The check only reads a file out of the checked-out tree, so it needs nothing else. No write
+# scope, no personal access token, no third-party action: the industry-standard one
+# (cla-assistant) is archived and unmaintained, and its lite action wants both a PAT and
+# pull_request_target.
+permissions:
+  contents: read
+
+concurrency:
+  group: cla-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  signature:
+    name: signature on record
+    runs-on: ubuntu-latest
+    # The job checks out the tree and reads one file. Without an explicit limit a stuck runner
+    # holds the job for the 360-minute default, which a private repository pays for by the minute.
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check for a CLA signature
+        env:
+          LOGIN: ${{ github.event.pull_request.user.login }}
+          USER_TYPE: ${{ github.event.pull_request.user.type }}
+        # Invoked through `bash` rather than executed directly: the repository is developed on
+        # Windows, where git does not track the executable bit, so relying on it would fail every
+        # pull request with "Permission denied".
+        run: bash .github/scripts/check-cla.sh
