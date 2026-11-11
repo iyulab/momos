@@ -183,6 +183,17 @@ public sealed class SynthesisToolsTests
     }
 
     [Fact]
+    public async Task AClaimThatSaysExactlyWhatAnotherClaimSays_IsRejected_EvenUnderAnotherTopic()
+    {
+        var (tools, _) = Tools();
+        await tools.ProposeClaim("queue type", ClaimTier.Fact, "Requests queue in the Queue type.", ClaimConfidence.High, [QueueCode], CancellationToken.None);
+
+        var answer = await tools.ProposeClaim("the request queue", ClaimTier.Fact, "  requests queue in the  QUEUE type. ", ClaimConfidence.High, [QueueCode], CancellationToken.None);
+
+        Assert.StartsWith("Rejected: Another claim already says exactly this (", answer, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AnAssessmentAboveLow_IsRejectedWithTheReason()
     {
         var (tools, _) = Tools();

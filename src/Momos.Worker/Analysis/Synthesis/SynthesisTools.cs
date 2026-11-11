@@ -109,6 +109,11 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
             return Reject(RejectionReason.DuplicateTopic, $"Topic '{topic}' is already used by {key}; cite it instead or choose another topic.");
         }
 
+        if (!string.IsNullOrWhiteSpace(statement) && stage.FindClaimByStatement(statement) is { } same)
+        {
+            return Reject(RejectionReason.DuplicateTopic, $"Another claim already says exactly this ({same.Key}); cite it instead of stating it again.");
+        }
+
         var claim = new ClaimPayload(key, tier, statement.Trim(), [.. evidence.Select(ToPayload)], confidence, ClaimOrigin.Synthesized);
         if (DraftRules.CheckClaim(claim, stage.FindClaim) is { Accepted: false } rule)
         {

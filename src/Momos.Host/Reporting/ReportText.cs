@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Momos.Host.Domain;
 
 namespace Momos.Host.Reporting;
@@ -25,6 +26,11 @@ internal sealed record ReportText
     public required Func<string, string?, string> DidNotRun { get; init; }
 
     public required Func<string, string?, string> RanInPart { get; init; }
+
+    /// <summary>Puts the fixed phrases of an exam's reason — what the Worker records in English
+    /// — into the report's language. Anything it does not recognise (a chapter file name, an
+    /// exception type) is left as written.</summary>
+    public required Func<string, string> TranslateReason { get; init; }
     public required Func<string, string> NotFinished { get; init; }
 
     /// <summary>The number of chapters, then the markdown link to the unknowns page.</summary>
@@ -76,6 +82,21 @@ internal sealed record ReportText
         _ => throw new ArgumentOutOfRangeException(nameof(language), language, "No report text for this language."),
     };
 
+    // The phrases the Worker and the Host write into an exam's reason (English). Order matters: the
+    // longer phrase first.
+    private static readonly (Regex Pattern, string Replacement)[] KoreanReasonPhrases =
+    [
+        (new Regex(@"Abandoned after (\d+) attempts: the Worker running it stopped reporting each time\.?", RegexOptions.CultureInvariant), "$1번 시도했으나 매번 요청을 처리하던 Worker가 응답을 멈춰 포기했다"),
+        (new Regex(@"stopped after (\d+) rejections in a row from (\w+) for ([^;]+)", RegexOptions.CultureInvariant), "같은 사유로 $1번 연속 기각되어 중단했다($2)"),
+        (new Regex(@"the model call failed \((\w+)\)", RegexOptions.CultureInvariant), "모델 호출이 실패했다($1)"),
+        (new Regex(@"time budget reached", RegexOptions.CultureInvariant), "시간 예산에 도달했다"),
+        (new Regex(@"token budget reached", RegexOptions.CultureInvariant), "토큰 예산에 도달했다"),
+        (new Regex(@"\bpartial — ", RegexOptions.CultureInvariant), "일부만 작성 — "),
+    ];
+
+    private static string KoreanReason(string reason) =>
+        KoreanReasonPhrases.Aggregate(reason, (text, phrase) => phrase.Pattern.Replace(text, phrase.Replacement));
+
     private static string WithReason(string sentence, string? reason) =>
         reason is null ? $"{sentence}." : $"{sentence}: {reason.TrimEnd('.')}.";
 
@@ -90,6 +111,7 @@ internal sealed record ReportText
         NoLimits = "Every program in this checkup ran to the end.",
         DidNotRun = (program, reason) => WithReason($"`{program}` did not run", reason),
         RanInPart = (program, reason) => WithReason($"`{program}` ran only in part", reason),
+        TranslateReason = reason => reason,
         NotFinished = program => $"`{program}` has not finished.",
         ChaptersNotAnalyzed = (n, link) => $"{n} chapter{(n == 1 ? " was" : "s were")} not analyzed — see {link}.",
         ChaptersPartial = n => $"{n} chapter{(n == 1 ? " was" : "s were")} written only in part.",
@@ -141,6 +163,7 @@ internal sealed record ReportText
         NoLimits = "이 검진의 모든 프로그램이 끝까지 실행됐다.",
         DidNotRun = (program, reason) => WithReason($"`{program}`이(가) 실행되지 않았다", reason),
         RanInPart = (program, reason) => WithReason($"`{program}`이(가) 일부만 실행됐다", reason),
+        TranslateReason = KoreanReason,
         NotFinished = program => $"`{program}`이(가) 아직 끝나지 않았다.",
         ChaptersNotAnalyzed = (n, link) => $"{n}개 장을 분석하지 못했다 — {link} 참고.",
         ChaptersPartial = n => $"{n}개 장은 일부만 작성됐다.",

@@ -159,6 +159,24 @@ public sealed class CheckupReportRendererTests
     }
 
     [Fact]
+    public void AKoreanSummary_ReadsTheExamReasonInKorean_WhileTheRecordKeepsTheWorkersOriginal()
+    {
+        const string reason = "chapter-3.md: partial — time budget reached; chapter-4.md: stopped after 5 rejections in a row from ProposeClaim for evidence without the identifier that locates it";
+        var docs = CheckupReportRenderer.Render("acme", Checkup("ko", ExamRunStatus.Partial, reason), DeepReportRendererTests.SampleModel());
+
+        var index = Doc(docs, "index.md");
+        Assert.Contains("시간 예산에 도달했다", index, StringComparison.Ordinal);
+        Assert.Contains("5번 연속 기각되어 중단했다(ProposeClaim)", index, StringComparison.Ordinal);
+        Assert.DoesNotContain("time budget reached", index, StringComparison.Ordinal);
+        Assert.Contains("time budget reached", Doc(docs, "exams/design-analysis.md"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnAbandonedRequestReason_IsTranslatedToo() =>
+        Assert.Equal("3번 시도했으나 매번 요청을 처리하던 Worker가 응답을 멈춰 포기했다",
+            ReportText.For("ko").TranslateReason("Abandoned after 3 attempts: the Worker running it stopped reporting each time."));
+
+    [Fact]
     public void ReportText_RefusesALanguageItHasNoTextFor() =>
         Assert.Throws<ArgumentOutOfRangeException>(() => ReportText.For("ja"));
 }

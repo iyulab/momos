@@ -71,6 +71,16 @@ public sealed class SynthesisDraft
 
     public ClaimPayload? FindClaim(string key) => _claims.GetValueOrDefault(key);
 
+    /// <summary>A claim whose statement is the same sentence (ignoring case and spacing).</summary>
+    public ClaimPayload? FindClaimByStatement(string statement)
+    {
+        var wanted = Normalize(statement);
+        return _claims.Values.FirstOrDefault(c => Normalize(c.Statement) == wanted);
+    }
+
+    internal static string Normalize(string statement) =>
+        string.Join(' ', statement.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
+
     public bool HasComponent(string id) => _components.Contains(id);
 
     public bool HasElement(OutlineBlockKind kind, string reference) => kind switch
@@ -130,6 +140,9 @@ public sealed class DraftStage(SynthesisDraft draft, DraftSection? section)
     public int SectionCount => Draft.Sections.Count + _sections.Count;
 
     public ClaimPayload? FindClaim(string key) => Draft.FindClaim(key) ?? _claims.FirstOrDefault(c => c.Key == key);
+
+    public ClaimPayload? FindClaimByStatement(string statement) =>
+        Draft.FindClaimByStatement(statement) ?? _claims.FirstOrDefault(c => SynthesisDraft.Normalize(c.Statement) == SynthesisDraft.Normalize(statement));
 
     public bool HasComponent(string id) => Draft.HasComponent(id);
 

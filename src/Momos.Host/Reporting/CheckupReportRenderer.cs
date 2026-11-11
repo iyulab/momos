@@ -135,7 +135,7 @@ public static class CheckupReportRenderer
     {
         foreach (var exam in checkup.Exams)
         {
-            var reason = exam.Reason is null ? null : Inline(exam.Reason);
+            var reason = exam.Reason is null ? null : Inline(t.TranslateReason(exam.Reason));
             switch (exam.Status)
             {
                 case ExamRunStatus.NotRun:
@@ -194,7 +194,7 @@ public static class CheckupReportRenderer
             var detail = new List<string>();
             if (exam.Reason is not null)
             {
-                detail.Add(Inline(exam.Reason));
+                detail.Add(Inline(t.TranslateReason(exam.Reason)));
             }
 
             if (program == ExamProgram.DesignAnalysis && model is { Outline.Count: > 0 })
@@ -301,7 +301,7 @@ public static class CheckupReportRenderer
         var why = model is not null
             ? t.NoChapters
             : design is { Status: ExamRunStatus.NotRun }
-                ? t.DidNotRun(ExamProgram.DesignAnalysis, design.Reason is null ? null : Inline(design.Reason))
+                ? t.DidNotRun(ExamProgram.DesignAnalysis, design.Reason is null ? null : Inline(t.TranslateReason(design.Reason)))
                 : t.NoModel;
         return new StringBuilder()
             .Line($"# {t.ManualTitle}")

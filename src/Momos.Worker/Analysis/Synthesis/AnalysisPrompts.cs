@@ -13,7 +13,7 @@ public sealed record GuideChapter(string Id, string Title, IReadOnlyList<string>
 /// </summary>
 public static class AnalysisPrompts
 {
-    public const string Version = "p3.6";
+    public const string Version = "p3.7";
 
     private const int MaxListedClaims = 300;
 
@@ -78,7 +78,7 @@ public static class AnalysisPrompts
     private static string LanguageRule(string? language) => language switch
     {
         null or "en" => "Write in English, in short plain sentences.",
-        "ko" => "Write in Korean, in short plain sentences. Keep code identifiers, paths and quoted text exactly as they appear.",
+        "ko" => "Write in Korean, in short plain sentences. Write only Korean, with no Chinese or Japanese words mixed in. Keep code identifiers, paths and quoted text exactly as they appear.",
         _ => throw new ArgumentOutOfRangeException(nameof(language), language, "Unsupported manual language."),
     };
 
