@@ -3,6 +3,7 @@ using FluxIndex.SDK;
 using FluxIndex.Storage.PostgreSQL;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Momos.Host.Data;
 
 namespace Momos.Host.Knowledge;
 
@@ -15,7 +16,7 @@ public static class KnowledgeServiceCollectionExtensions
             var options = sp.GetRequiredService<IOptions<KnowledgeOptions>>().Value;
 
             var builder = FluxIndexContext.CreateBuilder()
-                .UsePostgreSQL(options.ConnectionString)
+                .UsePostgreSQL(ConnectionPoolDefaults.WithMaximumPoolSize(options.ConnectionString))
                 .ConfigureServices(s =>
                 {
                     // FluxIndex's own warnings (a vector size mismatch, a resolved embedder that is

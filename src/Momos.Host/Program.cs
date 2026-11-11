@@ -20,8 +20,9 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddDbContext<MomosDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("MomosDb")
-        ?? throw new InvalidOperationException("ConnectionStrings:MomosDb is required.")));
+    options.UseNpgsql(ConnectionPoolDefaults.WithMaximumPoolSize(
+        builder.Configuration.GetConnectionString("MomosDb")
+            ?? throw new InvalidOperationException("ConnectionStrings:MomosDb is required."))));
 builder.Services
     .AddOptions<InspectionClaimOptions>()
     .Bind(builder.Configuration.GetSection(InspectionClaimOptions.SectionName));
