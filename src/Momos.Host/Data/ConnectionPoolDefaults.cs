@@ -12,7 +12,7 @@ namespace Momos.Host.Data;
 public static class ConnectionPoolDefaults
 {
     /// <summary>Connections one pool may hold when the connection string does not say.</summary>
-    public const int DefaultMaximumPoolSize = 10;
+    public const int DefaultMaximumPoolSize = 4;
 
     public static string WithMaximumPoolSize(string connectionString, int maximum = DefaultMaximumPoolSize)
     {
