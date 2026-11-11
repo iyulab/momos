@@ -53,6 +53,18 @@ public sealed class HostApiClient(HttpClient httpClient) : IHostApiClient
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<bool> HeartbeatAsync(Guid inspectionRequestId, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PostAsync($"/inspection-requests/{inspectionRequestId}/heartbeat", content: null, cancellationToken);
+        if (response.StatusCode is System.Net.HttpStatusCode.Conflict or System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     public async Task<IReadOnlyList<string>> QueryKnowledgeAsync(Guid projectId, string query, CancellationToken cancellationToken)
     {
         var response = await httpClient.PostAsJsonAsync(

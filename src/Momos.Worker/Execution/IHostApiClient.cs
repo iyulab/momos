@@ -17,5 +17,10 @@ public interface IHostApiClient
 
     Task SubmitFailureAsync(Guid inspectionRequestId, string reason, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken);
 
+    /// <summary>Renews the claim on a request this Worker is still running. False when Host no
+    /// longer treats the request as running (it was failed, finished or is unknown to this Host), in
+    /// which case there is nothing to keep alive.</summary>
+    Task<bool> HeartbeatAsync(Guid inspectionRequestId, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<string>> QueryKnowledgeAsync(Guid projectId, string query, CancellationToken cancellationToken);
 }

@@ -79,6 +79,21 @@ internal sealed class FakeHostApiClient(
 
     public Task WaitForOutcomeAsync(TimeSpan timeout) => _outcomeReceived.Task.WaitAsync(timeout);
 
+    /// <summary>The requests this Worker renewed, in order; <see cref="HeartbeatAnswer"/> is what Host says.</summary>
+    public List<Guid> Heartbeats { get; } = [];
+
+    public bool HeartbeatAnswer { get; init; } = true;
+
+    public Task<bool> HeartbeatAsync(Guid inspectionRequestId, CancellationToken cancellationToken)
+    {
+        lock (Heartbeats)
+        {
+            Heartbeats.Add(inspectionRequestId);
+        }
+
+        return Task.FromResult(HeartbeatAnswer);
+    }
+
     public Task<IReadOnlyList<string>> QueryKnowledgeAsync(Guid projectId, string query, CancellationToken cancellationToken) =>
         queryKnowledgeThrows
             ? throw new HttpRequestException("simulated Host query failure")

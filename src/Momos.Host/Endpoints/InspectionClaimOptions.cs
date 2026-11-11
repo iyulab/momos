@@ -13,7 +13,10 @@ public sealed class InspectionClaimOptions
     /// read the Worker's setting, so keep the two apart by configuration. A reclaimed-too-early
     /// request can still run twice, but the report/fail endpoints' Running-only guard stops the
     /// loser from corrupting the result, so the cost of guessing wrong here is wasted work, not
-    /// a bad finding. Sized before long-run measurements exist; recalibrate after the next one.
+    /// a bad finding. A Worker that renews its claim with the heartbeat route (every five minutes
+    /// by default) keeps a long run from being reclaimed at all; this timeout then only has to
+    /// outlast a few missed heartbeats, not the longest run, and can be lowered. Sized before
+    /// long-run measurements exist; recalibrate after the next one.
     /// </summary>
     public TimeSpan ReclaimTimeout { get; set; } = TimeSpan.FromMinutes(60);
 

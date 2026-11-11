@@ -157,6 +157,31 @@ public static class InspectionRequestEndpoints
             .Produces<ClaimNextResponse>()
             .Produces(StatusCodes.Status401Unauthorized);
 
+        // The lease renewal: a Worker still working on a request says so, which moves ClaimedAt
+        // forward, so a slow but live run is not reclaimed after ReclaimTimeout. Only a Running
+        // request can be renewed — a 409 tells the Worker the request was failed or finished
+        // elsewhere (for instance abandoned after its claims ran out).
+        app.MapPost("/inspection-requests/{id:guid}/heartbeat", async (Guid id, MomosDbContext db, TimeProvider timeProvider, CancellationToken cancellationToken) =>
+        {
+            var renewed = await db.InspectionRequests
+                .Where(r => r.Id == id && r.Status == InspectionRequestStatus.Running)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.ClaimedAt, timeProvider.GetUtcNow()), cancellationToken);
+            if (renewed == 1)
+            {
+                return Results.NoContent();
+            }
+
+            return await db.InspectionRequests.AnyAsync(r => r.Id == id, cancellationToken)
+                ? Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Invalid status transition.", detail: "Only a Running inspection request can be renewed.")
+                : Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Inspection request not found.");
+        })
+            .WithName("HeartbeatInspectionRequest")
+            .AddEndpointFilter<WorkerApiKeyFilter>()
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status401Unauthorized);
+
         app.MapPost("/inspection-requests/{id:guid}/fail", async (Guid id, FailInspectionRequestRequest request, MomosDbContext db, TimeProvider timeProvider, CancellationToken cancellationToken) =>
         {
             var inspectionRequest = await db.InspectionRequests.FindAsync([id], cancellationToken);

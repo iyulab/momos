@@ -143,6 +143,9 @@ Worker 전용 엔드포인트는 `Authorization: Bearer` 공유 키로 보호된
   `Momos:Host:InspectionClaim:ReclaimTimeout`(기본 60분) 안에 결과가 오지 않으면 다음 `claim-next`가 다시 가져갈 수 있다. 같은 요청은 `Momos:Host:InspectionClaim:MaxClaims`(기본 3)번까지만 가져갈 수 있다 — 그만큼 가져간 뒤에도
   결과 없이 다시 `ReclaimTimeout`이 지나면 `claim-next`가 그 요청을 사유와 함께 `Failed`로 끝낸다(Worker가 계속 멈추는 요청이
   무한히 다시 돌며 검진을 `Running`에 붙잡아 두지 않게).
+- 일을 하는 동안 Worker는 `POST /inspection-requests/{id}/heartbeat`(본문 없음)로 요청이 아직 처리 중임을 알린다(기본 5분마다,
+  `Momos:Worker:Pull:HeartbeatInterval`). `Running`인 요청이면 `204`와 함께 가져간 시각이 갱신되어 `ReclaimTimeout`이 그때부터 다시 센다.
+  요청이 `Running`이 아니면 `409`, 모르는 요청이면 `404`, Worker 키가 없으면 `401`이다.
 - 검사를 마친 Worker는 결과서를 `POST /inspection-requests/{id}/report`로 제출한다(`{findings, toolCalls}`).
 
 - 분석을 마친 Worker는 모델을 `POST /analysis-requests/{id}/model`로 제출한다. 목록 필드(`components`·`relations`·

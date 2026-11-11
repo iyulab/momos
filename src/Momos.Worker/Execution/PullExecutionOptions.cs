@@ -8,6 +8,13 @@ public sealed class PullExecutionOptions
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
+    /// How often a Worker tells Host it is still running the request it claimed, which keeps Host
+    /// from reclaiming a slow but live run after <c>Momos:Host:InspectionClaim:ReclaimTimeout</c>.
+    /// Zero turns it off. Keep it well below that timeout (five minutes against an hour by default).
+    /// </summary>
+    public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
     /// Consecutive pull-loop-iteration failures (e.g. Host unreachable) after which the
     /// per-iteration error log is downgraded to a single critical log and then suppressed
     /// until the loop next succeeds. The loop itself never stops retrying — this only caps

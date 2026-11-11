@@ -48,6 +48,70 @@ public sealed class PullExecutionBackgroundServiceTests
         return (provider.GetRequiredService<ISessionAwareAgentLoopFactory>(), executionProvider);
     }
 
+    private static async Task<FakeHostApiClient> RunSlowRequestAsync(TimeSpan heartbeatInterval, bool heartbeatAnswer = true)
+    {
+        var requestId = Guid.NewGuid();
+        var hostClient = new FakeHostApiClient(
+            [new ClaimedInspectionRequest(requestId, Guid.NewGuid(), "focus", null, DateTimeOffset.UtcNow, InspectionRequestStatus.Running, null)])
+        {
+            HeartbeatAnswer = heartbeatAnswer,
+        };
+        var slow = new FakeChatClient([], new ChatResponse(new ChatMessage(ChatRole.Assistant, "done"))) { Delay = TimeSpan.FromMilliseconds(600) };
+        var (agentLoopFactory, executionProvider) = BuildFakeAgentLoopFactory(new FakeChatClientProvider([slow]));
+        var service = new PullExecutionBackgroundService(
+            hostClient,
+            agentLoopFactory,
+            executionProvider,
+            DeterministicAnalyzer(executionProvider),
+            new FakeGitCredentialSource(),
+            new FakeWorkerSelfUpdater(),
+            Options.Create(new PullExecutionOptions { PollInterval = TimeSpan.FromMilliseconds(20), HeartbeatInterval = heartbeatInterval }),
+            NullLogger<PullExecutionBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await hostClient.WaitForOutcomeAsync(TimeSpan.FromSeconds(10));
+        await service.StopAsync(CancellationToken.None);
+        return hostClient;
+    }
+
+    [Fact]
+    public async Task ASlowRequest_IsRenewedWhileItRuns_AndTheRenewalsStopWhenItEnds()
+    {
+        var hostClient = await RunSlowRequestAsync(TimeSpan.FromMilliseconds(50));
+
+        int atEnd;
+        lock (hostClient.Heartbeats)
+        {
+            atEnd = hostClient.Heartbeats.Count;
+        }
+
+        Assert.True(atEnd >= 2, $"expected renewals during a 600 ms run, saw {atEnd}");
+        await Task.Delay(200);
+        lock (hostClient.Heartbeats)
+        {
+            Assert.Equal(atEnd, hostClient.Heartbeats.Count);
+        }
+    }
+
+    [Fact]
+    public async Task WhenHostSaysTheRequestIsNoLongerRunning_TheRenewalsStop()
+    {
+        var hostClient = await RunSlowRequestAsync(TimeSpan.FromMilliseconds(50), heartbeatAnswer: false);
+
+        lock (hostClient.Heartbeats)
+        {
+            Assert.Single(hostClient.Heartbeats);
+        }
+    }
+
+    [Fact]
+    public async Task AZeroHeartbeatInterval_TurnsRenewalsOff()
+    {
+        var hostClient = await RunSlowRequestAsync(TimeSpan.Zero);
+
+        Assert.Empty(hostClient.Heartbeats);
+    }
+
     [Fact]
     public async Task ExecuteAsync_ClaimedRequest_RunsAgentLoopAndSubmitsEmptyFindingsReport()
     {

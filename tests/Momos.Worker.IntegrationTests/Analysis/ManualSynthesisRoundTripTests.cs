@@ -224,6 +224,8 @@ public sealed class ManualSynthesisRoundTripTests : IAsyncLifetime
 
         public Task SubmitModelAsync(Guid analysisRequestId, ProjectModelPayload model, CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public Task<bool> HeartbeatAsync(Guid inspectionRequestId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task SubmitFailureAsync(Guid inspectionRequestId, string reason, IReadOnlyList<ToolCallPayload> toolCalls, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }

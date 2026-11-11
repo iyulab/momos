@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Time.Testing;
 using Momos.Host.Contracts;
@@ -146,5 +147,41 @@ public sealed class InspectionRequestReclaimTests : IAsyncLifetime
         var exam = Assert.Single(ended.Exams);
         Assert.Equal(ExamRunStatus.NotRun, exam.Status);
         Assert.StartsWith("Abandoned after 3 attempts", exam.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AHeartbeat_KeepsARequestFromBeingReclaimed_ForAnotherTimeout()
+    {
+        var claimed = await CreateAndClaimAsync();
+        _time.Advance(_factory.InspectionClaimReclaimTimeout - TimeSpan.FromMinutes(1));
+
+        var beat = await _client.PostAsync($"/inspection-requests/{claimed.Id}/heartbeat", content: null);
+        Assert.Equal(HttpStatusCode.NoContent, beat.StatusCode);
+        _time.Advance(_factory.InspectionClaimReclaimTimeout - TimeSpan.FromMinutes(1));
+
+        // Past the original timeout, but within one timeout of the heartbeat.
+        Assert.Null((await ClaimNextAsync()).Request);
+        Assert.True((await GetAsync(claimed.Id)).ClaimedAt > claimed.ClaimedAt);
+    }
+
+    [Fact]
+    public async Task AHeartbeatOnARequestThatIsNotRunning_IsConflict_AndOnAnUnknownOneNotFound()
+    {
+        var claimed = await CreateAndClaimAsync();
+        await _client.PostAsJsonAsync($"/inspection-requests/{claimed.Id}/fail", new { reason = "boom", toolCalls = Array.Empty<object>() });
+
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"/inspection-requests/{claimed.Id}/heartbeat", content: null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync($"/inspection-requests/{Guid.NewGuid()}/heartbeat", content: null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task AHeartbeatWithoutTheWorkerKey_IsUnauthorized()
+    {
+        var claimed = await CreateAndClaimAsync();
+
+        using var anonymous = _factory.CreateClient();
+        var response = await anonymous.PostAsync($"/inspection-requests/{claimed.Id}/heartbeat", content: null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 }

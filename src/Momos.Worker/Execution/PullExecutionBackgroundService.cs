@@ -127,7 +127,54 @@ public sealed class PullExecutionBackgroundService(
         }
     }
 
+    // Keeps the claim alive for as long as the request is being worked on.
     private async Task RunClaimedRequestAsync(ClaimedInspectionRequest request, CancellationToken cancellationToken)
+    {
+        using var finished = new CancellationTokenSource();
+        var heartbeats = BeatAsync(request.Id, finished.Token);
+        try
+        {
+            await RunClaimedRequestCoreAsync(request, cancellationToken);
+        }
+        finally
+        {
+            await finished.CancelAsync();
+            await heartbeats;
+        }
+    }
+
+    private async Task BeatAsync(Guid requestId, CancellationToken finished)
+    {
+        var interval = options.Value.HeartbeatInterval;
+        if (interval <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        while (true)
+        {
+            try
+            {
+                await Task.Delay(interval, finished);
+                if (!await hostApiClient.HeartbeatAsync(requestId, finished))
+                {
+                    logger.LogWarning("Host no longer treats request {RequestId} as running; heartbeats stop", requestId);
+                    return;
+                }
+            }
+            catch (OperationCanceledException) when (finished.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                // A missed heartbeat costs nothing by itself; the next one may get through.
+                logger.LogWarning(ex, "Heartbeat for request {RequestId} failed, will retry", requestId);
+            }
+        }
+    }
+
+    private async Task RunClaimedRequestCoreAsync(ClaimedInspectionRequest request, CancellationToken cancellationToken)
     {
         ExecutionSessionHandle? session = null;
         // Declared outside the try so a failure can still report what was attempted before it —
