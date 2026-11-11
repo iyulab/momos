@@ -82,13 +82,30 @@ internal sealed class FluxIndexKnowledgeIndex(IFluxIndexContext context) : IKnow
     // The context is shared by every request and by the model projection service, which call in
     // parallel; FluxIndex opens a database context per operation, so no caller-side serialization
     // is needed (ConcurrentCalls_AllSucceed pins this against PostgreSQL).
+    // TODO(upstream: FluxIndex concurrent identity table creation): the first write or search on a
+    // new database creates the embedding-identity table with an unguarded CREATE TABLE IF NOT
+    // EXISTS, which fails for the losers (23505 on pg_type_typname_nsp_index) when several first
+    // calls overlap — a request indexing a document while the model projection indexes claims
+    // does exactly that. Until a FluxIndex release makes the creation safe, calls go one at a time
+    // until one write or search has completed; after that the table exists and calls overlap freely.
+    private readonly SemaphoreSlim _firstUse = new(1, 1);
+    private volatile bool _identityTableExists;
+
     public Task IndexAsync(string content, string documentId, Dictionary<string, object> metadata, CancellationToken cancellationToken) =>
-        context.Indexer.IndexDocumentAsync(content, documentId, metadata, cancellationToken);
+        UntilTheTableExistsAsync(
+            async () =>
+            {
+                await context.Indexer.IndexDocumentAsync(content, documentId, metadata, cancellationToken);
+                return true;
+            },
+            createsTheTable: true, cancellationToken);
 
     // DeleteByDocumentIdAsync removes the vector chunks and the keyword postings together; its
     // bool result only says whether anything existed, which callers don't need.
     public Task DeleteAsync(string documentId, CancellationToken cancellationToken) =>
-        context.Indexer.DeleteByDocumentIdAsync(documentId, cancellationToken);
+        UntilTheTableExistsAsync(
+            () => context.Indexer.DeleteByDocumentIdAsync(documentId, cancellationToken),
+            createsTheTable: false, cancellationToken);
 
     public async Task<IReadOnlyList<KnowledgeSearchHit>> SearchAsync(string query, Dictionary<string, object> filter, int maxResults, CancellationToken cancellationToken)
     {
@@ -98,10 +115,36 @@ internal sealed class FluxIndexKnowledgeIndex(IFluxIndexContext context) : IKnow
         // semantically meaningful and can miss an exact-term match entirely. HybridSearchAsync's
         // keyword leg is unaffected by embedding quality, so it catches what pure vector search
         // would drop while still counting toward relevance when a real embedding IS configured.
-        var results = await context.Retriever.HybridSearchAsync(query, query, maxResults, vectorWeight: 0.5, filter, cancellationToken);
+        var results = await UntilTheTableExistsAsync(
+            () => context.Retriever.HybridSearchAsync(query, query, maxResults, vectorWeight: 0.5, filter, cancellationToken),
+            createsTheTable: true, cancellationToken);
         return results
             .OrderByDescending(r => r.Score)
             .Select(r => new KnowledgeSearchHit(r.DocumentChunk.Content, r.Score))
             .ToList();
+    }
+
+    private async Task<T> UntilTheTableExistsAsync<T>(Func<Task<T>> action, bool createsTheTable, CancellationToken cancellationToken)
+    {
+        if (_identityTableExists)
+        {
+            return await action();
+        }
+
+        await _firstUse.WaitAsync(cancellationToken);
+        try
+        {
+            var result = await action();
+            if (createsTheTable)
+            {
+                _identityTableExists = true;
+            }
+
+            return result;
+        }
+        finally
+        {
+            _firstUse.Release();
+        }
     }
 }

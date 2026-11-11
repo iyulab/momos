@@ -14,14 +14,6 @@ public sealed class FluxIndexKnowledgeIndexTests(MomosHostFactory factory) : ICl
         var projectId = Guid.NewGuid().ToString();
         var filter = new Dictionary<string, object> { ["ProjectId"] = projectId };
 
-        // TODO(upstream: FluxIndex concurrent identity table creation): the first write on a new
-        // database creates its embedding-identity table with an unguarded CREATE TABLE IF NOT
-        // EXISTS, which fails for the losers when several first writes overlap (23505 on
-        // pg_type_typname_nsp_index). One sequential write first; drop it once a release makes the
-        // creation safe.
-        await index.IndexAsync("Warm-up document", $"concurrency-warmup-{projectId}",
-            new Dictionary<string, object> { ["ProjectId"] = projectId }, CancellationToken.None);
-
         await Task.WhenAll(Enumerable.Range(0, 16).Select(i => Task.Run(async () =>
         {
             var documentId = $"concurrency-{projectId}-{i}";
