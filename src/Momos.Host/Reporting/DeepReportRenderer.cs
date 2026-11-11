@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Momos.Host.Domain;
+using Momos.Host.Security;
 
 namespace Momos.Host.Reporting;
 
@@ -358,9 +359,9 @@ public static partial class DeepReportRenderer
     internal static string Inline(string text) => EscapeHtml(OneLine(text));
 
     /// <summary>A paragraph of free text, with its line endings normalized to <c>\n</c>.</summary>
-    internal static string Block(string text) => EscapeHtml(text.ReplaceLineEndings("\n").Trim('\n'));
+    internal static string Block(string text) => EscapeHtml(SecretMasker.Mask(text).ReplaceLineEndings("\n").Trim('\n'));
 
-    private static string OneLine(string text) => text.ReplaceLineEndings(" ");
+    private static string OneLine(string text) => SecretMasker.Mask(text).ReplaceLineEndings(" ");
 
     /// <summary>A page title from free text: the text itself, or — past <see cref="TitleLength"/>
     /// characters — its words up to that length followed by an ellipsis.</summary>

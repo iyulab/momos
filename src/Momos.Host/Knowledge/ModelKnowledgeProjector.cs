@@ -1,5 +1,6 @@
 using System.Text;
 using Momos.Host.Domain;
+using Momos.Host.Security;
 
 namespace Momos.Host.Knowledge;
 
@@ -32,7 +33,7 @@ public sealed class ModelKnowledgeProjector(IKnowledgeIndex index, ILogger<Model
             text.Append("Developer correction (authoritative): ").AppendLine(claim.Correction);
         }
 
-        return text.ToString();
+        return SecretMasker.Mask(text.ToString());
     }
 
     /// <summary>Indexes every claim of <paramref name="model"/> and removes the documents of

@@ -13,6 +13,7 @@ public static class RejectionReason
     public const string InvalidElement = "an element that breaks a model rule";
     public const string ChapterLimit = "more chapters than allowed";
     public const string Unsupported = "a request the analysis does not accept";
+    public const string SecretLike = "text that looks like a credential";
 }
 
 /// <summary>The outcome of checking one proposal; <see cref="Message"/> is what the model reads.</summary>
@@ -53,6 +54,13 @@ public static class DraftRules
         if (string.IsNullOrWhiteSpace(claim.Statement))
         {
             return Verdict.Reject(RejectionReason.InvalidElement, "The statement is empty.");
+        }
+
+        // A fixed message: the value must not be echoed back to the agent, the log or the report.
+        if (SecretLikeText.Matches(claim.Statement) || claim.Evidence.Any(e => SecretLikeText.Matches(e.Symbol) || SecretLikeText.Matches(e.Lines) || SecretLikeText.Matches(e.Path)))
+        {
+            return Verdict.Reject(RejectionReason.SecretLike,
+                "The claim quotes text that looks like a credential (a password, key or token). Describe what it is without the value, and cite a line that does not contain it — for a connection string, the file path with the name of the setting.");
         }
 
         if (!Enum.IsDefined(claim.Tier) || !Enum.IsDefined(claim.Confidence))

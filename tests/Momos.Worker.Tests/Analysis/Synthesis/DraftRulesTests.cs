@@ -104,4 +104,43 @@ public sealed class DraftRulesTests
     public void BlockRules(OutlineBlockKind kind, string reference, string? expected) =>
         Assert.Equal(expected, DraftRules.CheckBlock(new OutlineBlockPayload(kind, reference),
             (k, r) => (k, r) is (OutlineBlockKind.Claim, "clm.fact") or (OutlineBlockKind.Component, "cmp.app")).Reason);
+
+    [Theory]
+    [InlineData("Host=localhost;Database=app;Username=app;Password=hunter2")]
+    [InlineData("postgres://app:s3cret@db/app")]
+    [InlineData("token ghp_0123456789abcdef0123456789abcdef0123")]
+    [InlineData("-----BEGIN RSA PRIVATE KEY-----")]
+    public void EvidenceQuotingACredential_IsRejected_WithoutEchoingIt(string symbol)
+    {
+        var claim = Proposed(ClaimTier.Fact, ClaimConfidence.High, new EvidencePayload(EvidenceKind.Code, Path: "src/App/appsettings.json", Symbol: symbol));
+
+        var verdict = DraftRules.CheckClaim(claim, Resolve);
+
+        Assert.False(verdict.Accepted);
+        Assert.Equal(RejectionReason.SecretLike, verdict.Reason);
+        Assert.DoesNotContain("hunter2", verdict.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("s3cret", verdict.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AStatementQuotingACredential_IsRejected()
+    {
+        var claim = Proposed(ClaimTier.Fact, ClaimConfidence.High, new EvidencePayload(EvidenceKind.Code, Path: "src/App/App.cs", Symbol: "ConnectionString")) with
+        {
+            Statement = "The connection string is Server=db;Password=hunter2.",
+        };
+
+        Assert.Equal(RejectionReason.SecretLike, DraftRules.CheckClaim(claim, Resolve).Reason);
+    }
+
+    [Theory]
+    [InlineData("PasswordHasher")]
+    [InlineData("public string Password { get; set; }")]
+    [InlineData("services.AddSingleton<ISecretStore, SecretStore>();")]
+    public void CodeThatMerelyMentionsPasswords_IsAccepted(string symbol)
+    {
+        var claim = Proposed(ClaimTier.Fact, ClaimConfidence.High, new EvidencePayload(EvidenceKind.Code, Path: "src/App/App.cs", Symbol: symbol));
+
+        Assert.True(DraftRules.CheckClaim(claim, Resolve).Accepted);
+    }
 }

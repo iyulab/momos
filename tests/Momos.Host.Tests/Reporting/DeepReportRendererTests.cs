@@ -127,6 +127,24 @@ public sealed partial class DeepReportRendererTests
     }
 
     [Fact]
+    public void ACredentialInAClaimOrItsEvidence_IsMaskedOnEveryPage()
+    {
+        var tree = DeepReportRenderer.Render("acme", Model(m => m.Claims.Add(new ModelClaim
+        {
+            ProjectModelId = m.Id,
+            Key = "clm.db",
+            Tier = ClaimTier.Fact,
+            Statement = "The services share one database, Username=app;Password=hunter2",
+            Evidence = [new ClaimEvidence(EvidenceKind.Code, Path: "src/appsettings.json", Lines: "4", Symbol: "Host=db;Username=app;Password=hunter2")],
+            Confidence = ClaimConfidence.High,
+            Origin = ClaimOrigin.Synthesized,
+        })));
+
+        Assert.All(tree, d => Assert.DoesNotContain("hunter2", d.Content, StringComparison.Ordinal));
+        Assert.Contains(tree, d => d.Content.Contains("Password=<REDACTED>", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Render_ProducesAnIndexOnePagePerComponentAndOnePagePerClaim()
     {
         var tree = DeepReportRenderer.Render("acme", Model());
