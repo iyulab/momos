@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Momos.Worker.Execution;
 
 namespace Momos.Worker.Analysis.Synthesis;
@@ -116,7 +117,66 @@ public static class DraftRules
             .OfType<ClaimConfidence>()
             .DefaultIfEmpty(ClaimConfidence.High)
             .Max();
-        return weakest > claim.Confidence ? claim with { Confidence = weakest } : claim;
+        var capped = weakest > claim.Confidence ? claim with { Confidence = weakest } : claim;
+        return capped.Confidence == ClaimConfidence.High && StatesACountTheCitedLinesCannotHold(capped)
+            ? capped with { Confidence = ClaimConfidence.Medium }
+            : capped;
+    }
+
+    /// <summary>Counts below this are not worth a check: small enumerations are read whole.</summary>
+    private const int MinimumCheckedCount = 5;
+
+    /// <summary>
+    /// Whether a Fact states how many items something has — "17 numbered rules", "74 routes" — while
+    /// no cited code range is long enough to hold that many items. N items take at least N lines,
+    /// so a count above every cited range's length was not read off the cited lines; it is a
+    /// guess about the part of the list that was not read, and a guess is not High confidence. Only a
+    /// necessary condition: a range that is long enough proves nothing, a range that is too short
+    /// proves the count was extrapolated. Version numbers, percentages, ports and line references are
+    /// not counts.
+    /// </summary>
+    internal static bool StatesACountTheCitedLinesCannotHold(ClaimPayload claim)
+    {
+        if (claim.Tier != ClaimTier.Fact)
+        {
+            return false;
+        }
+
+        var largestRange = claim.Evidence
+            .Where(e => e.Kind == EvidenceKind.Code)
+            .Select(e => LineSpan(e.Lines))
+            .DefaultIfEmpty(0)
+            .Max();
+        return StatedCounts(claim.Statement).Any(n => n >= MinimumCheckedCount && n > largestRange);
+    }
+
+    // A number of one to three digits followed by a word, not part of a version (1.2), a
+    // percentage, a time, a path or a range, and not preceded by a word that makes it a position
+    // ("line 78", "port 5432", "version 3", "§6").
+    private static readonly Regex CountPattern = new(
+        @"(?<![\w.:/§#$-])(?<!\b(?:line|lines|port|version|v|step|section|chapter|rev|id|no|number)\s)(?<n>\d{1,3})(?![\w.%:/-]|\s*(?:%|ms|s\b))\s+(?=\p{L})",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static IEnumerable<int> StatedCounts(string statement) =>
+        CountPattern.Matches(statement).Select(m => int.Parse(m.Groups["n"].Value, System.Globalization.CultureInfo.InvariantCulture));
+
+    // "12" is one line, "12-20" is nine.
+    private static int LineSpan(string? lines)
+    {
+        if (string.IsNullOrWhiteSpace(lines))
+        {
+            return 0;
+        }
+
+        var parts = lines.Split(['-', '–', ':'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1 && int.TryParse(parts[0], out _))
+        {
+            return 1;
+        }
+
+        return parts.Length == 2 && int.TryParse(parts[0], out var from) && int.TryParse(parts[1], out var to) && to >= from
+            ? to - from + 1
+            : 0;
     }
 
     public static Verdict CheckClaimRefs(IReadOnlyList<string> claims, Func<string, ClaimPayload?> resolve)

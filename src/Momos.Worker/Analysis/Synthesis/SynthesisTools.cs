@@ -131,7 +131,7 @@ public sealed class SynthesisTools(DraftStage stage, EvidenceVerifier verifier, 
         stage.AddClaim(capped);
         return capped.Confidence == claim.Confidence
             ? Recorded(key)
-            : $"Recorded as {key}. Confidence lowered to {capped.Confidence}: it cites a less certain claim.";
+            : $"Recorded as {key}. Confidence lowered to {capped.Confidence}: it cites a less certain claim, or states a count larger than any line range it cites (cite the whole list to state how many items it has).";
     }
 
     [Description("Record a goal or constraint the project states for itself. source is Document when the repository says it, Inferred when you conclude it. " +

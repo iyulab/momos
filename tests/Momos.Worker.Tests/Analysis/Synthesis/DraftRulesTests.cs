@@ -143,4 +143,46 @@ public sealed class DraftRulesTests
 
         Assert.True(DraftRules.CheckClaim(claim, Resolve).Accepted);
     }
+
+    private static ClaimPayload FactStating(string statement, ClaimConfidence confidence, string? lines) =>
+        new("clm.count", ClaimTier.Fact, statement,
+            [new EvidencePayload(EvidenceKind.Code, Path: "docs/CONVENTIONS.md", Symbol: "## 6.", Lines: lines)],
+            confidence, ClaimOrigin.Synthesized);
+
+    [Theory]
+    [InlineData("CONVENTIONS §6 has 17 numbered rules.", "730-731")]
+    [InlineData("The gateway defines 74 routes.", null)]
+    [InlineData("There are 38 numbered items in the section.", "730-740")]
+    [InlineData("Nine rules ... but also 30 rules are listed.", "12")]
+    public void AFactStatingACountLargerThanItsCitedLines_IsNoMoreThanMedium(string statement, string? lines)
+    {
+        var capped = DraftRules.CapConfidence(FactStating(statement, ClaimConfidence.High, lines), Resolve);
+
+        Assert.Equal(ClaimConfidence.Medium, capped.Confidence);
+    }
+
+    [Theory]
+    [InlineData("CONVENTIONS §6 has 38 numbered rules.", "730-1079")]
+    [InlineData("The gateway defines 74 routes.", "10-200")]
+    [InlineData("Version 10.0.14 of the SDK is pinned.", null)]
+    [InlineData("Line coverage is 78.64% and branch coverage 67.19%.", null)]
+    [InlineData("The service listens on port 5432 and starts in 300 ms.", null)]
+    [InlineData("It has 3 layers and 4 projects.", "5")]
+    [InlineData("See line 120 for the 2 entry points.", null)]
+    public void NumbersThatAreNotCountsOrAreCoveredByTheCitedRange_LeaveTheConfidenceAlone(string statement, string? lines)
+    {
+        var kept = DraftRules.CapConfidence(FactStating(statement, ClaimConfidence.High, lines), Resolve);
+
+        Assert.Equal(ClaimConfidence.High, kept.Confidence);
+    }
+
+    [Fact]
+    public void ACountInAnAssessmentOrAnAlreadyLowerClaim_IsNotTouched()
+    {
+        var medium = DraftRules.CapConfidence(FactStating("It has 40 rules.", ClaimConfidence.Medium, null), Resolve);
+        var assessment = DraftRules.CapConfidence(FactStating("It has 40 rules.", ClaimConfidence.Low, null) with { Tier = ClaimTier.Assessment }, Resolve);
+
+        Assert.Equal(ClaimConfidence.Medium, medium.Confidence);
+        Assert.Equal(ClaimConfidence.Low, assessment.Confidence);
+    }
 }

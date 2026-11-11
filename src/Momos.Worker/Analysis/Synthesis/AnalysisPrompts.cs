@@ -13,7 +13,7 @@ public sealed record GuideChapter(string Id, string Title, IReadOnlyList<string>
 /// </summary>
 public static class AnalysisPrompts
 {
-    public const string Version = "p3.5";
+    public const string Version = "p3.6";
 
     private const int MaxListedClaims = 300;
 
@@ -100,7 +100,9 @@ public static class AnalysisPrompts
         - Assessment: your interpretation or advice. Cite the claims it interprets; its confidence is Low.
         - The checks confirm that the text you cite is there, not what you work out from it. Do not state
           counts, totals or "all", "every", "none" or "only" about the code unless one cited line says so
-          itself; describe what the cited text shows instead.
+          itself; describe what the cited text shows instead. To say how many items a list has, cite the
+          lines of the whole list (its first and last line) after reading all of it; a count larger than the
+          lines you cite lowers the claim's confidence.
         - Never state why something was decided unless a History claim shows the reason. Otherwise the
           decision's rationale is 'unrecorded'. Saying you do not know is correct; guessing is not.
         - When a tool answers "Rejected: …", fix the proposal or drop it. Do not repeat it unchanged.
